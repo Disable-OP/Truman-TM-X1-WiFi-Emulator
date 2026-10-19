@@ -11,7 +11,9 @@
 //! Timing model: `Count` increments by 2 per retired instruction
 //! (deterministic; see docs/architecture.md).
 
-use super::cop0::{regs as c0, Cop0};
+#[cfg(test)]
+use super::cop0::cause_bits as c0_cause;
+use super::cop0::{regs as c0, status_bits as c0_bits, Cop0};
 use super::{CpuBackend, CpuError, CpuSnapshot, MemEvent, StepReport};
 use crate::memory::{AccessSize, AddressSpace};
 
@@ -25,6 +27,9 @@ pub struct Mips32 {
     next_pc: u32,
     in_delay_slot: bool,
     cop0: Cop0,
+    /// Level-triggered hardware interrupt inputs (IP2..IP7) driven by the
+    /// platform interrupt controller via `set_ext_irq_lines`.
+    ext_irq_lines: u8,
 }
 
 impl Default for Mips32 {
@@ -44,6 +49,7 @@ impl Mips32 {
             next_pc: 0,
             in_delay_slot: false,
             cop0: Cop0::new(),
+            ext_irq_lines: 0,
         }
     }
 
@@ -392,10 +398,22 @@ impl Mips32 {
                     // CO (function field)
                     match funct {
                         0x18 => {
-                            // eret: return from exception via ErrorEPC, clear ERL
-                            let e = self.cop0.read(c0::ERROREPC, 0);
-                            self.cop0.write(c0::STATUS, 0, self.cop0.status() & !0x4);
-                            *flow = Flow::JumpNow(e);
+                            // eret (MIPS32r2): with ERL set the return
+                            // address is ErrorEPC and ERL clears (error/
+                            // reset path); otherwise EPC is used and EXL
+                            // clears (interrupt/exception path). No delay
+                            // slot; llbit clears.
+                            if self.cop0.status() & c0_bits::ERL != 0 {
+                                let e = self.cop0.read(c0::ERROREPC, 0);
+                                self.cop0
+                                    .write(c0::STATUS, 0, self.cop0.status() & !c0_bits::ERL);
+                                *flow = Flow::JumpNow(e);
+                            } else {
+                                let e = self.cop0.read(c0::EPC, 0);
+                                self.cop0
+                                    .write(c0::STATUS, 0, self.cop0.status() & !c0_bits::EXL);
+                                *flow = Flow::JumpNow(e);
+                            }
                         }
                         0x01 | 0x02 | 0x06 | 0x08 => {} // tlbwr/tlbwi/tlbr/tlbp: no-op (no TLB model)
                         _ => {
@@ -763,6 +781,7 @@ impl CpuBackend for Mips32 {
         self.next_pc = entry.wrapping_add(4);
         self.in_delay_slot = false;
         self.cop0 = Cop0::new();
+        self.ext_irq_lines = 0;
     }
 
     fn pc(&self) -> u32 {
@@ -787,11 +806,37 @@ impl CpuBackend for Mips32 {
         "mips32r2-le-interpreter"
     }
 
+    fn set_ext_irq_lines(&mut self, lines: u8) {
+        self.ext_irq_lines = lines & 0x3F;
+        // Reflect the hardware inputs in Cause.IP[7:2] (read-only to
+        // software) so mfc0 Cause and the pending check see one state.
+        self.cop0.set_ip_hw(self.ext_irq_lines);
+    }
+
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
 
     fn step(&mut self, bus: &mut AddressSpace) -> Result<StepReport, CpuError> {
+        // Interrupt delivery (MIPS32r2): before fetching the next
+        // instruction, an enabled + unmasked interrupt at a non-exception
+        // level vectors to the interrupt handler. Delivery consumes no
+        // step of its own — the report returned for this step is the first
+        // handler instruction, and EPC/BD record the interrupted context.
+        // Deterministic: the decision uses only state set before the step.
+        if self.cop0.status() & (c0_bits::IE | c0_bits::EXL | c0_bits::ERL) == c0_bits::IE
+            && self.cop0.irq_pending()
+        {
+            let epc = if self.in_delay_slot {
+                self.pc.wrapping_sub(4)
+            } else {
+                self.pc
+            };
+            let vector = self.cop0.enter_exception(0, epc, self.in_delay_slot);
+            self.pc = vector;
+            self.next_pc = vector.wrapping_add(4);
+            self.in_delay_slot = false;
+        }
         let pc = self.pc;
         let word = bus
             .fetch(pc)
@@ -1311,5 +1356,258 @@ mod tests {
             matches!(err, CpuError::Fault { .. }),
             "store to unmapped kseg1 must fault"
         );
+    }
+
+    // ---- interrupt delivery (Milestone G) ----
+    //
+    // Step model notes (why the assertions use "next fetch address"):
+    // `pc()` after `step()` is the address of the NEXT instruction to
+    // fetch. Interrupt delivery happens at the start of a step (before
+    // fetch) and consumes no step; `eret` performs its transfer as the
+    // Flow of its own step. A handler [nop, eret] therefore takes:
+    //   step A: deliver (pc->0x...180), execute nop (pc->0x...184)
+    //   step B: execute eret (pc -> EPC)
+    //   step C: if the line is still high, deliver again.
+
+    fn mtc0(rt: usize, rd: u8, sel: u8) -> u32 {
+        (0x10 << 26) | (0x04 << 21) | ((rt as u32) << 16) | ((rd as u32) << 11) | u32::from(sel)
+    }
+    const MFC0_T0_STATUS: u32 = (0x10 << 26) | ((T0 as u32) << 16) | (12 << 11);
+    const ERET: u32 = 0x4200_0018;
+
+    /// Build a core + bus with the program at kseg0 0x80000000, RAM covering
+    /// the BEV=0 interrupt vector (phys 0x180, via kseg0 0x80000180) and a
+    /// RAM window for the BEV=1 vector at 0xBFC00380 (phys 0x1FC00380).
+    /// `handler` is copied to both vector sites.
+    fn irq_setup(prog: &[u32], handler: &[u32]) -> (Mips32, AddressSpace) {
+        let mut bus = AddressSpace::new();
+        let mut bytes = Vec::with_capacity(prog.len() * 4);
+        for w in prog {
+            bytes.extend_from_slice(&w.to_le_bytes());
+        }
+        bus.add_rom("prog", 0x0000_0000, bytes); // kseg0 0x80000000
+        bus.add_ram("vector", 0x0000_0100, 0x1000); // covers phys 0x180
+        bus.add_ram("bootvec", 0x1FC0_0000, 0x1000); // kseg1 0xBFC00000
+        let mut cpu = Mips32::new();
+        cpu.reset(0x8000_0000);
+        for (name, base) in [("vector", 0x8000_0180u32), ("bootvec", 0xBFC0_0380u32)] {
+            for (i, w) in handler.iter().enumerate() {
+                bus.store(base + (i as u32) * 4, AccessSize::Word, *w)
+                    .unwrap_or_else(|e| panic!("{name}: {e}"));
+            }
+        }
+        (cpu, bus)
+    }
+
+    /// Program preamble: `Status = (Status | IE | IM2) & 0xFFFB`.
+    /// NOTE: `andi` zero-extends its 16-bit immediate, so this also clears
+    /// the entire upper half of Status — including BEV. After the preamble
+    /// Status = 0x0000_0401 (IE|IM2, kernel mode, ERL/EXL/BEV all clear),
+    /// so interrupts vector to EBase + 0x180 = 0x8000_0180. (The BEV=1
+    /// path is covered separately by `bev_one_vectors_to_boot_rom_window`.)
+    fn enable_ie_im2() -> Vec<u32> {
+        vec![
+            MFC0_T0_STATUS,
+            ori(T0, T0, 0x0401), // IE (bit 0) | IM2 (bit 10)
+            (0x0C << 26) | ((T0 as u32) << 21) | ((T0 as u32) << 16) | 0xFFFB, // andi t0, t0, ~ERL
+            mtc0(T0, 12, 0),
+        ]
+    }
+
+    #[test]
+    fn enabled_ext_interrupt_vectors_to_handler_and_eret_returns() {
+        // Handler: sw marker; eret. Main: arm interrupts, set t0/t1, loop.
+        let handler = [
+            (0x2B << 26) | ((T0 as u32) << 21) | ((T1 as u32) << 16) | 0x1000, // sw t1, 0x1000(t0)
+            ERET,
+        ];
+        let mut prog = enable_ie_im2();
+        prog.extend_from_slice(&[lui(T0, 0x8000), addiu(T1, 0, 0x55)]);
+        // Self-jump loop directly after the setup words.
+        let loop_pc = 0x8000_0000 + (prog.len() as u32) * 4;
+        let idx = (loop_pc & 0x0FFF_FFFF) >> 2;
+        prog.extend_from_slice(&[0, 0]); // placeholder for j + delay slot
+        let n = prog.len();
+        prog[n - 2] = (0x02 << 26) | idx; // j loop_pc (at address loop_pc)
+        prog[n - 1] = 0; // delay slot
+        let (mut cpu, mut bus) = irq_setup(&prog, &handler);
+        run(&mut cpu, &mut bus, prog.len() - 2); // arm + lui + addiu
+        assert_eq!(cpu.pc(), loop_pc, "must be at the self-loop");
+
+        // No interrupt yet: nothing may have run the handler.
+        assert_eq!(
+            bus.load(0x8000_1000, AccessSize::Word).unwrap(),
+            0,
+            "handler must not run before the line is raised"
+        );
+
+        // Raise IP2 (ext line bit 0 → IP2).
+        cpu.set_ext_irq_lines(0b00_0001);
+        // Step A: deliver to 0x80000180 and execute the handler's sw.
+        let rep = cpu.step(&mut bus).unwrap();
+        assert_eq!(rep.pc, 0x8000_0180, "delivery lands on the vector");
+        assert_eq!(cpu.pc(), 0x8000_0184, "next fetch after handler sw");
+        assert_eq!(
+            bus.load(0x8000_1000, AccessSize::Word).unwrap(),
+            0x55,
+            "handler store must execute"
+        );
+        let st = cpu.cop0().status();
+        assert_eq!(st & c0_bits::EXL, c0_bits::EXL, "EXL set on entry");
+        let cause = cpu.cop0().read(13, 0);
+        assert_eq!(cause & c0_cause::EXCCODE, 0, "ExcCode = Int");
+        assert_eq!(cpu.cop0().read(14, 0), loop_pc, "EPC = interrupted PC");
+        assert_eq!(cause & c0_cause::BD, 0, "not in a delay slot");
+        // Step B: eret returns to EPC and clears EXL.
+        cpu.step(&mut bus).unwrap();
+        assert_eq!(cpu.pc(), loop_pc, "eret returns to EPC");
+        assert_eq!(cpu.cop0().status() & c0_bits::EXL, 0, "eret clears EXL");
+    }
+
+    #[test]
+    fn disabled_or_masked_interrupts_do_not_vector() {
+        let handler = [0, ERET];
+        // Case 1: IE=0 (reset state) — lines raised, no delivery.
+        let (mut cpu, mut bus) = irq_setup(&[0, 0], &handler);
+        cpu.set_ext_irq_lines(0x3F);
+        cpu.step(&mut bus).unwrap();
+        assert_eq!(cpu.pc(), 0x8000_0004, "IE=0: no delivery");
+        // Case 2: IE=1 but IM2=0 — still no delivery.
+        let prog2 = vec![
+            MFC0_T0_STATUS,
+            ori(T0, T0, 0x0001), // IE only
+            (0x0C << 26) | ((T0 as u32) << 21) | ((T0 as u32) << 16) | 0xFFFB,
+            mtc0(T0, 12, 0),
+            0, // nop
+        ];
+        let (mut cpu2, mut bus2) = irq_setup(&prog2, &handler);
+        run(&mut cpu2, &mut bus2, 4);
+        cpu2.set_ext_irq_lines(0x01);
+        cpu2.step(&mut bus2).unwrap(); // executes the trailing nop
+        assert_eq!(cpu2.pc(), 0x8000_0014, "IM2=0: no delivery");
+    }
+
+    #[test]
+    fn level_line_retriggers_until_cleared() {
+        // Level-triggered semantics: while the line is asserted and
+        // enabled, returning from the handler re-enters immediately.
+        let handler = [0, ERET]; // nop; eret
+        let mut prog = enable_ie_im2();
+        prog.extend_from_slice(&[addiu(T1, 0, 7), 0]); // addiu @0x10, nop @0x14
+        let (mut cpu, mut bus) = irq_setup(&prog, &handler);
+        run(&mut cpu, &mut bus, 5); // arm + addiu; next fetch = 0x14
+        let loop_pc = 0x8000_0014;
+
+        cpu.set_ext_irq_lines(0b00_0001);
+        // Entry 1: deliver + handler nop.
+        cpu.step(&mut bus).unwrap();
+        assert_eq!(cpu.pc(), 0x8000_0184);
+        assert_eq!(cpu.cop0().read(14, 0), loop_pc);
+        // Return.
+        cpu.step(&mut bus).unwrap(); // eret -> EPC
+        assert_eq!(cpu.pc(), loop_pc);
+        // Entry 2 (line still high): re-delivery on the next step.
+        cpu.step(&mut bus).unwrap();
+        assert_eq!(cpu.pc(), 0x8000_0184, "level line re-vectors");
+        // Clear the line, return, and confirm no further delivery.
+        cpu.set_ext_irq_lines(0);
+        cpu.step(&mut bus).unwrap(); // eret -> EPC
+        assert_eq!(cpu.pc(), loop_pc);
+        cpu.step(&mut bus).unwrap(); // executes the nop at loop_pc
+        assert_eq!(cpu.pc(), loop_pc + 4, "no delivery after line cleared");
+    }
+
+    #[test]
+    fn delay_slot_interrupt_sets_bd_and_epc() {
+        // Interrupt while in a branch delay slot: EPC = branch address,
+        // Cause.BD = 1, and eret re-executes the branch.
+        let handler = [0, ERET];
+        let mut prog = enable_ie_im2();
+        prog.extend_from_slice(&[
+            (0x04 << 26) | 1, // beq $zero,$zero,+1 -> 0x1C
+            addiu(T1, 0, 1),  // delay slot @0x14
+            addiu(T2, 0, 2),  // (skipped) @0x18
+        ]);
+        let branch_pc = 0x8000_0010;
+        let (mut cpu, mut bus) = irq_setup(&prog, &handler);
+        run(&mut cpu, &mut bus, 5); // arm(4) + beq; now at the delay slot
+        assert_eq!(cpu.pc(), branch_pc + 4, "must be in the delay slot");
+
+        cpu.set_ext_irq_lines(0b00_0001);
+        // Entry: deliver + handler nop. EPC must be the BRANCH address.
+        cpu.step(&mut bus).unwrap();
+        assert_eq!(cpu.pc(), 0x8000_0184);
+        assert_eq!(cpu.cop0().read(14, 0), branch_pc, "EPC = branch address");
+        assert_eq!(
+            cpu.cop0().read(13, 0) & c0_cause::BD,
+            c0_cause::BD,
+            "BD set for delay-slot interrupt"
+        );
+        // Return: eret jumps to the branch (delay-slot semantics).
+        cpu.step(&mut bus).unwrap();
+        assert_eq!(cpu.pc(), branch_pc, "eret resumes at the branch");
+    }
+
+    #[test]
+    fn bev_one_vectors_to_boot_rom_window() {
+        // BEV=1 + IE + IM2: vector = 0xBFC0_0200 + 0x180 = 0xBFC0_0380.
+        let handler = [0, ERET];
+        let prog = vec![
+            MFC0_T0_STATUS,
+            lui(T1, 0x0040), // BEV
+            ori(T1, T1, 0x0401),
+            (0x0C << 26) | ((T0 as u32) << 21) | ((T0 as u32) << 16) | 0xFFFB,
+            special(T0, T1, T0, 0, 0x25), // or t0, t0, t1
+            mtc0(T0, 12, 0),
+            0, // nop (interrupted here)
+        ];
+        let (mut cpu, mut bus) = irq_setup(&prog, &handler);
+        run(&mut cpu, &mut bus, 7);
+        cpu.set_ext_irq_lines(0b00_0001);
+        cpu.step(&mut bus).unwrap(); // deliver to ROM vector + handler nop
+        assert_eq!(cpu.pc(), 0xBFC0_0384, "BEV=1 ROM interrupt vector");
+    }
+
+    #[test]
+    fn exl_blocks_nesting() {
+        // While EXL=1 (inside a handler) a new line must not re-vector
+        // until eret clears EXL.
+        let handler = [0, 0, ERET]; // nop; nop; eret
+        let mut prog = enable_ie_im2();
+        prog.extend_from_slice(&[0, 0]); // nops @0x10, 0x14
+        let (mut cpu, mut bus) = irq_setup(&prog, &handler);
+        run(&mut cpu, &mut bus, 6); // arm(4) + nop@0x10 + nop@0x14 → next 0x18
+        assert_eq!(cpu.pc(), 0x8000_0018);
+        cpu.set_ext_irq_lines(0b00_0001);
+        // Entry: deliver + first handler nop. While at 0x80000184..0x188
+        // EXL=1; raise more lines and verify they do not nest.
+        cpu.step(&mut bus).unwrap();
+        assert_eq!(cpu.pc(), 0x8000_0184);
+        cpu.set_ext_irq_lines(0b11_1111);
+        cpu.step(&mut bus).unwrap(); // second handler nop — must not vector
+        assert_eq!(cpu.pc(), 0x8000_0188, "EXL blocks nesting");
+        cpu.set_ext_irq_lines(0);
+        cpu.step(&mut bus).unwrap(); // eret
+        assert_eq!(cpu.pc(), 0x8000_0018);
+    }
+
+    #[test]
+    fn cause_write_mask_preserves_hardware_fields() {
+        // mtc0 Cause may only change IV/DC/IP[1:0]; BD, ExcCode and
+        // IP[7:2] are hardware-owned.
+        let mut cop = Cop0::new();
+        cop.set_ip_hw(0b00_0001);
+        let _ = cop.enter_exception(7, 0x100, true);
+        let pre = cop.read(13, 0);
+        assert_eq!(pre & c0_cause::BD, c0_cause::BD);
+        assert_eq!((pre & c0_cause::EXCCODE) >> 2, 7);
+        assert_eq!(pre & c0_cause::IP_HW, 1 << 10);
+        cop.write(13, 0, 0x4000_0101); // IV=1, IP1:0=01
+        let post = cop.read(13, 0);
+        assert_eq!(post & c0_cause::IV, c0_cause::IV, "IV writable");
+        assert_eq!(post & c0_cause::IP_SW, 0x100, "IP1:0 writable");
+        assert_eq!(post & c0_cause::BD, c0_cause::BD, "BD preserved");
+        assert_eq!((post & c0_cause::EXCCODE) >> 2, 7, "ExcCode preserved");
+        assert_eq!(post & c0_cause::IP_HW, 1 << 10, "IP[7:2] preserved");
     }
 }

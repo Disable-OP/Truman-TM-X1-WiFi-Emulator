@@ -108,6 +108,13 @@ pub trait CpuBackend {
     /// Backend name (for diagnostics).
     fn name(&self) -> &'static str;
 
+    /// Level-triggered hardware interrupt inputs from the platform
+    /// interrupt controller (Milestones F/G). Bit *i* asserted drives CPU
+    /// interrupt input IP(2+*i*) (bits 2..7 of Cause.IP); the core itself
+    /// performs the enabled/masked checks and exception entry at the start
+    /// of the next step. Default: no interrupt inputs.
+    fn set_ext_irq_lines(&mut self, _lines: u8) {}
+
     /// Type-erased self reference for backend-specific diagnostics.
     fn as_any(&self) -> &dyn std::any::Any;
 }

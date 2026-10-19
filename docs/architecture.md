@@ -18,7 +18,8 @@
 ┌────────────────────────────────▼───────────────────────────────────────┐
 │ machine.rs — composition + run loop                                     │
 │   MachineConfig: the documented memory map (hypothesis A')              │
-│   Machine::run/run_traced: step → bus.tick() → StopReason/touchmap      │
+│   Machine::run/run_traced: intc line → CPU → step → bus.tick()          │
+│   raise_int_sources/clear_int_sources: virtual device injection         │
 └───────┬──────────────────────────────┬──────────────────────────────────┘
         │                              │
 ┌───────▼──────────┐        ┌──────────▼──────────────────────────────────┐
@@ -31,15 +32,16 @@
               ┌─────────────────────▼───────────────────────────┐
               │ devices.rs — trait Device { read/write/tick }   │
               │  Uart · TimerCounter · SpiController ·          │
-              │  DdrPhy · DdrCtrl · ParamRam · MirroredRam ·    │
-              │  LoggingDevice                                  │
+              │  DdrPhy · DdrCtrl · IntController · ParamRam ·  │
+              │  MirroredRam · LoggingDevice                    │
               └─────────────────────┬───────────────────────────┘
                                     │
               ┌─────────────────────▼───────────────────────────┐
               │ cpu/mod.rs — trait CpuBackend                   │
               │   step(bus) → StepReport { pc, word, desc, mem} │
+              │   set_ext_irq_lines(lines): IP2..IP7 inputs     │
               │ cpu/mips32.rs — the interpreter                 │
-              │ cpu/cop0.rs  — COP0 subset (Status/Config1/…)   │
+              │ cpu/cop0.rs  — COP0 subset + interrupt delivery │
               └─────────────────────────────────────────────────┘
 ```
 
@@ -56,6 +58,15 @@
 - **Time model**: `AddressSpace::tick()` runs once per executed instruction;
   `TimerCounter` increments per tick (1 count/instruction — the real tick
   rate is unknown; only flow semantics matter for boot).
+- **Interrupts are wired, not guessed**: the CPU implements the
+  architecture-specified delivery (Status/Cause/EPC/EXL/ERL/eret, vector
+  selection) — see docs/firmware-analysis.md §11.4. The SoC interrupt
+  controller is modeled as verified storage (the exact "IntCtrl" init
+  program replays bit-identically) plus a deliberately minimal,
+  level-triggered aggregation to CPU IP2 (hypothesis H11). The real
+  firmware keeps `Status.IE = 0` for the entire observed boot, so the
+  mechanisms are proven by dedicated tests that inject sources through
+  `Machine::raise_int_sources` — not by pretending the firmware uses them.
 - **Memory map as data** (`MachineConfig`): all windows (DRAM 64 MiB,
   flash XIP at phys 0x1FC00000, IRAM overlay 0x1FFC0000, sysreg page
   0x1FFE0000, mirror window 0x18000000) are declared, documented fields —
@@ -68,9 +79,14 @@
 ## Testing strategy
 
 - Unit tests per module: translation, endianness, COP0 geometry, every
-  device's observed protocol (incl. the exact loader SPI transaction).
+  device's observed protocol (incl. the exact loader SPI transaction), and
+  the interrupt mechanisms (COP0 vector selection, CPU delivery/eret/
+  delay-slot KATs, IntController init replay + level output).
 - Integration tests run the **real committed firmware**: stage-1 execution
   past the prologue, and the full boot chain to the eCos idle poll
-  (`real_firmware_boots_through_ddr_training_into_main_firmware`).
+  (`real_firmware_boots_through_ddr_training_into_main_firmware`), plus
+  interrupt injection through the machine API
+  (`tests/interrupt.rs`) and a guard that the real boot is unaffected by
+  the interrupt wiring.
 - Quality gates: `cargo fmt --check`, `cargo clippy --all-targets
   --all-features` (0 warnings), `cargo test --release`.

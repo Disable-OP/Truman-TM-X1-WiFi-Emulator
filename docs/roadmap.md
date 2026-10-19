@@ -46,17 +46,22 @@ actually demonstrated by code + tests in this repository.
 The plan defined F as "bootloader executes / memory initialization succeeds"
 — both are demonstrated. The next credibility rungs are application-level.
 
-## Milestone G — Extension & stabilization (next)
+## Milestone G — Extension & stabilization (in progress)
 
 Track by evidence-first value, in rough order:
 
-1. **Payload codec identification** (file 0x10000+): trace the stage-2
+1. ✅ **Interrupt controller + COP0 cause/compare (first pass)** — the
+   "IntCtrl" init program was reverse-engineered and replays bit-identically
+   (`devices::IntController`, hypothesis H11); CPU-side delivery is
+   architecture-complete (Status/Cause/EPC/EXL/eret/vector selection, delay
+   slots) and covered by 14 dedicated tests. **Open**: pending/ack
+   semantics, per-source vectors, priorities — the firmware never enables
+   `Status.IE` in the observed boot (docs/firmware-analysis.md §11).
+2. **Front-panel/key register (0xBFFE384C)**: decode bits 0/2/4/5/6 from the
+   key-scan code so synthetic key presses can be injected for testing
+   (dispatch loop located at 0xA2002548..0xA2002630; see §10.3).
+3. **Payload codec identification** (file 0x10000+): trace the stage-2
    decompressor to name the container/codec (Q4 in the analysis doc).
-2. **Interrupt controller + COP0 cause/compare**: the eCos "IntCtrl" step
-   currently runs without real interrupt delivery; modeling the controller
-   would let the scheduler actually tick.
-3. **Front-panel/key register (0xBFFE384C)**: decode bits 0/2/4/5/6 from the
-   key-scan code so synthetic key presses can be injected for testing.
 4. **0x98010000 / 0xB0000000 / 0xF0000000 windows**: name blocks by access
    correlation with the UART banner sequence (Q2).
 5. **Performance**: ~5 M instr/s today; a decode cache would lift the

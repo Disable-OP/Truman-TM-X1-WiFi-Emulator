@@ -24,7 +24,8 @@
 
 use crate::cpu::{CpuBackend, CpuError, StepReport};
 use crate::devices::{
-    DdrCtrl, DdrPhy, LoggingDevice, MirroredRam, ParamRam, SpiController, TimerCounter, Uart,
+    DdrCtrl, DdrPhy, IntController, LoggingDevice, MirroredRam, ParamRam, SpiController,
+    TimerCounter, Uart,
 };
 use crate::firmware::Image;
 use crate::memory::AddressSpace;
@@ -55,6 +56,10 @@ pub struct MachineConfig {
     /// 0xFF = erased-flash-backed page. Selecting this is part of
     /// hypothesis A' (docs/firmware-analysis.md Q1).
     pub sysreg_fill: u8,
+    /// Interrupt controller block inside the sysreg page (offset +0x480,
+    /// 0x40 bytes — verified init program; hypothesis H11 for behavior).
+    pub intc_offset: u32,
+    pub intc_size: u32,
     /// Unknown kseg0 window at 0x98000000 (phys 0x18000000).
     /// Evidence (Milestone B): stage-1 `jal`s into 0xB8000998 after init —
     /// a fast execution mirror of the SPI flash. Modeled as copy-on-write
@@ -89,6 +94,8 @@ impl Default for MachineConfig {
             sysreg_base: 0x1FFE_0000,
             sysreg_size: 0x0001_0000, // 64 KiB
             sysreg_fill: 0x00,
+            intc_offset: 0x480,
+            intc_size: 0x40,
             win_180_base: 0x1800_0000,
             win_180_size: 0x0040_0000, // 4 MiB linear mirror of the flash
             win_180_mirror_flash: true,
@@ -136,6 +143,11 @@ pub struct Machine {
     pub config: MachineConfig,
     /// Shared UART output buffer (the emulated serial console).
     pub uart_output: std::rc::Rc<std::cell::RefCell<Vec<u8>>>,
+    /// External interrupt sources (bit i = source i), shared with the
+    /// [`IntController`]. Raise/clear these to inject device interrupts.
+    pub intc_sources: std::rc::Rc<std::cell::Cell<u32>>,
+    /// Aggregate interrupt-controller output line (0/1, wired to CPU IP2).
+    pub intc_line: std::rc::Rc<std::cell::Cell<u8>>,
     /// Access logs of instrumented windows (name, handle).
     logs: Vec<(String, AccessLog)>,
 }
@@ -157,6 +169,26 @@ impl Machine {
         logs.push(("iram-overlay".to_string(), iram.log_handle()));
         bus.add_device("iram-overlay", cfg.iram_base, cfg.iram_size, Box::new(iram));
 
+        // Interrupt controller at sysreg+0x480 (verified init program;
+        // hypothesis H11 behavior — see devices::IntController). Carved out
+        // of the low param RAM, which is therefore split in two again.
+        let intc_sources = std::rc::Rc::new(std::cell::Cell::new(0u32));
+        let intc_line = std::rc::Rc::new(std::cell::Cell::new(0u8));
+        let intc_log = LoggingDevice::new("intc-log", 0).log_handle();
+        let intc = IntController::new(
+            "intc",
+            std::rc::Rc::clone(&intc_sources),
+            std::rc::Rc::clone(&intc_line),
+            std::rc::Rc::clone(&intc_log),
+        );
+        logs.push(("intc".to_string(), intc_log));
+        bus.add_tickable_device(
+            "intc",
+            cfg.sysreg_base + cfg.intc_offset,
+            cfg.intc_size,
+            Box::new(intc),
+        );
+
         // Timer block at +0x600..+0x620 (delay() polls the counter at
         // +0x600; see devices::TimerCounter). Carved out of the low param
         // RAM, which is therefore split in two.
@@ -164,9 +196,29 @@ impl Machine {
         let timer = TimerCounter::new("timer", std::rc::Rc::clone(&timer_log));
         logs.push(("timer".to_string(), timer_log));
         bus.add_tickable_device("timer", cfg.sysreg_base + 0x600, 0x20, Box::new(timer));
-        let param = ParamRam::new("sysreg-params", 0x600, cfg.sysreg_fill);
+        let param = ParamRam::new("sysreg-params", cfg.intc_offset, cfg.sysreg_fill);
         logs.push(("sysreg-params".to_string(), param.log_handle()));
-        bus.add_device("sysreg-params", cfg.sysreg_base, 0x600, Box::new(param));
+        bus.add_device(
+            "sysreg-params",
+            cfg.sysreg_base,
+            cfg.intc_offset,
+            Box::new(param),
+        );
+        let param_after_intc = ParamRam::new(
+            "sysreg-params-mid0",
+            0x600 - cfg.intc_offset - cfg.intc_size,
+            cfg.sysreg_fill,
+        );
+        logs.push((
+            "sysreg-params-mid0".to_string(),
+            param_after_intc.log_handle(),
+        ));
+        bus.add_device(
+            "sysreg-params-mid0",
+            cfg.sysreg_base + cfg.intc_offset + cfg.intc_size,
+            0x600 - cfg.intc_offset - cfg.intc_size,
+            Box::new(param_after_intc),
+        );
         let param2 = ParamRam::new("sysreg-params-mid", 0x900 - 0x620, cfg.sysreg_fill);
         logs.push(("sysreg-params-mid".to_string(), param2.log_handle()));
         bus.add_device(
@@ -268,6 +320,8 @@ impl Machine {
             bus,
             config: cfg,
             uart_output,
+            intc_sources,
+            intc_line,
             logs,
         }
     }
@@ -291,6 +345,9 @@ impl Machine {
             if steps >= max_steps {
                 break StopReason::StepLimit;
             }
+            // Wire the interrupt-controller output into the CPU inputs
+            // (deterministic: uses only state set before this step).
+            self.cpu.set_ext_irq_lines(self.intc_line.get());
             match self.cpu.step(&mut self.bus) {
                 Ok(_) => {
                     steps += 1;
@@ -324,6 +381,7 @@ impl Machine {
             if steps >= max_steps {
                 break StopReason::StepLimit;
             }
+            self.cpu.set_ext_irq_lines(self.intc_line.get());
             match self.cpu.step(&mut self.bus) {
                 Ok(report) => {
                     tracer.push(report);
@@ -363,6 +421,26 @@ impl Machine {
     /// UART output as a lossy UTF-8 string (for console printing).
     pub fn uart_console(&self) -> String {
         String::from_utf8_lossy(&self.uart_output.borrow()).into_owned()
+    }
+
+    /// Raise external interrupt sources (bit i = source i). Takes effect
+    /// on the next executed instruction; the source must be enabled in the
+    /// controller's enable registers for the line to assert (the real
+    /// firmware's IntCtrl init unmasks with all-ones).
+    pub fn raise_int_sources(&self, mask: u32) {
+        let cur = self.intc_sources.get();
+        self.intc_sources.set(cur | mask);
+    }
+
+    /// Clear external interrupt sources.
+    pub fn clear_int_sources(&self, mask: u32) {
+        let cur = self.intc_sources.get();
+        self.intc_sources.set(cur & !mask);
+    }
+
+    /// Current aggregate interrupt-controller output line (0/1).
+    pub fn intc_output(&self) -> u8 {
+        self.intc_line.get()
     }
 
     /// Declared region map for diagnostics output.

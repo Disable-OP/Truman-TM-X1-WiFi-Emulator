@@ -49,8 +49,18 @@ automated acceptance test). Execution currently idles in the application's
 front-panel status poll, which is the correct behavior for a receiver with
 no key pressed.
 
+Interrupt support (Milestone G, first pass): the CPU implements
+architecture-complete MIPS32r2 interrupt delivery (Status/Cause/EPC/EXL,
+`eret`, vector selection, delay-slot semantics) and the SoC interrupt
+controller block found by the "IntCtrl" init is modeled with its verified
+register program. The firmware itself keeps interrupts globally disabled
+(`Status.IE = 0`) for the entire observed boot, so interrupt behavior is
+demonstrated by injection tests (`tests/interrupt.rs`) — see
+`docs/firmware-analysis.md` §11 for the evidence and the honest unknowns.
+
 What is *not* claimed: video/audio output, tuner/demod lock, Wi-Fi, remote
-control. See `docs/firmware-analysis.md` §10.5 for the honest boundary.
+control, interrupt dispatch inside the firmware (IE=0; §11). See
+`docs/firmware-analysis.md` §10.5 for the honest boundary.
 
 ## Build & run
 
@@ -58,7 +68,7 @@ Requires a stable Rust toolchain (https://rustup.rs). No other dependencies.
 
 ```sh
 cargo build --release
-cargo test --release          # 42 tests incl. the full boot-chain acceptance
+cargo test --release          # 57 tests incl. the full boot-chain acceptance
 
 # Identify a firmware image
 ./target/release/truman-emulator inspect firmware/*.bin
@@ -77,13 +87,13 @@ fault/unknown instruction.
 
 | Path | Contents |
 |---|---|
-| `src/cpu/` | MIPS32r2 LE interpreter + COP0 model (behind a `CpuBackend` trait) |
+| `src/cpu/` | MIPS32r2 LE interpreter + COP0 model + interrupt delivery (behind a `CpuBackend` trait) |
 | `src/memory.rs` | Address space: kseg0/kseg1 translation, RAM/ROM/device regions |
-| `src/devices.rs` | Device models: UART, timer, SPI controller, DDR PHY/controller, param RAM, mirror window |
-| `src/machine.rs` | Machine composition (memory map = documented hypotheses) + run loop |
+| `src/devices.rs` | Device models: UART, timer, SPI controller, DDR PHY/controller, interrupt controller, param RAM, mirror window |
+| `src/machine.rs` | Machine composition (memory map = documented hypotheses) + run loop + IRQ injection API |
 | `src/firmware.rs`, `src/boot.rs` | Image identification/validation, reset/diagnostics |
 | `src/bin/truman-emulator.rs` | CLI frontend (`inspect` / `run` / `trace`) |
-| `tests/boot.rs` | Integration tests, incl. the full real-firmware boot chain |
+| `tests/boot.rs`, `tests/interrupt.rs` | Integration tests: real-firmware boot chain, interrupt injection |
 | `docs/firmware-analysis.md` | The evidence base: CPU arch, flash map, register models |
 | `tools/`, `scripts/` | Analysis scripts (capstone-based recon, disassembly) |
 | `firmware/` | The original, unmodified flash dump (SHA-256 pinned in docs) |

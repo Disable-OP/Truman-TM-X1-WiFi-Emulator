@@ -134,6 +134,8 @@ struct RunOptions {
     trace_tail: usize,
     trace_limit: usize,
     verbose: bool,
+    /// `phys,len,path` triples dumped after the run (diagnostics).
+    dumps: Vec<(u32, u32, PathBuf)>,
 }
 
 fn parse_run_options(
@@ -145,6 +147,7 @@ fn parse_run_options(
         trace_tail: 24,
         trace_limit: 100,
         verbose: false,
+        dumps: Vec::new(),
     };
     let mut rest = Vec::new();
     let mut i = 0;
@@ -180,6 +183,22 @@ fn parse_run_options(
             "-v" | "--verbose" => {
                 opts.verbose = true;
                 i += 1;
+            }
+            "--dump" => {
+                // Format: phys,len,path (hex numbers, decimal path bytes).
+                let spec = args
+                    .get(i + 1)
+                    .ok_or_else(|| ArgsError::MissingValue("--dump".into()))?;
+                let parts: Vec<&str> = spec.splitn(3, ',').collect();
+                if parts.len() != 3 {
+                    return Err(ArgsError::BadOption(format!("--dump {spec}")));
+                }
+                let phys = u32::from_str_radix(parts[0].trim_start_matches("0x"), 16)
+                    .map_err(|_| ArgsError::BadOption(format!("--dump phys {spec}")))?;
+                let len = u32::from_str_radix(parts[1].trim_start_matches("0x"), 16)
+                    .map_err(|_| ArgsError::BadOption(format!("--dump len {spec}")))?;
+                opts.dumps.push((phys, len, PathBuf::from(parts[2])));
+                i += 2;
             }
             other if other.starts_with('-') => return Err(ArgsError::BadOption(other.to_string())),
             other => {
@@ -259,6 +278,25 @@ fn cmd_run(args: &[String]) -> Result<ExitCode, ArgsError> {
     let result = machine.run(opts.max_steps);
     println!("run: stopped after {} steps: {}", result.steps, result.stop);
     println!("run: final pc=0x{:08x}", result.pc);
+    for (phys, len, path) in &opts.dumps {
+        let mut buf = Vec::with_capacity(*len as usize);
+        let mut a = *phys;
+        while a < phys.saturating_add(*len) {
+            let v = machine
+                .bus
+                .peek_phys(a, truman_emulator::memory::AccessSize::Byte)
+                .unwrap_or(0);
+            buf.push(v as u8);
+            a += 1;
+        }
+        match std::fs::write(path, &buf) {
+            Ok(()) => println!("dump: 0x{phys:08x}+0x{len:x} -> {}", path.display()),
+            Err(e) => println!(
+                "dump: 0x{phys:08x}+0x{len:x} -> {} FAILED: {e}",
+                path.display()
+            ),
+        }
+    }
     let console = machine.uart_console();
     if !console.is_empty() {
         println!("-- serial console (UART @ 0xBFFE0900) --");

@@ -277,3 +277,131 @@ Wi-Fi, remote control, channel database, and any register semantics not
 listed above. The main-firmware payload format (file 0x10000+) is treated
 as an opaque blob transformed by the firmware itself; its codec is **not
 yet identified** (Q4).
+
+## 11. Interrupt controller (Milestone G, emulator + DRAM-dump evidence)
+
+The decompressed main firmware was dumped from emulated DRAM (phys
+0x02000000, kseg0 alias 0x82000000) after a full boot and disassembled
+with capstone (`tools/` scripts from this milestone live in the session
+analysis tree; every claim below was cross-checked against the final
+sysreg register state of the same run). Banner print sites in the image:
+`1ST BOOT\r\nZero BSS` @0x33C, **`IntCtrl` @0x59C**,
+`LD eCos v1.16 1506f` @0x6CC, plus `Go eCos`/`Boot from SPI` @0x9D4 and
+`LD eCos fail` @0xC48 (alternate boot paths of this SDK loader that the
+observed boot does not take). All banners are printed via unrolled
+immediate stores to the UART — the strings exist only inside the
+instruction stream.
+
+### 11.1 What the "IntCtrl" step actually programs — VERIFIED by execution
+
+The code after the `Zero BSS` banner calls a computed function at DRAM
+0x82000E80 immediately before printing `IntCtrl`. With `$s6 = 0xBFFE8000`
+its stores are (all values **confirmed identical** in the post-boot sysreg
+dump):
+
+| sysreg address | value | note |
+|---|---|---|
+| 0xBFFE0480 | 0xFFFFFFFF | enable/config word A |
+| 0xBFFE0484 | 0xFFFFFFFF | enable/config word B |
+| 0xBFFE0488 | 0x00001F2F | config |
+| 0xBFFE048C | 0x00000007 | config |
+| 0xBFFE0490 | 0xFFFFFFFF | config word C |
+| 0xBFFE0494 | 0xFFFFFFFF | config word D |
+| 0xBFFE0498 | 0x0000017C | config |
+| 0xBFFE049C..0xBFFE04B0 | 0 | zeroed block |
+| 0xBFFE0014 | 0 (cleared bits 1:0) | see below |
+| 0xBFFE0040 | 0x14 (later 0x0C) | clock/gating block (rewritten elsewhere) |
+| 0xBFFE0B00 / 0xBFFE0B04 | 0x114 / 0x105 | written twice each |
+| 0xBFFE0B24 | 0x40 (bit 6 set by RMW) | see below |
+
+Two helper primitives surround the block init:
+
+- **0xBFFE0014, bits 1:0 — CPU interrupt-line control** (function at
+  0x8200117C): arg 1 → `reg |= 3`; arg 2 → `reg &= ~3`; read-back →
+  `reg & 3 ? 2 : 1`. IntCtrl init calls it with arg 2 (**disable**) before
+  configuring. Final value 0. Purpose: hypothesis **H8** (an
+  enable/disable/query API on a fixed register is the classic CPU-IRQ-line
+  switch; not proven).
+- **0xBFFE0B24 bit 6** — RMW'd (`|= 0x40`) in the entry code
+  (0x82000268..0x82000270) immediately *before* the COP0 Cause/Status
+  programming. Purpose: hypothesis **H10** (a global IRQ gate; not proven).
+
+### 11.2 COP0 interrupt state — VERIFIED (and the decisive finding)
+
+At 0x8200025C..0x82000288 the main firmware executes:
+
+```
+addiu $k0, $zero, 3
+mtc0  $k0, Config          ; Config.K0 = 3
+ehb
+lw    $k0, -0x74DC($s6)    ; 0xBFFE0B24
+ori   $k0, $k0, 0x40
+sw    $k0, -0x74DC($s6)    ; H10 gate
+mtc0  $zero, Cause         ; Cause = 0
+lui   $v0, 0x1100
+ori   $v0, $v0, 0xFF00
+mtc0  $v0, Status          ; Status = 0x1100FF00
+```
+
+`Status = 0x1100FF00` decodes as: **IM[7:0] = 0xFF (all eight interrupt
+masks unmasked)**, MX=1 (DSP ASE), CU0=1, **BEV=0** (vectors at EBase, not
+the boot ROM), **IE = 0 — global interrupt enable stays OFF**, ERL=0,
+EXL=0, kernel mode.
+
+Exhaustive scans of the whole 16 MiB decompressed image:
+
+- exactly **one** `mtc0 Status` and **one** `mtc0 Cause` (the pair above);
+  no further writes;
+- **zero** `di`/`ei`/`eret`/`wait` instructions (strict encoding scan,
+  bits 15:6 == 0);
+- one `mfc0 EBase (15,1)` used only for a `& 0xF` single-core check at
+  0x820000A8; **EBase is never written** (reset value 0x80000000 stands);
+- Count/Compare never programmed (no `mtc0 $11`).
+
+**Conclusion (Verified):** the observed boot *configures* interrupt state
+(masks unmasked, vectors selected, SoC-side enables programmed) but
+**never enables interrupts** (`Status.IE = 0` forever). Consistently, the
+BEV=0 vector area (kseg0 0x80000000..0x80000200) contains only zeroes and
+the DRAM-test fill marker 0x55555555 at 0x80000000 — **no VSR/handler is
+installed** in the traced horizon (30M steps, ending in the steady-state
+front-panel key poll). An interrupt firing with IE=1 would vector into
+zeroed RAM; the firmware evidently relies on enabling it later (paths not
+reached in this horizon).
+
+### 11.3 What is NOT known (and therefore NOT modeled)
+
+- pending/ack register semantics of the 0xBFFE0480..0x4B0 block (no reads
+  observed anywhere in the executed path; static scan cannot see dynamic
+  pointer accesses, but none of the traced code polls it);
+- per-source → vector mapping, priority order, steering to IP2..IP7;
+- the meaning of the config words 0x1F2F / 0x7 / 0x17C;
+- whether 0xBFFE0014 or 0xBFFE0B24 gates the IRQ line to the CPU, and on
+  which side of the aggregation.
+
+### 11.4 Emulator implementation (this milestone)
+
+- **CPU (architecture-specified, not speculative)**: interrupt delivery in
+  `Mips32::step` — an enabled (`IE=1`), unmasked (`Cause.IP & Status.IM`),
+  non-nested (`EXL=0, ERL=0`) interrupt vectors before the next fetch;
+  EPC/`Cause.BD` latch the interrupted context (delay-slot aware),
+  `Cause.ExcCode=0`, `Status.EXL=1`. Vector: BEV=1 → 0xBFC00200+offset;
+  BEV=0 → EBase (reset 0x80000000) + offset; `Cause.IV` selects 0x200 over
+  0x180. `eret` now implements both paths (ERL→ErrorEPC/ERL=0,
+  EXL→EPC/EXL=0) — the previous ErrorEPC-only behavior was a demonstrated
+  correctness defect. `mtc0 Cause` write mask: only IV/DC/IP[1:0]
+  writable; BD/ExcCode/IP[7:2] are hardware-owned. Hardware lines drive
+  `Cause.IP[7:2]` via the new `CpuBackend::set_ext_irq_lines`.
+- **Device (hypothesis H11)**: `IntController` at sysreg+0x480, 0x40 bytes
+  — plain storage for the eight verified words + a level-triggered
+  aggregate output (`sources & (en@+0x480 | en@+0x484)` → line, wired to
+  CPU IP2 by hypothesis). No latch/ack invented; sources are injected
+  through a shared handle (`Machine::raise_int_sources` /
+  `clear_int_sources`), which is the intended virtual-device injection
+  path. During a real boot no source is ever raised and `IE=0` blocks
+  delivery, so the acceptance boot is bit-identical (asserted by
+  `real_firmware_boot_is_unaffected_by_irq_wiring`).
+- **Tests**: 7 CPU KATs (delivery/eret/BD/BEV/EXL-nesting/Cause-mask/
+  level-retrigger), 4 COP0 KATs, 1 device KAT (replays the verified init
+  program and checks the level output), 2 machine integration tests
+  (injection through the public API; lockstep determinism) + the
+  real-firmware regression guard.

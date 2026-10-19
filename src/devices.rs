@@ -648,6 +648,134 @@ impl Device for DdrCtrl {
     }
 }
 
+/// Interrupt controller block in the 0xBFFE0000 system page
+/// (+0x480..+0x4C0), reverse-engineered from the main firmware's "IntCtrl"
+/// init function at DRAM 0x82000E80 (docs/firmware-analysis.md §11).
+///
+/// **Verified by execution** (the program ran under the emulator and its
+/// writes were confirmed against the final register state of a real boot):
+///
+/// | offset | init value | written by |
+/// |--------|-----------|------------|
+/// | +0x480 | 0xFFFFFFFF | `sw -1, -0x7B80($s6)` |
+/// | +0x484 | 0xFFFFFFFF | `sw -1, -0x7B7C($s6)` |
+/// | +0x488 | 0x00001F2F | `sw 0x1F2F, -0x7B78($s6)` |
+/// | +0x48C | 0x00000007 | `sw 7, -0x7B74($s6)` |
+/// | +0x490 | 0xFFFFFFFF | `sw -1, -0x7B70($s6)` |
+/// | +0x494 | 0xFFFFFFFF | `sw -1, -0x7B6C($s6)` |
+/// | +0x498 | 0x0000017C | `sw 0x17C, -0x7B68($s6)` |
+/// | +0x49C..+0x4B0 | 0 | zero stores |
+///
+/// **Not observed** (and therefore NOT modeled): pending/ack register
+/// semantics, per-source vector mapping, priority. The firmware's observed
+/// boot never enables CPU interrupts (COP0 Status.IE stays 0; see §11), so
+/// no dispatch code ever executed and no register in this block was ever
+/// read in the traced horizon.
+///
+/// Emulation model (hypothesis **H11**, deliberately minimal and
+/// level-triggered):
+///
+/// - All eight word registers are plain storage (matches the verified init
+///   program exactly; a wrong guess would have shown up as a boot
+///   divergence, which did not happen).
+/// - External interrupt sources are injected through a shared 32-bit latch
+///   ([`IntController::sources_handle`]). A source is "enabled" when its
+///   bit is set in `+0x480 | +0x484` (the all-ones init values are
+///   consistent with an unmask-all program).
+/// - The aggregate output line (shared [`Cell<u8>`]) asserts while any
+///   raised source is enabled. The machine wires it to CPU interrupt input
+///   IP2 (mapping hypothesis). Level-triggered: no latch, no ack semantics
+///   invented.
+///
+/// Related verified registers outside this block (modeled as plain param
+/// RAM, no behavioral effect): 0xBFFE0014 bits 1:0 = CPU-line
+/// enable/disable/query primitive (`|=3` / `&=~3` / read — function at
+/// 0x8200117C, called with "disable" during IntCtrl init); 0xBFFE0B24 bit 6
+/// set immediately before the COP0 Cause/Status programming.
+#[derive(Debug)]
+pub struct IntController {
+    name: String,
+    regs: std::collections::BTreeMap<u32, u32>,
+    sources: std::rc::Rc<std::cell::Cell<u32>>,
+    out: std::rc::Rc<std::cell::Cell<u8>>,
+    log: AccessLog,
+    log_capacity: usize,
+}
+
+impl IntController {
+    /// Create the interrupt controller. `sources` is the shared external
+    /// source latch; `out` is the aggregate output line wired to the CPU.
+    pub fn new(
+        name: &str,
+        sources: std::rc::Rc<std::cell::Cell<u32>>,
+        out: std::rc::Rc<std::cell::Cell<u8>>,
+        log: AccessLog,
+    ) -> Self {
+        Self {
+            name: name.to_string(),
+            regs: std::collections::BTreeMap::new(),
+            sources,
+            out,
+            log,
+            log_capacity: 16_384,
+        }
+    }
+
+    /// Shared handle to raise/clear external interrupt sources
+    /// (bit i = source i; source i enabled when set in +0x480 | +0x484).
+    pub fn sources_handle(&self) -> std::rc::Rc<std::cell::Cell<u32>> {
+        std::rc::Rc::clone(&self.sources)
+    }
+
+    /// Shared handle to the aggregate output line (0/1; wired to IP2).
+    pub fn out_handle(&self) -> std::rc::Rc<std::cell::Cell<u8>> {
+        std::rc::Rc::clone(&self.out)
+    }
+
+    /// Recompute the output line from sources and enable registers.
+    /// Level-triggered: `out = (sources & (en_a | en_b)) != 0`.
+    fn update_output(&self) {
+        let en =
+            self.regs.get(&0x00).copied().unwrap_or(0) | self.regs.get(&0x04).copied().unwrap_or(0);
+        let active = self.sources.get() & en != 0;
+        self.out.set(u8::from(active));
+    }
+}
+
+impl Device for IntController {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn read(&mut self, offset: u32, size: crate::memory::AccessSize) -> u32 {
+        let v = self.regs.get(&offset).copied().unwrap_or(0);
+        self.record(offset, size, v, false);
+        v
+    }
+
+    fn write(&mut self, offset: u32, size: crate::memory::AccessSize, value: u32) {
+        self.record(offset, size, value, true);
+        self.regs.insert(offset, value);
+        self.update_output();
+    }
+
+    /// Re-evaluate the output line once per CPU step so externally raised
+    /// sources take effect deterministically.
+    fn tick(&mut self) {
+        self.update_output();
+    }
+}
+
+impl IntController {
+    fn record(&self, offset: u32, size: crate::memory::AccessSize, value: u32, write: bool) {
+        let mut log = self.log.borrow_mut();
+        if log.len() >= self.log_capacity {
+            log.remove(0);
+        }
+        log.push((offset, size, value, write));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -737,6 +865,59 @@ mod tests {
         // CS config is captured.
         spi.write(0x24, AccessSize::Word, 0xBFFE_0006);
         assert_eq!(spi.read(0x24, AccessSize::Word), 0xBFFE_0006);
+        assert!(!log.borrow().is_empty());
+    }
+
+    #[test]
+    fn int_controller_replays_firmware_init_and_level_output() {
+        // The verified IntCtrl init program (docs/firmware-analysis.md
+        // §11): all-ones enable words + config values. After it, the
+        // level output must follow raised sources.
+        let sources = std::rc::Rc::new(std::cell::Cell::new(0u32));
+        let out = std::rc::Rc::new(std::cell::Cell::new(0u8));
+        let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let mut intc = IntController::new(
+            "intc",
+            std::rc::Rc::clone(&sources),
+            std::rc::Rc::clone(&out),
+            std::rc::Rc::clone(&log),
+        );
+        // Replay the init writes (region-relative offsets: 0x480 -> 0x00).
+        intc.write(0x00, AccessSize::Word, 0xFFFF_FFFF);
+        intc.write(0x04, AccessSize::Word, 0xFFFF_FFFF);
+        intc.write(0x08, AccessSize::Word, 0x1F2F);
+        intc.write(0x0C, AccessSize::Word, 0x7);
+        intc.write(0x10, AccessSize::Word, 0xFFFF_FFFF);
+        intc.write(0x14, AccessSize::Word, 0xFFFF_FFFF);
+        intc.write(0x18, AccessSize::Word, 0x17C);
+        for off in (0x1C..0x30).step_by(4) {
+            intc.write(off, AccessSize::Word, 0);
+        }
+        // Final state must match the observed sysreg dump exactly.
+        assert_eq!(intc.read(0x00, AccessSize::Word), 0xFFFF_FFFF);
+        assert_eq!(intc.read(0x08, AccessSize::Word), 0x1F2F);
+        assert_eq!(intc.read(0x0C, AccessSize::Word), 0x7);
+        assert_eq!(intc.read(0x18, AccessSize::Word), 0x17C);
+        assert_eq!(intc.read(0x1C, AccessSize::Word), 0);
+
+        // No sources raised: output low.
+        assert_eq!(out.get(), 0);
+        // Raise source 0 (enabled by the all-ones mask): tick recomputes.
+        sources.set(1);
+        intc.tick();
+        assert_eq!(out.get(), 1, "raised + enabled source asserts the line");
+        // Mask it off (both enable words must clear — the model treats
+        // +0x480 | +0x484 as one enable space): line drops.
+        intc.write(0x00, AccessSize::Word, 0);
+        intc.write(0x04, AccessSize::Word, 0);
+        assert_eq!(out.get(), 0, "masked source deasserts the line");
+        intc.write(0x00, AccessSize::Word, 0xFFFF_FFFF);
+        assert_eq!(out.get(), 1, "unmasking re-asserts (level semantics)");
+        // Clear the source: line drops without any ack write.
+        sources.set(0);
+        intc.tick();
+        assert_eq!(out.get(), 0);
+        // Every access was recorded.
         assert!(!log.borrow().is_empty());
     }
 }
