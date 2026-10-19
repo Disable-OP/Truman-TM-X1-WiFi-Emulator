@@ -248,3 +248,66 @@ fn real_firmware_boot_is_unaffected_by_irq_wiring() {
     // The intc line must never have asserted during the real boot.
     assert_eq!(m.intc_output(), 0, "no interrupt may fire during real boot");
 }
+
+/// Virtual front-panel button press, end to end on the REAL firmware:
+/// boot to the idle key-scan poll, set key-line bit 2 through the machine
+/// API, and verify the firmware's own dispatcher writes keycode 0x400
+/// into the key data port (docs/firmware-analysis.md §10.3/§12).
+#[test]
+fn real_firmware_reacts_to_injected_key_press() {
+    let Some(path) = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("firmware")
+        .read_dir()
+        .ok()
+        .and_then(|d| {
+            d.filter_map(|e| e.ok())
+                .map(|e| e.path())
+                .find(|p| p.extension().map(|x| x == "bin").unwrap_or(false))
+        })
+    else {
+        eprintln!("skipping: real firmware not present in firmware/");
+        return;
+    };
+    let image = firmware::load(&path).expect("load real firmware");
+    let mut m = Machine::new(MachineConfig::default(), &image);
+    m.reset();
+
+    // Boot to the steady state (the idle key-scan poll at 0xA200258C).
+    let r = m.run(30_000_000);
+    assert!(matches!(r.stop, StopReason::StepLimit));
+    assert!(m.uart_console().contains("LD eCos v1.16 1506f"));
+
+    // No key pressed: no key events so far.
+    assert!(m.take_key_events().is_empty(), "no events before a press");
+
+    // Inject the bit-2 key line and give the scan loop a small budget
+    // (the dispatcher is a tight poll; a few thousand instructions are
+    // plenty at ~5M instr/s).
+    m.press_key(0b0100);
+    let _ = m.run(20_000);
+
+    // The firmware's own scan loop must have written keycode 0x400 into
+    // the key data port — this is the firmware reacting to the virtual
+    // button, not a fake response.
+    let events = m.take_key_events();
+    assert!(
+        events.contains(&0x400),
+        "keycode 0x400 must be produced by the firmware's key dispatcher; \
+         events: {events:?}"
+    );
+    eprintln!("key events after injecting bit 2: {events:?}");
+
+    // Release the key: the level drops and no NEW keycode arrives while
+    // the line is low (drain first, then check emptiness).
+    m.release_key(0b0100);
+    let _ = m.run(20_000);
+    let after = m.take_key_events();
+    eprintln!("events observed after release (in-flight): {after:?}");
+    // The dispatcher may emit at most in-flight repeats that raced with
+    // the release; a fresh poll window must stay silent.
+    let _ = m.run(20_000);
+    assert!(
+        m.take_key_events().is_empty(),
+        "released key must stop producing events"
+    );
+}

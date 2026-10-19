@@ -68,7 +68,7 @@ Requires a stable Rust toolchain (https://rustup.rs). No other dependencies.
 
 ```sh
 cargo build --release
-cargo test --release          # 57 tests incl. the full boot-chain acceptance
+cargo test --release          # 59 tests: boot chain, interrupt delivery, key injection
 
 # Identify a firmware image
 ./target/release/truman-emulator inspect firmware/*.bin

@@ -57,9 +57,12 @@ Track by evidence-first value, in rough order:
    slots) and covered by 14 dedicated tests. **Open**: pending/ack
    semantics, per-source vectors, priorities — the firmware never enables
    `Status.IE` in the observed boot (docs/firmware-analysis.md §11).
-2. **Front-panel/key register (0xBFFE384C)**: decode bits 0/2/4/5/6 from the
-   key-scan code so synthetic key presses can be injected for testing
-   (dispatch loop located at 0xA2002548..0xA2002630; see §10.3).
+2. ✅ **Front-panel/key register (0xBFFE384C) — decode + injection path** —
+   the key-scan dispatcher is decoded (read = key lines, write = keycode
+   0x100/0x400/0x1000/0x2000; docs/firmware-analysis.md §12) and virtual
+   button presses are proven end-to-end on the real firmware
+   (`devices::KeyPort`, `Machine::press_key`). **Open**: button labels
+   (keycode→UI mapping) and a front-end that surfaces presses.
 3. **Payload codec identification** (file 0x10000+): trace the stage-2
    decompressor to name the container/codec (Q4 in the analysis doc).
 4. **0x98010000 / 0xB0000000 / 0xF0000000 windows**: name blocks by access

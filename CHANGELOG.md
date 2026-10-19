@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.4.0 — Milestone G: front-panel key port decode + virtual button injection
+
+### Added
+- `devices::KeyPort` at sysreg+0x384C: the front-panel key data port,
+  decoded from the main firmware's key-scan dispatcher — read = raw
+  key-line bits (lines 0/2/4/5/6 tested), write = keycode acknowledgment
+  (bit 0→0x100, 2→0x400, 4→0x1000, 5→0x2000) captured into a shared event
+  queue. Level semantics; no invented ack/latch.
+- Virtual button injection API: `Machine::press_key` / `release_key` /
+  `take_key_events`.
+- End-to-end proof on the real firmware: boot to the idle poll, inject
+  key-line bit 2 → the firmware's own dispatcher emits keycode 0x400;
+  releasing the line stops the events
+  (`real_firmware_reacts_to_injected_key_press`).
+- `docs/firmware-analysis.md` §12: key-port register decode, the
+  0xBFFE3874..0x387C latch/strobe pair, bit-6 long path, unknowns.
+
 ## 0.3.0 — Milestone G (first pass): interrupt controller + CPU interrupt delivery
 
 ### Added

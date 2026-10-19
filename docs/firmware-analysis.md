@@ -255,7 +255,8 @@ map") provides the runtime evidence.
 - Steady state (current milestone): the eCos application polls the
   key/status register 0xBFFE384C (bits 0/2/4/5/6) with gp-relative state at
   0x82003B1C — an idle wait for front-panel input. Modeled register reads 0,
-  matching a receiver with no key pressed.
+  matching a receiver with no key pressed. See §12 for the full decode and
+  the injection path.
 
 ### 10.4 Instruction-set additions discovered in the main firmware
 
@@ -405,3 +406,58 @@ reached in this horizon).
   program and checks the level output), 2 machine integration tests
   (injection through the public API; lockstep determinism) + the
   real-firmware regression guard.
+
+## 12. Front-panel key port 0xBFFE384C (Milestone G, decoder + injection)
+
+The steady-state poll loop of the decompressed main firmware (DRAM
+0x82002548..0x82002630, `$s6 = 0xBFFE8000`) gives the complete register
+decode — **Verified** by disassembly and by executing a virtual key press
+under the emulator:
+
+| register | direction | semantics |
+|---|---|---|
+| **0xBFFE384C** (word) | read | raw key-line bits; the dispatcher masks 15:0 and tests **bits 0, 2, 4, 5, 6** (`andi $a0,$v0,1`, `ext $a0,$v0,2/4/5/6,1`). 0 = no key (steady state). |
+| **0xBFFE384C** (word) | write | the dispatcher **writes the detected key's keycode into the same port**: bit 0 → `0x100`, bit 2 → `0x400`, bit 4 → `0x1000`, bit 5 → `0x2000` (`$t1/$t4/$t5/$t6`, set up at 0x82002540..0x82002550). Keycodes occupy bits 8..13, disjoint from the raw key lines. |
+| 0xBFFE387C | r/w | latch sampled by the bit-4 handler (`lw` before/after a 0→1 write to 0xBFFE3878); two samples combined `sample<<16 | sample` into gp state. |
+| 0xBFFE3878 | write | 0 → 1 strobe around the 0xBFFE387C sample (trigger). |
+| 0xBFFE3824 / 0xBFFE3820 | read | read by the bit-6 path and the loop-exit path (values from the boot-time block at 0xBFFE3800+). |
+| 0xBFFE3874 | — | loaded into `$t7`, not observed read in the dispatcher. |
+
+Bit 6 takes a separate long path (`beql` → 0x82002ECC → `lw -0x47DC($a2)`
+= 0xBFFE3824 → j 0x82002308) — likely the standby/power key with dedicated
+handling. Button *names* for bits 0/2/4/5 are not decoded here (the
+keycode consumer lives outside the dispatcher; mapping keycodes to UI
+actions is future work).
+
+### 12.1 Emulation model and virtual button injection
+
+`devices::KeyPort` (4 bytes carved at sysreg+0x384C):
+
+- **Read** = current pressed-key level from a shared handle — level
+  semantics, i.e. a virtual button press sets bits and a release clears
+  them. While a line is held the dispatcher re-detects it every pass and
+  emits the keycode again (observed in the emulator as a stream of 0x400s
+  — the auto-repeat a physically held key would produce). Consumers
+  wanting single-press semantics should release after the first event.
+- **Write** = captured verbatim into a shared key-event queue
+  (`Machine::take_key_events`). Writes do not alter the pressed level
+  (documented falsifiable choice: latch/ack-on-write would read back 0;
+  the level model matches all observed traffic).
+- **Injection API**: `Machine::press_key(bits)` / `release_key(bits)` /
+  `take_key_events()` — the intended front-end for a virtual front panel.
+
+End-to-end proof (`tests/interrupt.rs::
+real_firmware_reacts_to_injected_key_press`): boot the real firmware to
+the idle poll, `press_key(0b0100)`, run 20k instructions → the firmware's
+own dispatcher writes keycode `0x400` into the port (event queue gains
+`[0x400, …]`); after `release_key` the queue stays empty. The response is
+produced entirely by the firmware's scan code — the emulator injects only
+the electrical level, never a fake event.
+
+### 12.2 Unknowns
+
+- Physical button labels per bit (needs the keycode consumer).
+- Whether a real keypad ACK/latch exists behind the write (level model
+  chosen; would show up as duplicate events if wrong).
+- Semantics of the 0xBFFE3800..0x387C cluster beyond the sampled
+  registers (boot-programmed values recorded in the sysreg dump).

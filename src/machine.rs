@@ -24,7 +24,7 @@
 
 use crate::cpu::{CpuBackend, CpuError, StepReport};
 use crate::devices::{
-    DdrCtrl, DdrPhy, IntController, LoggingDevice, MirroredRam, ParamRam, SpiController,
+    DdrCtrl, DdrPhy, IntController, KeyPort, LoggingDevice, MirroredRam, ParamRam, SpiController,
     TimerCounter, Uart,
 };
 use crate::firmware::Image;
@@ -60,6 +60,10 @@ pub struct MachineConfig {
     /// 0x40 bytes — verified init program; hypothesis H11 for behavior).
     pub intc_offset: u32,
     pub intc_size: u32,
+    /// Front-panel key data port inside the sysreg page (offset +0x384C,
+    /// 4 bytes — verified read/write semantics from the key-scan loop).
+    pub keyport_offset: u32,
+    pub keyport_size: u32,
     /// Unknown kseg0 window at 0x98000000 (phys 0x18000000).
     /// Evidence (Milestone B): stage-1 `jal`s into 0xB8000998 after init —
     /// a fast execution mirror of the SPI flash. Modeled as copy-on-write
@@ -96,6 +100,8 @@ impl Default for MachineConfig {
             sysreg_fill: 0x00,
             intc_offset: 0x480,
             intc_size: 0x40,
+            keyport_offset: 0x384C,
+            keyport_size: 0x4,
             win_180_base: 0x1800_0000,
             win_180_size: 0x0040_0000, // 4 MiB linear mirror of the flash
             win_180_mirror_flash: true,
@@ -148,6 +154,11 @@ pub struct Machine {
     pub intc_sources: std::rc::Rc<std::cell::Cell<u32>>,
     /// Aggregate interrupt-controller output line (0/1, wired to CPU IP2).
     pub intc_line: std::rc::Rc<std::cell::Cell<u8>>,
+    /// Front-panel key-line level (bit 0/2/4/5/6 = keys; see [`KeyPort`]).
+    pub key_pressed: std::rc::Rc<std::cell::Cell<u32>>,
+    /// Key event queue: the keycodes the firmware's scan loop writes to
+    /// the key port (bit 0→0x100, 2→0x400, 4→0x1000, 5→0x2000).
+    pub key_events: std::rc::Rc<std::cell::RefCell<Vec<u32>>>,
     /// Access logs of instrumented windows (name, handle).
     logs: Vec<(String, AccessLog)>,
 }
@@ -265,13 +276,42 @@ impl Machine {
             0x1A0,
             Box::new(ddrctrl),
         );
-        let param_hi2 = ParamRam::new("sysreg-params-hi2", 0x3E00 - 0x16A0, cfg.sysreg_fill);
+        // Front-panel key data port at +0x384C (verified read/write
+        // semantics; see devices::KeyPort). Carved out of the upper param
+        // RAM, which is split around it.
+        let key_pressed = std::rc::Rc::new(std::cell::Cell::new(0u32));
+        let key_events = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let key_log = LoggingDevice::new("keyport-log", 0).log_handle();
+        let keyport = KeyPort::new(
+            "keyport",
+            std::rc::Rc::clone(&key_pressed),
+            std::rc::Rc::clone(&key_events),
+            std::rc::Rc::clone(&key_log),
+        );
+        logs.push(("keyport".to_string(), key_log));
+        bus.add_device(
+            "keyport",
+            cfg.sysreg_base + cfg.keyport_offset,
+            cfg.keyport_size,
+            Box::new(keyport),
+        );
+        let hi2_low_len = cfg.keyport_offset - 0x16A0;
+        let param_hi2 = ParamRam::new("sysreg-params-hi2", hi2_low_len, cfg.sysreg_fill);
         logs.push(("sysreg-params-hi2".to_string(), param_hi2.log_handle()));
         bus.add_device(
             "sysreg-params-hi2",
             cfg.sysreg_base + 0x16A0,
-            0x3E00 - 0x16A0,
+            hi2_low_len,
             Box::new(param_hi2),
+        );
+        let hi2_high_len = 0x3E00 - cfg.keyport_offset - cfg.keyport_size;
+        let param_hi2b = ParamRam::new("sysreg-params-hi2b", hi2_high_len, cfg.sysreg_fill);
+        logs.push(("sysreg-params-hi2b".to_string(), param_hi2b.log_handle()));
+        bus.add_device(
+            "sysreg-params-hi2b",
+            cfg.sysreg_base + cfg.keyport_offset + cfg.keyport_size,
+            hi2_high_len,
+            Box::new(param_hi2b),
         );
 
         // SPI control register block at +0x3E00..+0x3E40 (verified via the
@@ -322,6 +362,8 @@ impl Machine {
             uart_output,
             intc_sources,
             intc_line,
+            key_pressed,
+            key_events,
             logs,
         }
     }
@@ -441,6 +483,27 @@ impl Machine {
     /// Current aggregate interrupt-controller output line (0/1).
     pub fn intc_output(&self) -> u8 {
         self.intc_line.get()
+    }
+
+    /// Press front-panel keys: set the raw key-line bits (bit 0/2/4/5/6
+    /// are the lines the firmware's scan dispatcher tests). Takes effect
+    /// on the next poll; the firmware then writes the matching keycode to
+    /// the port, which lands in [`Machine::key_events`].
+    pub fn press_key(&self, bits: u32) {
+        let cur = self.key_pressed.get();
+        self.key_pressed.set(cur | bits);
+    }
+
+    /// Release front-panel keys (clear the raw key-line bits).
+    pub fn release_key(&self, bits: u32) {
+        let cur = self.key_pressed.get();
+        self.key_pressed.set(cur & !bits);
+    }
+
+    /// Drain the key event queue (keycodes written by the firmware's
+    /// scan loop into the key data port). Order-preserving.
+    pub fn take_key_events(&self) -> Vec<u32> {
+        std::mem::take(&mut *self.key_events.borrow_mut())
     }
 
     /// Declared region map for diagnostics output.

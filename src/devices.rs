@@ -776,6 +776,117 @@ impl IntController {
     }
 }
 
+/// Front-panel key data port (0xBFFE384C, 4 bytes), reverse-engineered from
+/// the main firmware's key-scan dispatcher (docs/firmware-analysis.md
+/// §10.3, dispatch loop at DRAM 0x82002548..0x82002630).
+///
+/// **Verified by execution + disassembly** ($s6 = 0xBFFE8000, so
+/// `$s6 - 0x47B4` = 0xBFFE384C is loaded into `$a1` at 0x82002504):
+///
+/// - READ (`lw $v0, ($a1)`, masked to bits 15:0): raw key-line bits.
+///   The dispatcher tests bits **0, 2, 4, 5, 6** (`andi/ext` sequences).
+///   Steady state (no key) reads 0 — matches the post-boot register dump.
+/// - WRITE (`sw $tX, ($a1)`): the firmware writes the detected key's
+///   **keycode** into the same port — bit 0 → 0x100, bit 2 → 0x400,
+///   bit 4 → 0x1000, bit 5 → 0x2000 (keycodes set up at 0x82002540..0x50,
+///   one bit each in the 8..13 range, disjoint from the raw key bits).
+///   Bit 6 takes a separate long path (via 0xBFFE3824 → 0x82002308).
+///
+/// Emulation model (evidence-complete for the observed accesses):
+/// - Reads return the currently **pressed** key-line level from a shared
+///   handle — level semantics: a "button press" is injected by setting
+///   bits and cleared by releasing them (see
+///   [`Machine::press_key`](crate::machine::Machine::press_key)).
+/// - Writes are captured verbatim into a shared **key event queue**
+///   (the firmware's keycode output). Writes do not modify the pressed
+///   level (falsifiable choice: a latch/ack-on-write would read back 0
+///   after a write; the level model is the simpler of the two and matches
+///   all observed traffic — the scan loop re-reads the same bits).
+#[derive(Debug)]
+pub struct KeyPort {
+    name: String,
+    pressed: std::rc::Rc<std::cell::Cell<u32>>,
+    events: std::rc::Rc<std::cell::RefCell<Vec<u32>>>,
+    log: AccessLog,
+    log_capacity: usize,
+}
+
+impl KeyPort {
+    /// Create the key port. `pressed` = raw key-line level (bit 0/2/4/5/6
+    /// observed); `events` receives every keycode the firmware writes.
+    pub fn new(
+        name: &str,
+        pressed: std::rc::Rc<std::cell::Cell<u32>>,
+        events: std::rc::Rc<std::cell::RefCell<Vec<u32>>>,
+        log: AccessLog,
+    ) -> Self {
+        Self {
+            name: name.to_string(),
+            pressed,
+            events,
+            log,
+            log_capacity: 4096,
+        }
+    }
+
+    /// Shared handle to the pressed-key level (bit 0/2/4/5/6 meaningful).
+    pub fn pressed_handle(&self) -> std::rc::Rc<std::cell::Cell<u32>> {
+        std::rc::Rc::clone(&self.pressed)
+    }
+
+    /// Shared handle to the key event queue (firmware-written keycodes).
+    pub fn events_handle(&self) -> std::rc::Rc<std::cell::RefCell<Vec<u32>>> {
+        std::rc::Rc::clone(&self.events)
+    }
+}
+
+impl Device for KeyPort {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn read(&mut self, offset: u32, size: crate::memory::AccessSize) -> u32 {
+        // All observed accesses are word-wide; byte/half views return the
+        // corresponding little-endian slice of the same level.
+        let w = self.pressed.get();
+        let off = offset & 3;
+        let v = match size {
+            crate::memory::AccessSize::Byte => (w >> (8 * off)) & 0xFF,
+            crate::memory::AccessSize::Half => {
+                if off == 0 {
+                    w & 0xFFFF
+                } else if off == 2 {
+                    w >> 16
+                } else {
+                    0
+                }
+            }
+            crate::memory::AccessSize::Word => w,
+        };
+        self.record(offset, size, v, false);
+        v
+    }
+
+    fn write(&mut self, offset: u32, size: crate::memory::AccessSize, value: u32) {
+        self.record(offset, size, value, true);
+        // Observed writes are the firmware's keycode acknowledgment
+        // (word-wide). Capture them as key events.
+        if offset == 0 && size == crate::memory::AccessSize::Word {
+            self.events.borrow_mut().push(value);
+        }
+    }
+}
+
+impl KeyPort {
+    fn record(&self, offset: u32, size: crate::memory::AccessSize, value: u32, write: bool) {
+        let mut log = self.log.borrow_mut();
+        if log.len() >= self.log_capacity {
+            log.remove(0);
+        }
+        log.push((offset, size, value, write));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -918,6 +1029,40 @@ mod tests {
         intc.tick();
         assert_eq!(out.get(), 0);
         // Every access was recorded.
+        assert!(!log.borrow().is_empty());
+    }
+
+    #[test]
+    fn key_port_level_read_and_event_writes() {
+        let pressed = std::rc::Rc::new(std::cell::Cell::new(0u32));
+        let events = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let mut kp = KeyPort::new(
+            "keyport",
+            std::rc::Rc::clone(&pressed),
+            std::rc::Rc::clone(&events),
+            std::rc::Rc::clone(&log),
+        );
+        // No key: reads 0 (steady state of the real boot).
+        assert_eq!(kp.read(0, AccessSize::Word), 0);
+        // Press the bit-2 key line: the dispatcher's `ext v0, v0, 2, 1`
+        // sees 1. The firmware answers by writing keycode 0x400.
+        pressed.set(0b0100);
+        assert_eq!(kp.read(0, AccessSize::Word), 0b0100);
+        kp.write(0, AccessSize::Word, 0x400);
+        // Level semantics: the keycode write does not change the pressed
+        // level (the scan loop re-reads the same bits while held).
+        assert_eq!(kp.read(0, AccessSize::Word), 0b0100);
+        // Release: reads 0 again.
+        pressed.set(0);
+        assert_eq!(kp.read(0, AccessSize::Word), 0);
+        // The keycode was captured as an event.
+        assert_eq!(*events.borrow(), vec![0x400]);
+        // Byte/half views of the level (LE slices).
+        pressed.set(0x0402);
+        assert_eq!(kp.read(0, AccessSize::Byte), 0x02);
+        assert_eq!(kp.read(1, AccessSize::Byte), 0x04);
+        assert_eq!(kp.read(0, AccessSize::Half), 0x0402);
         assert!(!log.borrow().is_empty());
     }
 }
