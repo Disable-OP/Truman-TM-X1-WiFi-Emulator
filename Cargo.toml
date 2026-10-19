@@ -1,0 +1,25 @@
+[package]
+name = "truman-emulator"
+version = "0.2.0"
+edition = "2021"
+description = "Rust-based emulator for the Truman TM X1 WiFi satellite receiver (Sunplus SPHE15xx platform)"
+license = "MIT"
+repository = "https://github.com/Disable-OP/Truman-TM-X1-WiFi-Emulator"
+keywords = ["emulator", "mips", "firmware", "satellite", "sunplus"]
+categories = ["emulators"]
+
+[lib]
+name = "truman_emulator"
+path = "src/lib.rs"
+
+[[bin]]
+name = "truman-emulator"
+path = "src/bin/truman-emulator.rs"
+
+# Intentionally zero external dependencies at this stage:
+# keeps the build pure-Rust, portable and license-clean.
+[dependencies]
+
+[profile.release]
+debug = true        # keep symbols for backtraces during bring-up
+opt-level = 2

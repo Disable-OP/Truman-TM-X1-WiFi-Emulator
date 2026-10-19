@@ -205,3 +205,75 @@ Histogram of `lui`+`ori` pairs and bare `lui` halves in the first 64 KiB
 - The image stores default IDs/keys at 0x3F0000+ (MAC-like string, hex key
   block). Published here only because they are factory defaults inside the
   already-public firmware blob.
+
+## 10. Runtime findings (Milestones B–E, emulator-driven)
+
+The following register models were derived by *executing* the real firmware in
+the emulator and analyzing where it polls (static cross-checks via
+capstone in `tools/`). All commands are reproducible; the emulator's
+per-window access log (see `run --max-steps …`, "instrumented window access
+map") provides the runtime evidence.
+
+### 10.1 System page 0xBFFE0000 (phys 0x1FFE0000) — block map
+
+| Offset | Block | Evidence | Confidence |
+|---|---|---|---|
+| +0x000..0x600 | param RAM (loader RMWs: 0x210/0x284/0x298/0x2AC/0x038C…) | access log | **Verified** writable RAM-like |
+| +0x600..0x620 | **Timer block**: +0x600 = free-running counter (software resettable); +0x60C = 0x8095, +0x61C = 0 written at init | `delay(N)` at mirror 0xB8008880: writes 0 to +0x600, polls until count == 90×N | Counter semantics **Verified**; real tick rate **Unknown** (modeled 1/instruction) |
+| +0x620..0x900 | param RAM | access log | Verified |
+| +0x900..0x920 | **UART0**: +0x900 = TX data (write = emit byte), +0x904 = status (bit 0 = TX ready — stage-1/2 putchar; **bit 6 = TX idle** — main firmware polls 0x40) | putchar loops at mirror 0xB8000958 (stage-1), 0xA200044C (main fw) | **Verified** TX path; bit-6 semantics = hypothesis H7 |
+| +0x920..0x1500 | param RAM | access log | Verified |
+| +0x1500..0x16A0 | **DDR controller/PHY cluster** (see 10.2) | DDR-V6.2 training flow | Protocol **Verified** by polls; completion modeled instantly (H6) |
+| +0x1580..0x15E0 | DDR PHY training engine: +0x1584 = command (0x0F02/0x0F06), +0x1588 = status (bit 0 = done, bits 9..11 = result), +0x15A4 = result word | training loop at mirror 0xB800C24C | Protocol **Verified** |
+| +0x3E00..0x3E40 | **SPI controller**: +0x3E0C = TX word, +0x3E04 = start (0x20 → done bit 0x400; 0x40 → done bit 0x800), +0x3E08 = status, +0x3E14 = RX byte, +0x3E24 = CS config | SCS flow at mirror 0xB800CD60/0xB800CCD8/0xB800CE2C | Protocol **Verified**; RX = TX[15:8] echo = **hypothesis H3** |
+| +0x3E40..0x10000 | param RAM (incl. 0xBFFE3E08 polled w/ timeout, key/status 0xBFFE384C) | access log | Writable RAM-like **Verified**; 0x384C decode **Unknown** |
+
+### 10.2 DDR init flow (stage-2, "DDR-V6.2.01.09-v")
+
+1. Config RMWs across 0xBFFE0040/0x0048/0x1500..0x1520 (clock/reset gating).
+2. PHY training command sequence (0x1584 ← 0x0F02/0x0F06; poll 0x1588.0) —
+   prints WL/REYE/WEYE/RSL/PHA/PSD metric groups.
+3. Controller command issue: +0x1628 strobes (bits 0x20/0x01/0x02/0x100/0x200),
+   argument register +0x166C, command register +0x1660; polls 0x1628 bits
+   17 (cmd ack) and 18 (DRAM init done); also polls 0x1504 bit 2 (with a
+   10M-iteration timeout — the ONLY observed bounded wait) and 0x1600 bit 0.
+4. "Trim PASS" / "DRAM-1G" (the SoC's own DRAM size report — 1 Gbit = 128 MiB;
+   the emulator's 64 MiB DRAM model is still sufficient because the payload
+   loads at phys 0x02000000).
+
+### 10.3 Payload copy and main-firmware entry
+
+- Descriptor table (mirror window, file offsets): [0x1214] = **0xA2000000**
+  load address, [0x1218] = 0x00010000 source offset, [0x1220] = 0x00003ADC size.
+- "copy fw to RAM" + "Go!": the loader decompresses/decrypts the payload and
+  copies it to kseg1 0xA2000000 (phys 0x02000000) — **this transformation is
+  performed by the firmware's own code running under our interpreter**; no
+  dedicated crypto hardware had to be modeled for it to work.
+- "1ST BOOT" banner: printed via **unrolled immediate stores** (PCs
+  0xA2000340..0xA2000448) — the banner bytes never exist in memory, which is
+  why file/DRAM scans cannot find them.
+- Steady state (current milestone): the eCos application polls the
+  key/status register 0xBFFE384C (bits 0/2/4/5/6) with gp-relative state at
+  0x82003B1C — an idle wait for front-panel input. Modeled register reads 0,
+  matching a receiver with no key pressed.
+
+### 10.4 Instruction-set additions discovered in the main firmware
+
+| Instruction | Encoding | Where |
+|---|---|---|
+| `lwx` (DSP ASE indexed word load) | SPECIAL3 funct 0x0A, sa 0x00 | eCos memset/copy routines |
+| `lhx` (DSP ASE indexed halfword load) | SPECIAL3 funct 0x0A, sa 0x04 | same |
+
+### 10.5 Honest status of the emulated boot (as of this milestone)
+
+**Actually demonstrated** (deterministic, covered by tests):
+reset → zeroBoot (stage 1) → "jump to second boot!!" → "Boot form SPI v1.13"
+DDR training to "Trim PASS" / "DRAM-1G" → payload decompress/copy →
+"Go!" → main firmware "1ST BOOT" → "Zero BSS" → "IntCtrl" →
+"LD eCos v1.16 1506f" → idle status poll (~1.3M instructions, ~0.4 s).
+
+**Not demonstrated / unknown**: video/audio pipeline, tuner/demod lock,
+Wi-Fi, remote control, channel database, and any register semantics not
+listed above. The main-firmware payload format (file 0x10000+) is treated
+as an opaque blob transformed by the firmware itself; its codec is **not
+yet identified** (Q4).
