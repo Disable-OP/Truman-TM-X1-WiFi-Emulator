@@ -43,11 +43,16 @@ LD eCos v1.16 1506f
 ```
 
 The full chain — boot ROM stage 1 → SPI bootloader → DDR training → payload
-decompress/copy → eCos RTOS start — runs **deterministically under the
-emulator's own MIPS32r2 interpreter** (~1.3 M instructions, covered by an
-automated acceptance test). Execution currently idles in the application's
-front-panel status poll, which is the correct behavior for a receiver with
-no key pressed.
+decompress/copy → the "1ST BOOT" loader — runs **deterministically under the
+emulator's own MIPS32r2 interpreter** (~1.30 M instructions, covered by an
+automated acceptance test). The loader then talks to the hardware
+decompression engine at 0xBFFE3800 (uploads the Huffman tables it parsed
+from the compressed "SP" container, starts it, and waits for bit 6 of
+0xBFFE384C — the same loop scans the front-panel keys). With the engine
+handshake modeled (`src/inflate.rs`, a dependency-free RFC 1951 decoder) the
+wait loop exits and the loader reaches its result check; the next blocker is
+the engine's per-symbol continuation protocol
+(`docs/firmware-analysis.md` §13).
 
 Interrupt support (Milestone G, first pass): the CPU implements
 architecture-complete MIPS32r2 interrupt delivery (Status/Cause/EPC/EXL,

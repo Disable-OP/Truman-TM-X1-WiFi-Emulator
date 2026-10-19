@@ -10,6 +10,7 @@
 //! these tests drive the mechanisms deliberately through the public
 //! machine API — exactly the injection path a virtual device would use.
 
+use truman_emulator::cpu;
 use truman_emulator::firmware::{self, layout, Image};
 use truman_emulator::machine::{Machine, MachineConfig, StopReason};
 use truman_emulator::memory::AccessSize;
@@ -244,15 +245,29 @@ fn real_firmware_boot_is_unaffected_by_irq_wiring() {
         console.contains("LD eCos v1.16 1506f"),
         "boot chain must still reach the eCos milestone; console:\n{console}"
     );
-    assert!(matches!(r.stop, StopReason::StepLimit));
+    // Milestone H: the decompression engine completes, the loader's wait
+    // loop exits, and the loader reaches its own result-check dead-end
+    // ("LD eCos fail" — the per-symbol continuation protocol is still
+    // open, docs/firmware-analysis.md §13.4). The stop is the firmware's
+    // own data-execution dead-end, not an emulator fault.
+    assert!(
+        console.contains("LD eCos fail"),
+        "engine handshake must let the loader reach its result check"
+    );
+    assert!(matches!(
+        r.stop,
+        StopReason::Cpu(cpu::CpuError::UnknownInstruction { .. })
+    ));
     // The intc line must never have asserted during the real boot.
     assert_eq!(m.intc_output(), 0, "no interrupt may fire during real boot");
 }
 
 /// Virtual front-panel button press, end to end on the REAL firmware:
-/// boot to the idle key-scan poll, set key-line bit 2 through the machine
-/// API, and verify the firmware's own dispatcher writes keycode 0x400
-/// into the key data port (docs/firmware-analysis.md §10.3/§12).
+/// the key-scan dispatcher lives inside the decompression-engine wait
+/// loop (docs/firmware-analysis.md §13), so the virtual button must be
+/// held from before the loop starts. Set key-line bit 2 through the
+/// machine API and verify the firmware's own dispatcher writes keycode
+/// 0x400 into the key data port (docs/firmware-analysis.md §10.3/§12).
 #[test]
 fn real_firmware_reacts_to_injected_key_press() {
     let Some(path) = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -272,19 +287,11 @@ fn real_firmware_reacts_to_injected_key_press() {
     let mut m = Machine::new(MachineConfig::default(), &image);
     m.reset();
 
-    // Boot to the steady state (the idle key-scan poll at 0xA200258C).
-    let r = m.run(30_000_000);
-    assert!(matches!(r.stop, StopReason::StepLimit));
-    assert!(m.uart_console().contains("LD eCos v1.16 1506f"));
-
-    // No key pressed: no key events so far.
-    assert!(m.take_key_events().is_empty(), "no events before a press");
-
-    // Inject the bit-2 key line and give the scan loop a small budget
-    // (the dispatcher is a tight poll; a few thousand instructions are
-    // plenty at ~5M instr/s).
+    // Hold bit 2 from reset: the engine-wait/key-scan loop processes the
+    // pressed line while it waits for the decompression engine.
     m.press_key(0b0100);
-    let _ = m.run(20_000);
+    let _ = m.run(30_000_000);
+    assert!(m.uart_console().contains("LD eCos v1.16 1506f"));
 
     // The firmware's own scan loop must have written keycode 0x400 into
     // the key data port — this is the firmware reacting to the virtual

@@ -24,8 +24,8 @@
 
 use crate::cpu::{CpuBackend, CpuError, StepReport};
 use crate::devices::{
-    DdrCtrl, DdrPhy, IntController, KeyPort, LoggingDevice, MirroredRam, ParamRam, SpiController,
-    TimerCounter, Uart,
+    DdrCtrl, DdrPhy, DecompEngineHi, DecompEngineLo, EngineShared, IntController, KeyPort,
+    LoggingDevice, MirroredRam, ParamRam, SpiController, TimerCounter, Uart,
 };
 use crate::firmware::Image;
 use crate::memory::AddressSpace;
@@ -64,6 +64,11 @@ pub struct MachineConfig {
     /// 4 bytes — verified read/write semantics from the key-scan loop).
     pub keyport_offset: u32,
     pub keyport_size: u32,
+    /// Hardware decompression engine register block (hypothesis H12):
+    /// +0x3800..0x3878 split into a low region (+0x3800..0x384C: start /
+    /// FIFO) and a high region (+0x3850..0x3878: window + output address).
+    pub decomp_offset: u32,
+    pub decomp_size: u32,
     /// Unknown kseg0 window at 0x98000000 (phys 0x18000000).
     /// Evidence (Milestone B): stage-1 `jal`s into 0xB8000998 after init —
     /// a fast execution mirror of the SPI flash. Modeled as copy-on-write
@@ -102,6 +107,8 @@ impl Default for MachineConfig {
             intc_size: 0x40,
             keyport_offset: 0x384C,
             keyport_size: 0x4,
+            decomp_offset: 0x3800,
+            decomp_size: 0x78,
             win_180_base: 0x1800_0000,
             win_180_size: 0x0040_0000, // 4 MiB linear mirror of the flash
             win_180_mirror_flash: true,
@@ -159,6 +166,9 @@ pub struct Machine {
     /// Key event queue: the keycodes the firmware's scan loop writes to
     /// the key port (bit 0→0x100, 2→0x400, 4→0x1000, 5→0x2000).
     pub key_events: std::rc::Rc<std::cell::RefCell<Vec<u32>>>,
+    /// Decompression engine shared state (hypothesis H12). The run loop
+    /// polls `take_request()` and services the decode with the bus.
+    pub decomp: std::rc::Rc<std::cell::RefCell<EngineShared>>,
     /// Access logs of instrumented windows (name, handle).
     logs: Vec<(String, AccessLog)>,
 }
@@ -278,14 +288,17 @@ impl Machine {
         );
         // Front-panel key data port at +0x384C (verified read/write
         // semantics; see devices::KeyPort). Carved out of the upper param
-        // RAM, which is split around it.
+        // RAM, which is split around it. Bit 6 of reads ORs the hardware
+        // decompression engine's done flag (hypothesis H12).
         let key_pressed = std::rc::Rc::new(std::cell::Cell::new(0u32));
         let key_events = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let engine_done = std::rc::Rc::new(std::cell::Cell::new(0u8));
         let key_log = LoggingDevice::new("keyport-log", 0).log_handle();
         let keyport = KeyPort::new(
             "keyport",
             std::rc::Rc::clone(&key_pressed),
             std::rc::Rc::clone(&key_events),
+            std::rc::Rc::clone(&engine_done),
             std::rc::Rc::clone(&key_log),
         );
         logs.push(("keyport".to_string(), key_log));
@@ -295,7 +308,36 @@ impl Machine {
             cfg.keyport_size,
             Box::new(keyport),
         );
-        let hi2_low_len = cfg.keyport_offset - 0x16A0;
+
+        // Hardware decompression engine at +0x3800..+0x3878 (hypothesis
+        // H12; see devices::DecompEngineLo). Two register regions share one
+        // EngineShared state; the run loop performs the DEFLATE decode and
+        // raises the done line the loader polls (0xBFFE384C bit 6).
+        let decomp_log = LoggingDevice::new("decomp-log", 0).log_handle();
+        let (decomp_lo, decomp_shared) = DecompEngineLo::new(
+            "decomp-engine",
+            std::rc::Rc::clone(&engine_done),
+            std::rc::Rc::clone(&decomp_log),
+        );
+        let decomp_hi = DecompEngineHi::with_shared(
+            "decomp-engine-hi",
+            std::rc::Rc::clone(&decomp_shared),
+            std::rc::Rc::clone(&decomp_log),
+        );
+        logs.push(("decomp-engine".to_string(), decomp_log));
+        bus.add_device(
+            "decomp-engine",
+            cfg.sysreg_base + cfg.decomp_offset,
+            0x4C,
+            Box::new(decomp_lo),
+        );
+        bus.add_device(
+            "decomp-engine-hi",
+            cfg.sysreg_base + cfg.decomp_offset + 0x50,
+            cfg.decomp_size - 0x50,
+            Box::new(decomp_hi),
+        );
+        let hi2_low_len = cfg.decomp_offset - 0x16A0;
         let param_hi2 = ParamRam::new("sysreg-params-hi2", hi2_low_len, cfg.sysreg_fill);
         logs.push(("sysreg-params-hi2".to_string(), param_hi2.log_handle()));
         bus.add_device(
@@ -304,12 +346,12 @@ impl Machine {
             hi2_low_len,
             Box::new(param_hi2),
         );
-        let hi2_high_len = 0x3E00 - cfg.keyport_offset - cfg.keyport_size;
+        let hi2_high_len = 0x3E00 - cfg.decomp_offset - cfg.decomp_size;
         let param_hi2b = ParamRam::new("sysreg-params-hi2b", hi2_high_len, cfg.sysreg_fill);
         logs.push(("sysreg-params-hi2b".to_string(), param_hi2b.log_handle()));
         bus.add_device(
             "sysreg-params-hi2b",
-            cfg.sysreg_base + cfg.keyport_offset + cfg.keyport_size,
+            cfg.sysreg_base + cfg.decomp_offset + cfg.decomp_size,
             hi2_high_len,
             Box::new(param_hi2b),
         );
@@ -364,12 +406,63 @@ impl Machine {
             intc_line,
             key_pressed,
             key_events,
+            decomp: decomp_shared,
             logs,
         }
     }
 
+    /// Decompression-engine service (hypothesis H12): when the firmware
+    /// starts the engine (write of 0xBFFE3824 with bit 0 set), the run loop
+    /// performs the DEFLATE decode with real bus reads of the source image
+    /// and bus writes of the output — the same bytes the hardware DMA
+    /// would move. Completion raises the done line the loader polls at
+    /// 0xBFFE384C bit 6.
+    fn service_decomp_engine(&mut self) {
+        let Some((src, dst)) = self.decomp.borrow_mut().take_request() else {
+            return;
+        };
+        // Input length from the engine's length register (0xBFFE3838);
+        // the decoder stops at the stream's final block regardless, so an
+        // overlong bound only affects how much is prefetched.
+        let ilen = {
+            let sh = self.decomp.borrow();
+            (sh.input_len as usize).clamp(0x100, 0x1_0000)
+        };
+        // The source register points at the "SP" container; its 8-byte
+        // header (magic + u16 + BE u32 length) is parsed by the firmware
+        // itself before the engine starts, so the deflate stream begins at
+        // source + 8 (observed: the loader's bit reader starts at image+8).
+        let mut src_bytes = Vec::with_capacity(ilen);
+        for i in 8..ilen {
+            let b = self
+                .bus
+                .peek_phys(src.wrapping_add(i as u32), crate::memory::AccessSize::Byte)
+                .unwrap_or(0);
+            src_bytes.push(b as u8);
+        }
+        let mut out = Vec::new();
+        let res = crate::inflate::inflate(&src_bytes, 0x8000, &mut out, 0x8_0000);
+        match res {
+            Ok(n) => {
+                // Write the decoded image through the kseg1 alias so the
+                // bus translation and region dispatch stay canonical.
+                for (i, &b) in out.iter().enumerate() {
+                    let va = 0xA000_0000 | dst.wrapping_add(i as u32);
+                    let _ = self
+                        .bus
+                        .store(va, crate::memory::AccessSize::Byte, u32::from(b));
+                }
+                self.decomp.borrow_mut().complete(n, None);
+            }
+            Err(e) => {
+                self.decomp
+                    .borrow_mut()
+                    .complete(out.len(), Some(format!("{e}")));
+            }
+        }
+    }
+
     /// Reset the machine to its boot state.
-    ///
     /// Hypothesis A: the SoC boot ROM has mapped SPI flash at the MIPS boot
     /// window and jumps to offset 0 (kseg1 `0xBFC00000`); see
     /// docs/firmware-analysis.md Q5. This is configurable via
@@ -394,6 +487,7 @@ impl Machine {
                 Ok(_) => {
                     steps += 1;
                     self.bus.tick();
+                    self.service_decomp_engine();
                 }
                 Err(e) => break StopReason::Cpu(e),
             }
@@ -429,6 +523,7 @@ impl Machine {
                     tracer.push(report);
                     steps += 1;
                     self.bus.tick();
+                    self.service_decomp_engine();
                 }
                 Err(e) => break StopReason::Cpu(e),
             }

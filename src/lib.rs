@@ -11,11 +11,13 @@
 //! - [`cpu`]      — CPU backend abstraction + MIPS32r2 LE interpreter
 //! - [`machine`]  — Truman TM X1 machine composition and run loop
 //! - [`boot`]     — reset state and boot diagnostics
+//! - [`inflate`]  — RFC 1951 DEFLATE decoder (hardware engine's algorithm)
 
 pub mod boot;
 pub mod cpu;
 pub mod devices;
 pub mod firmware;
+pub mod inflate;
 pub mod machine;
 pub mod memory;
 

@@ -776,6 +776,247 @@ impl IntController {
     }
 }
 
+/// Hardware decompression engine (hypothesis H12), registers at
+/// sysreg+0x3800..0x3878 (0xBFFE3800..0xBFFE3878).
+///
+/// Evidence (docs/firmware-analysis.md §13; the "LD eCos" boot stage):
+///
+/// * the loader programs source 0xBFFE3804/0808 = 0x0208_8000 (the copied
+///   compressed image), a 32 KiB zero-filled window base 0xBFFE385C/60 =
+///   0x0204_0000 with end 0xBFFE3850/54 = 0x0204_8000, an output
+///   0xBFFE386C/70 = 0x0160_0000, then table-upload commands on
+///   0xBFFE3844 with data bytes on 0xBFFE3848, and finally starts the
+///   engine by writing 0xBFFE3824 = 1;
+/// * it then polls 0xBFFE384C **bit 6** ("engine done") — the poll loop is
+///   the same loop that scans front-panel keys, so keys stay live while
+///   the engine runs;
+/// * when bit 6 reads 1 the loader clears bit 13 of 0xBFFE3824, returns
+///   and jumps to the output (0xA1600000).
+///
+/// The compressed image itself is a raw DEFLATE stream behind an 8-byte
+/// "SP" header (verified: the header parse the firmware performs produces
+/// exactly the Huffman tables it uploads — docs/firmware-analysis.md §13).
+///
+/// Model: register storage + start/busy/done handshake + a real DEFLATE
+/// decode performed by the machine run loop
+/// ([`EngineShared::take_request`](EngineShared::take_request) →
+/// `crate::inflate::inflate`). The command/data table uploads are recorded
+/// but not interpreted: the decode re-derives equivalent tables from the
+/// stream itself (the RFC 1951 canonical codes of the stream's lengths
+/// equal the uploaded arrays bit-for-bit). The done flag is shared with
+/// the [`KeyPort`] so bit 6 of 0xBFFE384C reads 1 after completion.
+#[derive(Debug)]
+pub struct EngineShared {
+    /// Register file covering sysreg+0x3800..0x3878 (little-endian bytes).
+    pub regs: Vec<u8>,
+    /// Pending decompression request (source phys, dest phys).
+    pub request: Option<(u32, u32)>,
+    /// True between the start write and the machine completing the decode.
+    pub busy: bool,
+    /// Completion flag (read as bit 6 of 0xBFFE384C via [`KeyPort`]).
+    pub done: std::rc::Rc<std::cell::Cell<u8>>,
+    /// Decode result for diagnostics: bytes written or an error string.
+    pub last_result: Option<Result<usize, String>>,
+    /// How many bytes of source to feed the decoder.
+    pub input_len: u32,
+}
+
+impl EngineShared {
+    fn new(
+        done: std::rc::Rc<std::cell::Cell<u8>>,
+    ) -> std::rc::Rc<std::cell::RefCell<EngineShared>> {
+        std::rc::Rc::new(std::cell::RefCell::new(EngineShared {
+            regs: vec![0; 0x78],
+            request: None,
+            busy: false,
+            done,
+            last_result: None,
+            input_len: 0,
+        }))
+    }
+
+    /// Read a little-endian word at register offset `off` (block-relative).
+    fn reg(&self, off: usize) -> u32 {
+        u32::from_le_bytes([
+            self.regs[off],
+            self.regs[off + 1],
+            self.regs[off + 2],
+            self.regs[off + 3],
+        ])
+    }
+
+    /// Machine-side hook: pop a pending (source, dest) request.
+    pub fn take_request(&mut self) -> Option<(u32, u32)> {
+        if self.busy {
+            self.request.take()
+        } else {
+            None
+        }
+    }
+
+    /// Machine-side completion: record the result and set the done line.
+    pub fn complete(&mut self, written: usize, err: Option<String>) {
+        self.busy = false;
+        self.last_result = Some(match err {
+            Some(e) => Err(e),
+            None => Ok(written),
+        });
+        self.done.set(1);
+    }
+
+    fn read_regs(&self, off: u32, size: crate::memory::AccessSize) -> u32 {
+        let o = off as usize;
+        if o + 4 > self.regs.len() {
+            return 0;
+        }
+        match size {
+            crate::memory::AccessSize::Byte => u32::from(self.regs[o]),
+            crate::memory::AccessSize::Half => {
+                u32::from(u16::from_le_bytes([self.regs[o], self.regs[o + 1]]))
+            }
+            crate::memory::AccessSize::Word => self.reg(o),
+        }
+    }
+
+    fn write_regs(&mut self, off: u32, size: crate::memory::AccessSize, value: u32) {
+        let o = off as usize;
+        if o + size.bytes() as usize > self.regs.len() {
+            return;
+        }
+        let b = value.to_le_bytes();
+        let n = size.bytes() as usize;
+        self.regs[o..o + n].copy_from_slice(&b[..n]);
+    }
+}
+
+/// Low half of the engine register block: sysreg+0x3800..0x384C. Hosts the
+/// start register (0x3824) and the command/data FIFO (0x3844/0x3848).
+#[derive(Debug)]
+pub struct DecompEngineLo {
+    name: String,
+    shared: std::rc::Rc<std::cell::RefCell<EngineShared>>,
+    log: AccessLog,
+    log_capacity: usize,
+}
+
+/// High half of the engine register block: sysreg+0x3850..0x3878. Hosts the
+/// window base/end (0x3850/54, 0x385C/60) and output address (0x386C/70).
+#[derive(Debug)]
+pub struct DecompEngineHi {
+    name: String,
+    shared: std::rc::Rc<std::cell::RefCell<EngineShared>>,
+    log: AccessLog,
+    log_capacity: usize,
+}
+
+impl DecompEngineLo {
+    /// Create the low engine region. Returns the device plus the shared
+    /// state handle for the [`Machine`](crate::machine::Machine) run loop.
+    /// `done` is the completion line shared with the [`KeyPort`].
+    pub fn new(
+        name: &str,
+        done: std::rc::Rc<std::cell::Cell<u8>>,
+        log: AccessLog,
+    ) -> (Self, std::rc::Rc<std::cell::RefCell<EngineShared>>) {
+        let shared = EngineShared::new(done);
+        (
+            Self {
+                name: name.to_string(),
+                shared: std::rc::Rc::clone(&shared),
+                log,
+                log_capacity: 16_384,
+            },
+            shared,
+        )
+    }
+
+    fn record(&self, offset: u32, size: crate::memory::AccessSize, value: u32, write: bool) {
+        let mut log = self.log.borrow_mut();
+        if log.len() >= self.log_capacity {
+            log.remove(0);
+        }
+        log.push((offset, size, value, write));
+    }
+}
+
+impl DecompEngineHi {
+    /// Create the high engine region attached to `shared`.
+    pub fn with_shared(
+        name: &str,
+        shared: std::rc::Rc<std::cell::RefCell<EngineShared>>,
+        log: AccessLog,
+    ) -> Self {
+        Self {
+            name: name.to_string(),
+            shared,
+            log,
+            log_capacity: 16_384,
+        }
+    }
+
+    fn record(&self, offset: u32, size: crate::memory::AccessSize, value: u32, write: bool) {
+        let mut log = self.log.borrow_mut();
+        if log.len() >= self.log_capacity {
+            log.remove(0);
+        }
+        log.push((offset, size, value, write));
+    }
+}
+
+impl Device for DecompEngineLo {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn read(&mut self, offset: u32, size: crate::memory::AccessSize) -> u32 {
+        let sh = self.shared.borrow();
+        let v = sh.read_regs(offset, size);
+        drop(sh);
+        self.record(offset, size, v, false);
+        v
+    }
+
+    fn write(&mut self, offset: u32, size: crate::memory::AccessSize, value: u32) {
+        self.record(offset, size, value, true);
+        let mut sh = self.shared.borrow_mut();
+        sh.write_regs(offset, size, value);
+        // Start bit: writing 0xBFFE3824 with bit 0 set launches the decode.
+        // The engine then runs autonomously (DMA-style); the run loop does
+        // the work and completion raises the shared done line.
+        if offset == 0x24 && size == crate::memory::AccessSize::Word && value & 1 == 1 {
+            // Address registers hold hi/lo halves: src = 0x3804:0x3808,
+            // dst = 0x386C:0x3870 (observed 0x0208/0x8000 -> 0x0208_8000).
+            let src = ((sh.reg(0x04) << 16) | sh.reg(0x08)) & 0x1FFF_FFFF;
+            let dst = ((sh.reg(0x6C) << 16) | sh.reg(0x70)) & 0x1FFF_FFFF;
+            let ilen = sh.reg(0x38);
+            sh.input_len = ilen;
+            sh.request = Some((src, dst));
+            sh.busy = true;
+            sh.done.set(0);
+        }
+    }
+}
+
+impl Device for DecompEngineHi {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn read(&mut self, offset: u32, size: crate::memory::AccessSize) -> u32 {
+        let sh = self.shared.borrow();
+        let v = sh.read_regs(offset + 0x50, size);
+        drop(sh);
+        self.record(offset, size, v, false);
+        v
+    }
+
+    fn write(&mut self, offset: u32, size: crate::memory::AccessSize, value: u32) {
+        self.record(offset, size, value, true);
+        let mut sh = self.shared.borrow_mut();
+        sh.write_regs(offset + 0x50, size, value);
+    }
+}
+
 /// Front-panel key data port (0xBFFE384C, 4 bytes), reverse-engineered from
 /// the main firmware's key-scan dispatcher (docs/firmware-analysis.md
 /// §10.3, dispatch loop at DRAM 0x82002548..0x82002630).
@@ -807,23 +1048,32 @@ pub struct KeyPort {
     name: String,
     pressed: std::rc::Rc<std::cell::Cell<u32>>,
     events: std::rc::Rc<std::cell::RefCell<Vec<u32>>>,
+    /// Engine-done flag (decompression engine, hypothesis H12): read as
+    /// bit 6 of this register. 0xBFFE384C is shared between the key lines
+    /// (bits 0/2/4/5/6 as inputs) and the engine status (bit 6 = done).
+    engine_done: std::rc::Rc<std::cell::Cell<u8>>,
     log: AccessLog,
     log_capacity: usize,
 }
 
 impl KeyPort {
     /// Create the key port. `pressed` = raw key-line level (bit 0/2/4/5/6
-    /// observed); `events` receives every keycode the firmware writes.
+    /// observed); `events` receives every keycode the firmware writes;
+    /// `engine_done` is the decompression-engine completion flag that
+    /// ORs into bit 6 of reads (hypothesis H12, docs/firmware-analysis.md
+    /// §13 — the engine-done wait polls this same register).
     pub fn new(
         name: &str,
         pressed: std::rc::Rc<std::cell::Cell<u32>>,
         events: std::rc::Rc<std::cell::RefCell<Vec<u32>>>,
+        engine_done: std::rc::Rc<std::cell::Cell<u8>>,
         log: AccessLog,
     ) -> Self {
         Self {
             name: name.to_string(),
             pressed,
             events,
+            engine_done,
             log,
             log_capacity: 4096,
         }
@@ -847,8 +1097,10 @@ impl Device for KeyPort {
 
     fn read(&mut self, offset: u32, size: crate::memory::AccessSize) -> u32 {
         // All observed accesses are word-wide; byte/half views return the
-        // corresponding little-endian slice of the same level.
-        let w = self.pressed.get();
+        // corresponding little-endian slice of the same level. Bit 6 ORs in
+        // the decompression engine's done flag (hypothesis H12).
+        let done = u32::from(self.engine_done.get());
+        let w = self.pressed.get() | (done << 6);
         let off = offset & 3;
         let v = match size {
             crate::memory::AccessSize::Byte => (w >> (8 * off)) & 0xFF,
@@ -1036,14 +1288,16 @@ mod tests {
     fn key_port_level_read_and_event_writes() {
         let pressed = std::rc::Rc::new(std::cell::Cell::new(0u32));
         let events = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let done = std::rc::Rc::new(std::cell::Cell::new(0u8));
         let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
         let mut kp = KeyPort::new(
             "keyport",
             std::rc::Rc::clone(&pressed),
             std::rc::Rc::clone(&events),
+            std::rc::Rc::clone(&done),
             std::rc::Rc::clone(&log),
         );
-        // No key: reads 0 (steady state of the real boot).
+        // No key, engine idle: reads 0 (steady state of the real boot).
         assert_eq!(kp.read(0, AccessSize::Word), 0);
         // Press the bit-2 key line: the dispatcher's `ext v0, v0, 2, 1`
         // sees 1. The firmware answers by writing keycode 0x400.
@@ -1058,11 +1312,62 @@ mod tests {
         assert_eq!(kp.read(0, AccessSize::Word), 0);
         // The keycode was captured as an event.
         assert_eq!(*events.borrow(), vec![0x400]);
+        // Engine done ORs into bit 6 (hypothesis H12: the loader waits for
+        // this exact bit before jumping to the decompressed image).
+        done.set(1);
+        assert_eq!(kp.read(0, AccessSize::Word), 0b0100_0000);
+        assert_eq!(kp.read(0, AccessSize::Byte), 0x40);
+        done.set(0);
         // Byte/half views of the level (LE slices).
         pressed.set(0x0402);
         assert_eq!(kp.read(0, AccessSize::Byte), 0x02);
         assert_eq!(kp.read(1, AccessSize::Byte), 0x04);
         assert_eq!(kp.read(0, AccessSize::Half), 0x0402);
+        assert!(!log.borrow().is_empty());
+    }
+
+    #[test]
+    fn decomp_engine_start_request_and_done_handshake() {
+        let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let done = std::rc::Rc::new(std::cell::Cell::new(0u8));
+        let (mut lo, shared) = DecompEngineLo::new(
+            "decomp",
+            std::rc::Rc::clone(&done),
+            std::rc::Rc::clone(&log),
+        );
+        // Program the source (0x02088000) and destination (0x01600000) the
+        // way the firmware does, then start. 0x6C/0x70/0x38 live in the
+        // shared register file (the Hi device maps them in the machine).
+        lo.write(0x04, AccessSize::Word, 0x0208);
+        lo.write(0x08, AccessSize::Word, 0x8000);
+        shared
+            .borrow_mut()
+            .write_regs(0x6C, AccessSize::Word, 0x0160);
+        shared
+            .borrow_mut()
+            .write_regs(0x70, AccessSize::Word, 0x0000);
+        shared
+            .borrow_mut()
+            .write_regs(0x38, AccessSize::Word, 0x8692);
+        // Read back through the device (register storage semantics).
+        assert_eq!(lo.read(0x04, AccessSize::Word), 0x0208);
+        // Busy is clear before start.
+        assert_eq!(lo.read(0x24, AccessSize::Word) & 2, 0);
+        // Start: write 1 to 0x24 (0xBFFE3824).
+        lo.write(0x24, AccessSize::Word, 0x1);
+        // The machine loop picks the request up.
+        let req = shared.borrow_mut().take_request();
+        assert_eq!(req, Some((0x0208_8000, 0x0160_0000)));
+        assert!(shared.borrow().busy);
+        // Completion: done line rises, busy clears, result recorded.
+        shared.borrow_mut().complete(28256, None);
+        assert!(!shared.borrow().busy);
+        assert_eq!(shared.borrow().done.get(), 1);
+        assert_eq!(shared.borrow().last_result, Some(Ok(28256)));
+        // A second start write resets the done line.
+        lo.write(0x24, AccessSize::Word, 0x1);
+        assert_eq!(shared.borrow().done.get(), 0);
+        assert!(shared.borrow_mut().take_request().is_some());
         assert!(!log.borrow().is_empty());
     }
 }

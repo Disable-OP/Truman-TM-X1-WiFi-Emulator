@@ -254,14 +254,32 @@ fn real_firmware_boots_through_ddr_training_into_main_firmware() {
         0xA200_0000 & 0xFFFF_0000,
         "main firmware runs at 0xA2000000"
     );
-    // Steady state: the eCos application polls the key/status register at
-    // 0xBFFE384C (documented in docs/firmware-analysis.md §10). The stop
-    // must be the step limit (idle poll), NOT a CPU fault.
+    // Milestone H (hypothesis H12): the hardware decompression engine at
+    // 0xBFFE3800 completes its decode, the loader's wait loop (which is
+    // also the front-panel key scan) exits via 0xBFFE384C bit 6, and the
+    // loader reaches its result check. With the engine handshake modeled
+    // but the per-symbol continuation protocol still open, the loader's
+    // result check evaluates to its failure branch ("LD eCos fail") and
+    // the boot stops deterministically at the loader's own dead-end at
+    // 0xA2000D90 — real firmware code, no CPU fault before that point.
+    for marker in ["LD eCos v1.16 1506f", "LD eCos fail"] {
+        assert!(
+            console.contains(marker),
+            "boot chain must reach {marker:?}; console so far:\n{console}"
+        );
+    }
     assert!(
-        matches!(result.stop, StopReason::StepLimit),
-        "boot chain must idle cleanly in the status poll, got {}",
-        result.stop
+        (1_290_000..1_300_000).contains(&result.steps),
+        "deterministic step count to the loader's dead-end, got {}",
+        result.steps
     );
+    // Steady state: the stop is the loader's own unknown-instruction
+    // dead-end (data executed after the fail banner), NOT an emulator
+    // fault inside supported code.
+    match &result.stop {
+        StopReason::Cpu(cpu::CpuError::UnknownInstruction { .. }) => {}
+        other => panic!("expected the loader dead-end stop, got {other:?}"),
+    }
 
     // NOTE: "1ST BOOT" is NOT stored in memory — the main firmware prints
     // it via unrolled immediate stores (observed at 0xA2000340..0xA2000448),

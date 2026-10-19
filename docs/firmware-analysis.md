@@ -461,3 +461,101 @@ the electrical level, never a fake event.
   chosen; would show up as duplicate events if wrong).
 - Semantics of the 0xBFFE3800..0x387C cluster beyond the sampled
   registers (boot-programmed values recorded in the sysreg dump).
+
+## 13. Hardware decompression engine 0xBFFE3800 (Milestone H, boot-stage evidence)
+
+Milestone H identified why the boot parked in the "key-scan" poll: the loop
+is **the decompression engine's wait loop** (keys stay live inside it), and
+the blocker was a peripheral, not a UI idle loop.
+
+### 13.1 The "LD eCos" pipeline — VERIFIED by execution trace
+
+After the "LD eCos v1.16 1506f" banner the loader (executing at
+0xA2000000/0x82000000, the decompressed 0x3ADC-byte payload):
+
+1. reads a 28-byte descriptor from flash 0x10010 via the ops table at
+   0x82004BA0 (ops[4] = SPI byte-read through the 0x98000000 flash mirror):
+   `src=0x1002C, len=0x868C, dst=0x81600000, flags&3=1`;
+2. for flag==1: zero-fills [0xA2040000, 0xA2088000) (0x48000 bytes — the
+   engine's window + scratch), copies the container flash→0xA2088000;
+3. calls the driver at 0xA2001F50 with (image, 0x81600000, 0).
+
+### 13.2 The driver's engine program — VERIFIED register writes
+
+* clock gates: 0xBFFE0024 |= 0x2000, 0xBFFE0044 |=/~ 0x2000;
+* engine regs: 0xBFFE3800 = 1 then 0x90; 0xBFFE3814 = 0; 0xBFFE3840 = 0x20;
+  0xBFFE3858 = 0xC0; source 0xBFFE3804/0808 = 0x0208/0x8000 (=0x02088000,
+  the copied image); second pair 0xBFFE380C/3810 = 0x0209/0x0700;
+  window base 0xBFFE385C/60 = 0x0204/0x0000 (0x02040000) with end
+  0xBFFE3850/54 = 0x0204/0x8000 (32 KiB); output 0xBFFE386C/70 =
+  0x0160/0x0000 (=0x01600000); 0xBFFE3864 = type (1); length register
+  0xBFFE3838 = 0x8692; misc 0xBFFE3828 = 0x400, 0xBFFE382C = header u16@2,
+  0xBFFE3830 = 0x68;
+* the driver parses the container header: bytes[0:2] = "SP", u32@4 (BE) =
+  0x8684 = stream length, then a DEFLATE dynamic block header — HLIT/HDIST/
+  HCLEN at 5/5/4 bits + 17×3-bit code-length codes (all standard RFC 1951);
+* it builds the Huffman tables **in software** (DRAM 0x82005074+) and
+  uploads them through the command/data pair 0xBFFE3844/0xBFFE3848:
+  round A: 0xC000 + 285 lit/len symbols in code order, 0xC180 + 15
+  first-code halfwords, 0xC190 + 15 cumulative halfwords; round B:
+  0xC000, 0xC1C0 + 28 distance symbols, 0xC1A0 + first codes, 0xC1B0 +
+  cumulative; each round ends with a 0x0000 terminator;
+* **verification**: the uploaded arrays are exactly the canonical Huffman
+  codes of the stream's own code lengths (uploaded first[] = canonical
+  first-code table, cum[] = cumulative counts, symbol list = symbols sorted
+  by (length, code)) — the upload and the stream agree bit-for-bit;
+* start: 0xBFFE3824 = 1, then the poll loop at 0xA2002548 (which is also
+  the front-panel key scan — keys remain live during the wait).
+
+### 13.3 The wait loop's exits — VERIFIED control flow
+
+* bit 6 of 0xBFFE384C reads 1 → branch 0xA2002ECC/0xA2002EE4 → 0xA2002308
+  (clears bit 13 of **0xBFFE0024**, the IntCtrl CPU-line register — note the
+  negative offset lands there, not on 0x3824) → epilogue with
+  **v0 = 0** (delay slot `addu v0, zero, zero` at 0xA200231C);
+* a key line (bits 0/2/4/5) writes its keycode (0x100/0x400/0x1000/0x2000)
+  into 0xBFFE384C and re-checks the flag at 0x82003B1C; the bit-5 path
+  counts events and sets the flag when its counter reaches a limit, which
+  routes through the arithmetic block at 0xA2002630 (reads 0xBFFE381C/
+  0x3820, computes `a0 * (8 << (v0 & 7)) + ext(v0,3,10)` — symbol/length
+  processing) and returns non-zero;
+* the loader checks the return at 0xA2001BB4: zero → fail epilogue (returns
+  0 → caller prints "LD eCos fail"), non-zero → returns desc[8]
+  (0x81600000) → caller flushes caches, prints "Go eCos" and
+  "Boot from SPI", and jumps to 0xA1600000.
+
+### 13.4 Emulator implementation and the open continuation protocol
+
+Modeled (devices::DecompEngineLo/Hi + EngineShared, machine service loop):
+register storage, the start/busy/done handshake (bit 6 shared with the key
+port read), and a real DEFLATE decode (src/inflate.rs, zero dependencies)
+whose output is written to the engine's target through the bus. The table
+uploads are recorded but not interpreted — the decode re-derives equivalent
+canonical tables from the stream itself.
+
+Verified result: with the handshake modeled, the real firmware boots through
+"LD eCos v1.16 1506f", the engine completes one decode (28,256 bytes, stable
+across runs and cross-checked against an independent RFC 1951 decoder), the
+wait loop exits via bit 6, and the loader reaches its result check, which
+currently evaluates to "LD eCos fail" and a deterministic dead-end at
+0xA2000D90 (real firmware data executed after the banner).
+
+**Corroborating nugget:** the wait loop's event counter limit (0x82003B20)
+holds 0x4E = 78 at poll time — exactly the container header's u16@2 (the
+firmware mirrors it into 0xBFFE382C and its decrement into 0xBFFE3874).
+Whatever the per-symbol unit is, the loop is programmed to process exactly
+header-u16@2 of them.
+
+**Open (the next concrete blocker):** the driver's success exit requires
+the wait loop to complete the *full* stream. The first deflate block yields
+28,256 bytes; the SP header declares 0x8684 (34,436). The remaining input
+(after the first block's EOB at bit 106,259) does not parse as a standard
+fixed/dynamic/stored continuation — evidence collected: no LEN/~LEN stored
+marker, no valid CL Kraft=1 dynamic header at bit offsets 106,259..106,264
+or byte 13,283, and the fixed-table decode hits the reserved symbols
+286/287. The arithmetic block at 0xA2002630 (reads 0xBFFE381C/0x3820, the
+mul-based length computation) plus the counter at 0x82003B14/0x82003B20
+indicate a **per-symbol co-processor protocol**: the software reads decoded
+symbols from the engine and drives the LZ side itself. Mapping that
+protocol (which status bits handshake per symbol, and what 0xBFFE381C/
+0x3820 return) is the next milestone toward the "Go eCos" jump.

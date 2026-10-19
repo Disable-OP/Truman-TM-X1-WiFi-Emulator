@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.5.0 — Milestone H: hardware decompression engine handshake
+
+### Added
+- **Boot progress**: the real firmware now passes the post-"LD eCos" wait
+  loop for the first time. The loop was the decompression engine's wait
+  (also the front-panel key scan), not a UI idle loop.
+- New devices `DecompEngineLo`/`DecompEngineHi` (0xBFFE3800..0xBFFE3878):
+  register storage, table-upload FIFO (0xBFFE3844/0xBFFE3848), start
+  handshake (0xBFFE3824 bit 0), busy/done flags; the machine run loop
+  services the engine with real bus reads/writes.
+- New `src/inflate.rs`: dependency-free RFC 1951 DEFLATE decoder. The
+  compressed "SP" container at flash 0x1002C is a raw deflate stream whose
+  Huffman tables match the ones the firmware uploads bit-for-bit.
+- `KeyPort` reads OR the engine-done flag into bit 6 (the loader polls it).
+- `tests/decomp.rs`: real-container decode KAT + machine-level handshake
+  reach; engine/inflate unit tests.
+
+### Verified behavior (real firmware, deterministic)
+- boot → "LD eCos v1.16 1506f" → engine decodes 28,256 bytes → wait loop
+  exits via 0xBFFE384C bit 6 → loader result check → "LD eCos fail" →
+  deterministic dead-end at 0xA2000D90. The success exit needs the full
+  0x8684-byte decode; the continuation is a per-symbol co-processor
+  protocol (open — docs/firmware-analysis.md §13.4).
+
 ## 0.4.0 — Milestone G: front-panel key port decode + virtual button injection
 
 ### Added

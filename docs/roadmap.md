@@ -46,6 +46,25 @@ actually demonstrated by code + tests in this repository.
 The plan defined F as "bootloader executes / memory initialization succeeds"
 — both are demonstrated. The next credibility rungs are application-level.
 
+## Milestone H — Boot-stage hardware decompression engine ✅ handshake (in progress)
+
+- **Blocker resolved**: the post-"LD eCos" park was the decompression
+  engine's wait loop at 0xBFFE3800..0xBFFE3878, not a UI idle loop.
+- Engine handshake modeled (`devices::DecompEngineLo/Hi`, machine service
+  loop): table uploads via 0xBFFE3844/0xBFFE3848, start 0xBFFE3824 bit 0,
+  completion read as 0xBFFE384C bit 6 (shared with the key-port read).
+- Compression format identified: "SP" container = raw DEFLATE; the
+  firmware's header parse produces exactly the Huffman tables it uploads
+  (`src/inflate.rs`, zero dependencies; cross-checked against an
+  independent RFC 1951 decoder — 28,256 bytes, stable).
+- Real firmware now boots through "LD eCos v1.16 1506f" → engine done →
+  loader result check ("LD eCos fail" branch, deterministic dead-end at
+  0xA2000D90). ~1.30 M instructions, < 1.5 s wall clock.
+- **Open**: the driver's success exit needs the full 0x8684-byte decode —
+  the continuation after block 1 is a per-symbol co-processor protocol
+  (0xBFFE381C/0x3820 symbol reads + the mul-based length computation at
+  0xA2002630). docs/firmware-analysis.md §13.4.
+
 ## Milestone G — Extension & stabilization (in progress)
 
 Track by evidence-first value, in rough order:
