@@ -507,55 +507,113 @@ After the "LD eCos v1.16 1506f" banner the loader (executing at
 * start: 0xBFFE3824 = 1, then the poll loop at 0xA2002548 (which is also
   the front-panel key scan — keys remain live during the wait).
 
-### 13.3 The wait loop's exits — VERIFIED control flow
+### 13.3 The wait loop's exits — VERIFIED control flow (decisive re-read)
 
-* bit 6 of 0xBFFE384C reads 1 → branch 0xA2002ECC/0xA2002EE4 → 0xA2002308
-  (clears bit 13 of **0xBFFE0024**, the IntCtrl CPU-line register — note the
-  negative offset lands there, not on 0x3824) → epilogue with
-  **v0 = 0** (delay slot `addu v0, zero, zero` at 0xA200231C);
-* a key line (bits 0/2/4/5) writes its keycode (0x100/0x400/0x1000/0x2000)
-  into 0xBFFE384C and re-checks the flag at 0x82003B1C; the bit-5 path
-  counts events and sets the flag when its counter reaches a limit, which
-  routes through the arithmetic block at 0xA2002630 (reads 0xBFFE381C/
-  0x3820, computes `a0 * (8 << (v0 & 7)) + ext(v0,3,10)` — symbol/length
-  processing) and returns non-zero;
-* the loader checks the return at 0xA2001BB4: zero → fail epilogue (returns
-  0 → caller prints "LD eCos fail"), non-zero → returns desc[8]
-  (0x81600000) → caller flushes caches, prints "Go eCos" and
-  "Boot from SPI", and jumps to 0xA1600000.
+The poll loop at 0xA2002548 checks the key lines **in order 0, 2, 4, 5, 6**
+(all branch targets are handlers for the line being 1 — v1 = 1 throughout,
+set at 0xA200253C):
 
-### 13.4 Emulator implementation and the open continuation protocol
+* **bit 6 → failure epilogue.** 0xA2002ECC/0xA2002EE4 → 0xA2002308 (clears
+  bit 13 of **0xBFFE0024**, the clock-gate register — the negative offset
+  lands there, not on 0x3824) → epilogue with **v0 = 0** (delay slot
+  `move v0, zero` at 0xA200231C). The loader's check at 0xA2001BB4 turns
+  v0 = 0 into "LD eCos fail". Bit 6 alone is therefore an *abnormal*
+  completion; modeling the engine as asserting bit 6 on completion is
+  what produced the earlier "LD eCos fail" dead-end.
+* **bit 5 → the success path.** The handler writes keycode 0x2000 (the
+  ack) into 0xBFFE384C, then computes `A_new = A + B + 1` from counters
+  A = 0x82003B14 (reset to 0 before polling) and B = 0x82003B18
+  (**initialized to u16@2 − 1 = 77 at header parse**, also mirrored into
+  engine register 0xBFFE3874), against the limit 0x82003B20 =
+  u16@2 = 78. With B = 77 the **first event** yields A = 78, the
+  `(A < limit)` test fails, the event flag at 0x82003B1C is set, and
+  execution enters the accounting block at 0xA2002630.
+* The accounting block reads engine registers 0xBFFE381C and 0xBFFE3820
+  (fields of the latter: bits 15:13 accumulated into 0x82003B00, bits
+  12:3, bits 2:0; the register is acked with a zero write), computes
+  `(R381C + (acc << 16)) * (8 << state)` + field10 with state =
+  0x82003AF4 = 4, stores the result, gates the engine clock off
+  (0xBFFE0024 bit 13) and **returns v0 = R3828 × limit = 0x400 × 78 =
+  0x13800** (non-zero → success).
+* Loader consequence (0xA2001BB4): non-zero → returns desc[2]
+  (0x81600000) → the caller masks the address into kseg1, flushes
+  caches, prints "Go eCos" and "Boot from SPI", and `jr`s to
+  0xA1600000.
 
-Modeled (devices::DecompEngineLo/Hi + EngineShared, machine service loop):
-register storage, the start/busy/done handshake (bit 6 shared with the key
-port read), and a real DEFLATE decode (src/inflate.rs, zero dependencies)
-whose output is written to the engine's target through the bus. The table
-uploads are recorded but not interpreted — the decode re-derives equivalent
-canonical tables from the stream itself.
+The wait-loop state at poll time is pinned by the DRAM dump: A = 0,
+B = 77, limit = 78, flag = 0, header byte counter = 134 (container-
+relative; the parse pointer sits at image+0x86), state = 4.
 
-Verified result: with the handshake modeled, the real firmware boots through
-"LD eCos v1.16 1506f", the engine completes one decode (28,256 bytes, stable
-across runs and cross-checked against an independent RFC 1951 decoder), the
-wait loop exits via bit 6, and the loader reaches its result check, which
-currently evaluates to "LD eCos fail" and a deterministic dead-end at
-0xA2000D90 (real firmware data executed after the banner).
+### 13.4 Engine decode semantics as modeled (and the open residue)
 
-**Corroborating nugget:** the wait loop's event counter limit (0x82003B20)
-holds 0x4E = 78 at poll time — exactly the container header's u16@2 (the
-firmware mirrors it into 0xBFFE382C and its decrement into 0xBFFE3874).
-Whatever the per-symbol unit is, the loop is programmed to process exactly
-header-u16@2 of them.
+Modeled (devices::DecompEngineLo/Hi + EngineShared, machine service loop,
+`inflate::inflate_engine`):
 
-**Open (the next concrete blocker):** the driver's success exit requires
-the wait loop to complete the *full* stream. The first deflate block yields
-28,256 bytes; the SP header declares 0x8684 (34,436). The remaining input
-(after the first block's EOB at bit 106,259) does not parse as a standard
-fixed/dynamic/stored continuation — evidence collected: no LEN/~LEN stored
-marker, no valid CL Kraft=1 dynamic header at bit offsets 106,259..106,264
-or byte 13,283, and the fixed-table decode hits the reserved symbols
-286/287. The arithmetic block at 0xA2002630 (reads 0xBFFE381C/0x3820, the
-mul-based length computation) plus the counter at 0x82003B14/0x82003B20
-indicate a **per-symbol co-processor protocol**: the software reads decoded
-symbols from the engine and drives the LZ side itself. Mapping that
-protocol (which status bits handshake per symbol, and what 0xBFFE381C/
-0x3820 return) is the next milestone toward the "Go eCos" jump.
+* register storage and the start handshake (0xBFFE3824 bit 0 → the run
+  loop services the request);
+* the decode: tables re-derived from the stream's dynamic block header
+  (bit-for-bit equal to the uploaded tables — the uploads are recorded
+  but not interpreted), symbols from the **programmed start bit**
+  (0xBFFE3818 = 1088 container bits = **1024 stream bits**; the 16 bits
+  between the 1008-bit standard header end and 1024 are zero padding,
+  verified in the stream), running to the end of the input length
+  register 0xBFFE3838 = 0x8692, with **end-of-block symbols treated as
+  markers, not terminators** (the driver expects the whole declared
+  stream; a zlib-style stop at the first BFINAL block leaves the image
+  truncated at 28,256 of the expected bytes);
+* completion raises the **event line (bit 5)**, cleared by the driver's
+  0x2000 ack write.
+
+Verified result: the real, unmodified firmware boots through
+"LD eCos v1.16 1506f" → engine decode (75,657 bytes written to
+0x01600000 through the bus) → bit-5 event → driver returns 0x13800 →
+**"Go eCos" + "Boot from SPI"** → jump executed to 0xA1600000
+(~1.31 M instructions, deterministic). This is the first time the boot
+chain enters the eCos stage.
+
+**Open — the engine's LZ value semantics (the next blocker).** The bit
+stream parse is provably exact (the whole 275,488-bit input decodes as a
+valid symbol sequence under the uploaded canonical tables; a ±1 code
+boundary shift fails immediately), but the output bytes are not yet valid
+MIPS code (~83% word-level validity vs ~99% for known-good code from the
+same toolchain; byte-alignment phase drifts). Ruled out empirically:
+extra-bit polarity (LSB/MSB), distance base offsets ±1, distance-list
+rotations, halfword/byte swaps, code-bit reversal (fails instantly),
+lengths-at-256 remapping (dies early), and alternate start bits (1008/
+1072/1088 stream-relative). The engine's length/distance base tables and
+window mechanics are hardware constants not present in the firmware
+image; they will be pinned down from the eCos stage's execution traces
+(the first faulting instruction localizes the first wrongly decoded
+region) — see §14.
+
+### 13.5 What the success path proves
+
+Every value on the driver's success path is real firmware state — no
+fabricated responses: the counters (A/B/limit), the event flag, the
+engine registers (R3828 = 0x400, the limit mirror in 0xBFFE382C, the
+countdown in 0xBFFE3874) are all written by the firmware's own code
+before the poll. The only emulated behavior is the engine completing
+its decode autonomously and raising its event line — the DMA-style
+semantics the register program implies. The front-panel keys remain
+live inside the wait loop (the poll is shared), and the virtual button
+injection (§12) keeps working through it.
+
+## 14. Next milestone — pinning the engine's LZ value semantics (display path)
+
+The eCos stage is now entered (§13.4). The image bytes the engine produced
+are not yet trusted code, so the next evidence steps are:
+
+1. Capture the eCos entry trace: the first faulting PC inside 0xA1600000+
+   localizes the first wrongly decoded region of the image (the entry
+   code itself is literal-driven and therefore correct if the fault is
+   far in).
+2. Solve for the engine's length/distance base tables from the phase
+   drift of the byte alignment along the decoded stream (the drift
+   accumulates only at matches with wrong lengths).
+3. Cross-check candidate tables against the checksum word in the
+   descriptor (desc[6] = 0xB5EBF9FF) once a full decode produces a
+   verifiable output.
+
+The graphics pipeline (display controller, HDMI/EDID, framebuffer) is
+reachable only after the eCos stage executes real code, which requires
+this decode to be exact.

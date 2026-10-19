@@ -411,27 +411,32 @@ impl Machine {
         }
     }
 
-    /// Decompression-engine service (hypothesis H12): when the firmware
-    /// starts the engine (write of 0xBFFE3824 with bit 0 set), the run loop
-    /// performs the DEFLATE decode with real bus reads of the source image
-    /// and bus writes of the output — the same bytes the hardware DMA
-    /// would move. Completion raises the done line the loader polls at
-    /// 0xBFFE384C bit 6.
+    /// Decompression-engine service (§13): when the firmware starts the
+    /// engine (write of 0xBFFE3824 with bit 0 set), the run loop performs
+    /// the decode the way the engine is programmed: the stream after the
+    /// "SP" header, symbols beginning at the start-bit register
+    /// (0xBFFE3818, container-relative, minus the 64 header bits) and
+    /// running to the end of the input length register (0xBFFE3838), with
+    /// end-of-block symbols as markers. Output goes to the engine's
+    /// output register pair through real bus stores. Completion raises
+    /// the event line the loader polls at 0xBFFE384C bit 5 (§13.3: the
+    /// driver's success path counts bit-5 events; its bit-6 path returns
+    /// 0 and the boot prints "LD eCos fail").
     fn service_decomp_engine(&mut self) {
         let Some((src, dst)) = self.decomp.borrow_mut().take_request() else {
             return;
         };
-        // Input length from the engine's length register (0xBFFE3838);
-        // the decoder stops at the stream's final block regardless, so an
-        // overlong bound only affects how much is prefetched.
-        let ilen = {
+        let (start_bit_raw, ilen) = {
             let sh = self.decomp.borrow();
-            (sh.input_len as usize).clamp(0x100, 0x1_0000)
+            (sh.reg(0x18), sh.reg(0x38))
         };
-        // The source register points at the "SP" container; its 8-byte
-        // header (magic + u16 + BE u32 length) is parsed by the firmware
-        // itself before the engine starts, so the deflate stream begins at
-        // source + 8 (observed: the loader's bit reader starts at image+8).
+        // Input length register (0xBFFE3838) counts bytes from the source
+        // (observed 0x8692 for a 0x868C container); clamp to what is
+        // plausibly mapped. The stream starts after the 8-byte "SP"
+        // header, and the engine's start bit is container-relative
+        // (dump evidence: header byte counter 134 includes those 8).
+        let ilen = (ilen as usize).clamp(0x100, 0x2_0000);
+        let start_bit = start_bit_raw.wrapping_sub(64) as usize;
         let mut src_bytes = Vec::with_capacity(ilen);
         for i in 8..ilen {
             let b = self
@@ -441,7 +446,13 @@ impl Machine {
             src_bytes.push(b as u8);
         }
         let mut out = Vec::new();
-        let res = crate::inflate::inflate(&src_bytes, 0x8000, &mut out, 0x8_0000);
+        let res = crate::inflate::inflate_engine(
+            &src_bytes,
+            start_bit.min(src_bytes.len() * 8),
+            0x8000,
+            &mut out,
+            0x4_0000,
+        );
         match res {
             Ok(n) => {
                 // Write the decoded image through the kseg1 alias so the

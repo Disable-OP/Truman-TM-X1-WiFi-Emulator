@@ -46,24 +46,29 @@ actually demonstrated by code + tests in this repository.
 The plan defined F as "bootloader executes / memory initialization succeeds"
 — both are demonstrated. The next credibility rungs are application-level.
 
-## Milestone H — Boot-stage hardware decompression engine ✅ handshake (in progress)
+## Milestone H/I — Decompression engine: handshake ✅, eCos stage entered ✅
 
 - **Blocker resolved**: the post-"LD eCos" park was the decompression
   engine's wait loop at 0xBFFE3800..0xBFFE3878, not a UI idle loop.
-- Engine handshake modeled (`devices::DecompEngineLo/Hi`, machine service
-  loop): table uploads via 0xBFFE3844/0xBFFE3848, start 0xBFFE3824 bit 0,
-  completion read as 0xBFFE384C bit 6 (shared with the key-port read).
-- Compression format identified: "SP" container = raw DEFLATE; the
-  firmware's header parse produces exactly the Huffman tables it uploads
-  (`src/inflate.rs`, zero dependencies; cross-checked against an
-  independent RFC 1951 decoder — 28,256 bytes, stable).
-- Real firmware now boots through "LD eCos v1.16 1506f" → engine done →
-  loader result check ("LD eCos fail" branch, deterministic dead-end at
-  0xA2000D90). ~1.30 M instructions, < 1.5 s wall clock.
-- **Open**: the driver's success exit needs the full 0x8684-byte decode —
-  the continuation after block 1 is a per-symbol co-processor protocol
-  (0xBFFE381C/0x3820 symbol reads + the mul-based length computation at
-  0xA2002630). docs/firmware-analysis.md §13.4.
+- Engine handshake modeled (devices::DecompEngineLo/Hi, machine service
+  loop): table uploads via 0xBFFE3844/0xBFFE3848, start 0xBFFE3824 bit 0.
+- **Completion semantics corrected (§13.3)**: the driver's success path is
+  the poll's **bit-5 event branch** (ack 0x2000 → event counter reaches the
+  header-mirrored limit 78 → accounting block at 0xA2002630 → return
+  0x13800); the bit-6 branch is the failure epilogue. Modeling completion
+  on bit 5 (the first event satisfies the counter because the second
+  counter is initialized to u16@2 − 1 = 77) is what unlocks the loader.
+- Compression format: "SP" container = raw DEFLATE; uploaded tables match
+  the stream header bit-for-bit. Engine decode modeled with the programmed
+  start bit (R3818 = 1024 stream bits; the 16-bit gap is zero padding) and
+  decode-to-input-end semantics (end-of-block = marker).
+- **Real firmware now prints "Go eCos" + "Boot from SPI" and jumps to the
+  decompressed eCos entry at 0xA1600000** (~1.31 M instructions,
+  deterministic). First entry into the eCos stage.
+- **Open (§14)**: the engine's LZ value semantics — the bit parse is exact
+  but the output bytes are not yet valid MIPS code (~83% word validity).
+  The eCos entry trace is the next diagnostic anchor; the display pipeline
+  sits behind it.
 
 ## Milestone G — Extension & stabilization (in progress)
 

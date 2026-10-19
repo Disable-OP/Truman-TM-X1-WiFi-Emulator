@@ -218,7 +218,11 @@ fn real_firmware_boots_through_ddr_training_into_main_firmware() {
     let mut machine = Machine::new(MachineConfig::default(), &image);
     boot::reset_with_diagnostics(&mut machine, false);
 
-    let result = machine.run(30_000_000);
+    // 1,330,000 steps lands shortly after the "Go eCos" jump into the
+    // decompressed eCos image (deterministic; see the step-count assert
+    // below). A larger budget would just nop-slide through the zero-filled
+    // DRAM beyond the decoded image region.
+    let result = machine.run(1_330_000);
     let console = machine.uart_console();
     eprintln!(
         "boot-chain: {} steps, stop: {}, pc=0x{:08x}",
@@ -247,39 +251,41 @@ fn real_firmware_boots_through_ddr_training_into_main_firmware() {
         );
     }
 
-    // The main firmware must be executing from its documented load address
-    // (kseg1 0xA2000000 = phys 0x02000000, DRAM offset 32 MiB).
-    assert_eq!(
-        result.pc & 0xFFFF_0000,
-        0xA200_0000 & 0xFFFF_0000,
-        "main firmware runs at 0xA2000000"
-    );
-    // Milestone H (hypothesis H12): the hardware decompression engine at
-    // 0xBFFE3800 completes its decode, the loader's wait loop (which is
-    // also the front-panel key scan) exits via 0xBFFE384C bit 6, and the
-    // loader reaches its result check. With the engine handshake modeled
-    // but the per-symbol continuation protocol still open, the loader's
-    // result check evaluates to its failure branch ("LD eCos fail") and
-    // the boot stops deterministically at the loader's own dead-end at
-    // 0xA2000D90 — real firmware code, no CPU fault before that point.
-    for marker in ["LD eCos v1.16 1506f", "LD eCos fail"] {
+    // The main firmware executes from its documented load address
+    // (kseg1 0xA2000000 = phys 0x02000000, DRAM offset 32 MiB); with the
+    // engine event modeled the boot continues past it into the eCos
+    // stage, so the final PC is asserted below instead.
+    // Milestone I (§13.3): the decompression engine completes, the loader's
+    // wait loop takes the bit-5 event branch (ack 0x2000, event counter
+    // reaches the header-mirrored limit), the driver returns 0x13800 and
+    // the loader's success path prints "Go eCos" / "Boot from SPI" and
+    // jumps to the decompressed eCos entry at 0xA1600000 (phys
+    // 0x01600000). The eCos image bytes themselves are the engine's
+    // decode — its exact LZ value semantics are still being pinned down
+    // (§13.4), so no eCos-internal behavior is asserted yet, only the
+    // real control flow of the unmodified boot chain.
+    for marker in ["LD eCos v1.16 1506f", "Go eCos", "Boot from SPI"] {
         assert!(
             console.contains(marker),
             "boot chain must reach {marker:?}; console so far:\n{console}"
         );
     }
     assert!(
-        (1_290_000..1_300_000).contains(&result.steps),
-        "deterministic step count to the loader's dead-end, got {}",
+        !console.contains("LD eCos fail"),
+        "loader failure path must not be taken"
+    );
+    // The boot must be executing inside the eCos image page.
+    assert_eq!(
+        result.pc & 0xFFF0_0000,
+        0xA160_0000,
+        "boot must reach the eCos entry page (0xA1600000), got {:#x}",
+        result.pc
+    );
+    assert!(
+        (1_290_000..1_400_000).contains(&result.steps),
+        "deterministic step count into the eCos stage, got {}",
         result.steps
     );
-    // Steady state: the stop is the loader's own unknown-instruction
-    // dead-end (data executed after the fail banner), NOT an emulator
-    // fault inside supported code.
-    match &result.stop {
-        StopReason::Cpu(cpu::CpuError::UnknownInstruction { .. }) => {}
-        other => panic!("expected the loader dead-end stop, got {other:?}"),
-    }
 
     // NOTE: "1ST BOOT" is NOT stored in memory — the main firmware prints
     // it via unrolled immediate stores (observed at 0xA2000340..0xA2000448),

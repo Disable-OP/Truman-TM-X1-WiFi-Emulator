@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.6.0 — Milestone I: "Go eCos" — the boot chain enters the eCos stage
+
+### Changed (evidence-driven corrections)
+- **Engine completion line moved from bit 6 to bit 5 of 0xBFFE384C**
+  (docs/firmware-analysis.md §13.3): full re-read of the driver's poll
+  showed the bit-6 branch is the *failure* epilogue (returns 0 →
+  "LD eCos fail"), while the bit-5 branch acks (writes 0x2000), counts
+  the event against the limit mirrored from the container header
+  (u16@2 = 78, second counter pre-loaded with 77 so the first event
+  satisfies it), and routes to the success block that returns
+  0x400 × 78 = 0x13800.
+- Engine decode reworked to the programmed semantics
+  (`inflate::inflate_engine`): symbols from the start-bit register
+  (R3818 = 1088 container bits = 1024 stream bits — the 16-bit gap after
+  the 1008-bit header is zero padding, verified in the stream) through
+  the end of the input length register (0xBFFE3838 = 0x8692), with
+  end-of-block symbols as markers instead of terminators.
+- KeyPort: the engine event ORs into bit 5; the 0x2000 ack write clears
+  it (the driver's bit-5 handler writes exactly that value).
+
+### Verified behavior (real firmware, deterministic, ~1.31 M steps)
+- boot → "LD eCos v1.16 1506f" → engine decode (75,657 bytes written to
+  0x01600000 through the bus) → bit-5 event → driver returns 0x13800 →
+  **"Go eCos" + "Boot from SPI"** → jump to the decompressed eCos entry
+  at 0xA1600000. First entry into the eCos stage; every value on the
+  success path is real firmware state (§13.5).
+
+### Open
+- The engine's LZ value semantics: the bit-stream parse is provably exact
+  but the output bytes are not yet valid MIPS code (~83% word validity).
+  Next diagnostic anchor: the eCos entry execution trace (§14).
+
 ## 0.5.0 — Milestone H: hardware decompression engine handshake
 
 ### Added

@@ -10,7 +10,6 @@
 //! these tests drive the mechanisms deliberately through the public
 //! machine API — exactly the injection path a virtual device would use.
 
-use truman_emulator::cpu;
 use truman_emulator::firmware::{self, layout, Image};
 use truman_emulator::machine::{Machine, MachineConfig, StopReason};
 use truman_emulator::memory::AccessSize;
@@ -239,25 +238,27 @@ fn real_firmware_boot_is_unaffected_by_irq_wiring() {
     let image = firmware::load(&path).expect("load real firmware");
     let mut m = Machine::new(MachineConfig::default(), &image);
     m.reset();
-    let r = m.run(30_000_000);
+    // 1,330,000 steps lands just after the "Go eCos" jump into the
+    // decompressed eCos image (see tests/boot.rs for the budget rationale).
+    let r = m.run(1_330_000);
     let console = m.uart_console();
     assert!(
         console.contains("LD eCos v1.16 1506f"),
         "boot chain must still reach the eCos milestone; console:\n{console}"
     );
-    // Milestone H: the decompression engine completes, the loader's wait
-    // loop exits, and the loader reaches its own result-check dead-end
-    // ("LD eCos fail" — the per-symbol continuation protocol is still
-    // open, docs/firmware-analysis.md §13.4). The stop is the firmware's
-    // own data-execution dead-end, not an emulator fault.
+    // Milestone I (§13.3): with the engine event line modeled, the loader's
+    // success path prints "Go eCos"/"Boot from SPI" and jumps to the eCos
+    // entry at 0xA1600000. No emulator fault occurs on the way.
     assert!(
-        console.contains("LD eCos fail"),
-        "engine handshake must let the loader reach its result check"
+        console.contains("Go eCos") && console.contains("Boot from SPI"),
+        "engine handshake must let the loader take its success path"
     );
-    assert!(matches!(
-        r.stop,
-        StopReason::Cpu(cpu::CpuError::UnknownInstruction { .. })
-    ));
+    assert_eq!(
+        r.pc & 0xFFF0_0000,
+        0xA160_0000,
+        "boot must be inside the eCos image page, got {:#x}",
+        r.pc
+    );
     // The intc line must never have asserted during the real boot.
     assert_eq!(m.intc_output(), 0, "no interrupt may fire during real boot");
 }

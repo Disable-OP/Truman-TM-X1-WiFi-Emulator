@@ -276,6 +276,152 @@ pub fn inflate(
     }
 }
 
+/// Decode the container stream the way the hardware engine is programmed to.
+///
+/// Evidence (docs/firmware-analysis.md §13, DRAM dump at poll time):
+/// * the driver parses the dynamic Huffman header itself and uploads the
+///   equivalent tables, so the tables can be re-derived from the stream's
+///   first block header (bit-for-bit equal to the uploads);
+/// * the engine's start-bit register 0xBFFE3818 is programmed to
+///   `ceil32(header_bits_from_container)` — for this container the dump
+///   shows 134 header bytes counted from the container start (the pointer
+///   sits at image+0x86), i.e. 1088 container bits = **1024 bits after the
+///   8-byte "SP" header**, with the 16-bit gap after the 1008-bit header
+///   verified to be zero padding;
+/// * the engine has no BFINAL semantics observable from the driver: the
+///   wait loop expects the *whole* declared stream to be consumed, so the
+///   decode runs to the end of input and end-of-block symbols (256) are
+///   markers, not terminators.
+///
+/// `data` is the stream after the "SP" header; `start_bit` is the symbol
+/// start inside `data` (the engine's R3818 minus the 64 header bits).
+pub fn inflate_engine(
+    data: &[u8],
+    start_bit: usize,
+    preset_len: usize,
+    out: &mut Vec<u8>,
+    max_out: usize,
+) -> Result<usize, InflateError> {
+    out.clear();
+    // Parse the dynamic block header from bit 0 to rebuild the tables.
+    let mut reader = BitReader::new(data);
+    let bfinal = reader.bit()?;
+    let btype = reader.bits(2)?;
+    if btype != 2 {
+        return Err(InflateError::BadBlock { bit: reader.pos });
+    }
+    let hlit = reader.bits(5)? as usize + 257;
+    let hdist = reader.bits(5)? as usize + 1;
+    let hclen = reader.bits(4)? as usize + 4;
+    if hlit > 286 || hdist > 30 {
+        return Err(InflateError::BadBlock { bit: reader.pos });
+    }
+    let mut cl = [0u8; 19];
+    for i in 0..hclen {
+        cl[CL_ORDER[i]] = reader.bits(3)? as u8;
+    }
+    let cl_h = Huffman::new(&cl).ok_or(InflateError::BadBlock { bit: reader.pos })?;
+    let mut lens = Vec::with_capacity(hlit + hdist);
+    while lens.len() < hlit + hdist {
+        let sym = reader.decode(&cl_h, "code-length")?;
+        match sym {
+            0..=15 => lens.push(sym as u8),
+            16 => {
+                let prev = *lens
+                    .last()
+                    .ok_or(InflateError::BadBlock { bit: reader.pos })?;
+                let n = reader.bits(2)? + 3;
+                for _ in 0..n {
+                    lens.push(prev);
+                }
+            }
+            17 => {
+                let n = (reader.bits(3)? + 3) as usize;
+                lens.extend(std::iter::repeat_n(0u8, n));
+            }
+            _ => {
+                let n = (reader.bits(7)? + 11) as usize;
+                lens.extend(std::iter::repeat_n(0u8, n));
+            }
+        }
+    }
+    let lit_h = Huffman::new(&lens[..hlit]).ok_or(InflateError::BadBlock { bit: reader.pos })?;
+    let dist_h = Huffman::new(&lens[hlit..]).ok_or(InflateError::BadBlock { bit: reader.pos })?;
+    let _ = bfinal;
+
+    // Jump to the engine's programmed symbol start and decode to input end.
+    // The hardware stops when its input is exhausted; the final symbol may
+    // need bits past the end register (it reads zeros from the FIFO), so an
+    // out-of-input condition terminates the decode cleanly with the output
+    // produced so far.
+    reader.pos = start_bit;
+    let mut window: Vec<u8> = vec![0u8; preset_len];
+    loop {
+        if (reader.pos >> 3) >= data.len() {
+            break;
+        }
+        // One symbol step; input exhaustion (the final symbol needing bits
+        // past the end register) terminates the decode cleanly.
+        let step = (|| -> Result<(), InflateError> {
+            let sym = reader.decode(&lit_h, "literal/length")?;
+            match sym {
+                0..=255 => push(&mut window, out, sym as u8, max_out)?,
+                // End-of-block marker: the engine keeps decoding (the
+                // driver's success exit requires the full declared stream).
+                256 => {}
+                _ => {
+                    let li = (sym - 257) as usize;
+                    if li >= 29 {
+                        return Err(InflateError::BadCode {
+                            bit: reader.pos,
+                            table: "literal/length",
+                        });
+                    }
+                    let extra = LEXTRA[li];
+                    let ebits = if extra > 0 {
+                        reader.bits(extra)? as u16
+                    } else {
+                        0
+                    };
+                    let length = LBASE[li] + ebits;
+                    let dsym = reader.decode(&dist_h, "distance")? as usize;
+                    if dsym >= 30 {
+                        return Err(InflateError::BadCode {
+                            bit: reader.pos,
+                            table: "distance",
+                        });
+                    }
+                    let dextra = DEXTRA[dsym];
+                    let debits = if dextra > 0 {
+                        reader.bits(dextra)? as u16
+                    } else {
+                        0
+                    };
+                    let d = DBASE[dsym] + debits;
+                    let n = window.len();
+                    if d as usize > n {
+                        return Err(InflateError::BadDistance {
+                            bit: reader.pos,
+                            dist: d as usize,
+                        });
+                    }
+                    for _ in 0..length {
+                        let b = window[n - d as usize];
+                        push(&mut window, out, b, max_out)?;
+                    }
+                }
+            }
+            Ok(())
+        })();
+        match step {
+            Ok(()) => {}
+            Err(InflateError::OutOfInput { .. }) => break,
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(out.len())
+}
+
 fn push(
     window: &mut Vec<u8>,
     out: &mut Vec<u8>,

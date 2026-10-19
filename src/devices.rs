@@ -836,7 +836,9 @@ impl EngineShared {
     }
 
     /// Read a little-endian word at register offset `off` (block-relative).
-    fn reg(&self, off: usize) -> u32 {
+    /// Exposed to the machine service loop, which acts on the registers
+    /// the firmware programmed (start bit, input length).
+    pub fn reg(&self, off: usize) -> u32 {
         u32::from_le_bytes([
             self.regs[off],
             self.regs[off + 1],
@@ -1048,9 +1050,11 @@ pub struct KeyPort {
     name: String,
     pressed: std::rc::Rc<std::cell::Cell<u32>>,
     events: std::rc::Rc<std::cell::RefCell<Vec<u32>>>,
-    /// Engine-done flag (decompression engine, hypothesis H12): read as
-    /// bit 6 of this register. 0xBFFE384C is shared between the key lines
-    /// (bits 0/2/4/5/6 as inputs) and the engine status (bit 6 = done).
+    /// Engine event line (decompression engine, §13.3): read as bit 5 of
+    /// this register. 0xBFFE384C is shared between the key lines
+    /// (bits 0/2/4/5 as inputs) and the engine status. Driver evidence:
+    /// the poll's bit-5 branch acks (writes 0x2000), counts the event and
+    /// routes to the success block; the bit-6 branch returns 0 (fail).
     engine_done: std::rc::Rc<std::cell::Cell<u8>>,
     log: AccessLog,
     log_capacity: usize,
@@ -1059,9 +1063,10 @@ pub struct KeyPort {
 impl KeyPort {
     /// Create the key port. `pressed` = raw key-line level (bit 0/2/4/5/6
     /// observed); `events` receives every keycode the firmware writes;
-    /// `engine_done` is the decompression-engine completion flag that
-    /// ORs into bit 6 of reads (hypothesis H12, docs/firmware-analysis.md
-    /// §13 — the engine-done wait polls this same register).
+    /// `engine_done` is the decompression-engine event flag that ORs into
+    /// bit 5 of reads (docs/firmware-analysis.md §13.3 — the driver's
+    /// success path counts bit-5 events; its bit-6 path is the failure
+    /// epilogue that returns 0).
     pub fn new(
         name: &str,
         pressed: std::rc::Rc<std::cell::Cell<u32>>,
@@ -1097,10 +1102,12 @@ impl Device for KeyPort {
 
     fn read(&mut self, offset: u32, size: crate::memory::AccessSize) -> u32 {
         // All observed accesses are word-wide; byte/half views return the
-        // corresponding little-endian slice of the same level. Bit 6 ORs in
-        // the decompression engine's done flag (hypothesis H12).
+        // corresponding little-endian slice of the same level. Bit 5 ORs in
+        // the decompression engine's event line (§13.3: the driver's poll
+        // takes the bit-5 branch to its success block; the bit-6 branch is
+        // the failure epilogue).
         let done = u32::from(self.engine_done.get());
-        let w = self.pressed.get() | (done << 6);
+        let w = self.pressed.get() | (done << 5);
         let off = offset & 3;
         let v = match size {
             crate::memory::AccessSize::Byte => (w >> (8 * off)) & 0xFF,
@@ -1122,9 +1129,15 @@ impl Device for KeyPort {
     fn write(&mut self, offset: u32, size: crate::memory::AccessSize, value: u32) {
         self.record(offset, size, value, true);
         // Observed writes are the firmware's keycode acknowledgment
-        // (word-wide). Capture them as key events.
+        // (word-wide). Capture them as key events. A write carrying the
+        // 0x2000 code (key line 5 / engine event ack, §13.3) also clears
+        // the engine's event line — the driver's bit-5 handler writes
+        // exactly this value before counting the event.
         if offset == 0 && size == crate::memory::AccessSize::Word {
             self.events.borrow_mut().push(value);
+            if value & 0x2000 != 0 {
+                self.engine_done.set(0);
+            }
         }
     }
 }
@@ -1312,11 +1325,17 @@ mod tests {
         assert_eq!(kp.read(0, AccessSize::Word), 0);
         // The keycode was captured as an event.
         assert_eq!(*events.borrow(), vec![0x400]);
-        // Engine done ORs into bit 6 (hypothesis H12: the loader waits for
-        // this exact bit before jumping to the decompressed image).
+        // Engine event ORs into bit 5 (§13.3: the driver's poll takes the
+        // bit-5 branch to its success accounting block; the bit-6 branch
+        // is the failure epilogue).
         done.set(1);
-        assert_eq!(kp.read(0, AccessSize::Word), 0b0100_0000);
-        assert_eq!(kp.read(0, AccessSize::Byte), 0x40);
+        assert_eq!(kp.read(0, AccessSize::Word), 0b0010_0000);
+        assert_eq!(kp.read(0, AccessSize::Byte), 0x20);
+        // The firmware acks the event by writing keycode 0x2000; the event
+        // line clears on that write.
+        kp.write(0, AccessSize::Word, 0x2000);
+        assert_eq!(kp.read(0, AccessSize::Word), 0);
+        assert_eq!(*events.borrow(), vec![0x400, 0x2000]);
         done.set(0);
         // Byte/half views of the level (LE slices).
         pressed.set(0x0402);
