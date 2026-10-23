@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.10.0 — Milestone M: Q2 resolved (windows named by evidence); SP stream structure probed; CI
+
+### Added
+- `Machine::access_log_names()` — names of all instrumented windows, for
+  phase-by-phase access correlation; covered by
+  `tests/boot.rs::instrumented_window_names_cover_the_q2_windows`.
+- `examples/window_correlation.rs` — runs the real boot in step segments,
+  segments it by UART milestones, and reports per-phase per-window access
+  deltas plus first-touch steps (the Q2 evidence generator).
+- Analysis tools (all reproducible against the pristine flash):
+  `fw_stream_structure.py` (SP block-chain decoder, exhaustive
+  terminating-header search, Kraft completeness check),
+  `fw_ck_sweep.py` (~250 checksum families vs the two anchors),
+  `fw_shift_predicate.py` (exact-count length-accounting predicates for
+  the +4,474 output delta).
+- CI: `.github/workflows/ci.yml` — fmt/clippy/test/check on push and PR.
+
+### Resolved
+- **Q2** (docs/firmware-analysis.md §16.4): 0x98000000/0x98010000 are the
+  flash mirror's code-fetch and data-read paths (the 0x10000-package
+  descriptor reads land there during "LD eCos"); 0xB0000000/0x90000000/
+  0xF0000000 are **address-classification masks** in the loader's
+  dispatcher (mask-and-compare chains, no dereference) — the phys
+  0x10000000/0x30000000 windows are never accessed by the observed boot.
+  `MachineConfig` field docs and the module map updated accordingly
+  (0xF0000000 corrected to kseg2).
+
+### Documented (docs/firmware-analysis.md §16, docs/roadmap.md)
+- The SP container is **not** one deflate block: block 1 is a well-formed
+  FINAL dynamic block (ends at bit 106,259 with 28,260 bytes); 169,229
+  bits follow with no standard continuation (dynamic/fixed/stored all
+  refuted by exhaustive per-bit search); both Huffman tables are complete
+  (Kraft = 1), so "zero bad codes" never protected the single-block tail.
+- The checksum anchors are not reproduced by ~250 standard families —
+  the algorithm is custom or the coverage differs (Q8 open).
+- Position-shift reframing of the LZ search: only output bytes 0..1 are
+  positionally certain; exact-count predicates for a +2-byte-per-match
+  shift reported (`dist<96`, `dist≥3485`, `len≥5&dist<3073`, 2,237
+  matches each).
+
 ## 0.9.0 — Milestone L: container formats resolved; engine LZ narrowed by five refutation families
 
 ### Added

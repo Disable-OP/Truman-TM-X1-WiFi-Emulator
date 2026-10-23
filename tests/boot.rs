@@ -147,6 +147,28 @@ fn sysreg_param_window_supports_read_modify_write() {
     );
 }
 
+#[test]
+fn instrumented_window_names_cover_the_q2_windows() {
+    // Machine::access_log_names / access_log power the phase-by-phase
+    // window correlation (examples/window_correlation.rs). The three
+    // Milestone-B unknown windows must stay instrumented and addressable
+    // by name — Q2's verdict (docs/firmware-analysis.md §16.4) rests on
+    // their per-phase access deltas.
+    let image = img(synthetic_image(&[0x0000_0000u32]));
+    let machine = Machine::new(MachineConfig::default(), &image);
+    let names = machine.access_log_names();
+    for required in ["win-0x18000000", "win-0x10000000", "win-0x30000000"] {
+        assert!(
+            names.iter().any(|n| n == required),
+            "instrumented window `{required}` missing from {names:?}"
+        );
+        assert!(
+            machine.access_log(required).is_some(),
+            "access_log(`{required}`) must resolve"
+        );
+    }
+}
+
 /// Locate the committed real firmware (if present) for the smoke test.
 fn real_firmware_path() -> Option<std::path::PathBuf> {
     let manifest = env!("CARGO_MANIFEST_DIR");

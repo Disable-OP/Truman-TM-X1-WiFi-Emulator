@@ -66,6 +66,33 @@ The plan defined F as "bootloader executes / memory initialization succeeds"
   decompressed eCos entry at 0xA1600000** (~1.31 M instructions,
   deterministic). First entry into the eCos stage.
 
+## Milestone M — Q2 resolved; SP stream structure probed; CI ✅
+
+- **Q2 closed with runtime + static evidence** (§16.4): 0x98000000/
+  0x98010000 = the flash mirror's code/data paths (the 0x10000-package
+  descriptor reads land there during "LD eCos"); 0xB0000000/0x90000000/
+  0xF0000000 are address-classification masks in the loader's dispatcher,
+  never dereferenced — the phys 0x10000000/0x30000000 stubs stay visible
+  and unused. Tool: `examples/window_correlation.rs` (UART-milestone
+  phase segmentation of per-window access logs).
+- **SP stream structure probed** (§16.1, `tools/fw_stream_structure.py`):
+  block 1 is a well-formed FINAL dynamic block (ends at bit 106,259,
+  28,260 bytes); 169,229 bits follow with **no standard continuation**
+  (dynamic/fixed/stored refuted by exhaustive per-bit search); both
+  Huffman tables are complete (Kraft = 1), so the single-block walk was
+  never actually verified past EOB#1.
+- **Checksum sweep** (§16.2, `tools/fw_ck_sweep.py`): ~250 standard
+  families against both anchors — no hit; Q8 stays open.
+- **Position-shift reframing** (§16.3, `tools/fw_shift_predicate.py`):
+  only output bytes 0..1 are positionally certain; a length-accounting
+  shift (+4,474 via exact-count predicates `dist<96` / `dist≥3485` /
+  `len≥5&dist<3073`, all +2) is the remaining structural hypothesis
+  class alongside the tail structure.
+- **CI**: GitHub Actions workflow (`.github/workflows/ci.yml`) running
+  `cargo fmt --check`, `clippy -D warnings`, `cargo test --release` and
+  `cargo check` on push/PR.
+- New API: `Machine::access_log_names()` (tested).
+
 ## Milestone L — container formats resolved; LZ narrowed by five families ✅
 
 - **Q4 resolved for the driver**: the payload is stored **plaintext** at
@@ -140,8 +167,11 @@ Track by evidence-first value, in rough order:
    container is a DEFLATE-shaped stream consumed only by the hardware
    engine; the SDK also ships a software LZMA decoder (flags 2 path).
    Remaining: the engine's LZ value semantics (§15.6/§14).
-4. **0x98010000 / 0xB0000000 / 0xF0000000 windows**: name blocks by access
-   correlation with the UART banner sequence (Q2).
+4. ~~**0x98010000 / 0xB0000000 / 0xF0000000 windows**~~ ✅ resolved in
+   Milestone M (§16.4): flash-mirror data path + address-classification
+   masks; no peripherals found behind them.
 5. **Performance**: ~5 M instr/s today; a decode cache would lift the
    100 M-step runs from ~20 s to a few seconds.
-6. **CI**: GitHub Actions running fmt/clippy/test on push.
+6. ✅ **CI**: GitHub Actions running fmt/clippy/test on push (Milestone M).
+7. **SP tail structure + LZ value semantics** (§16.1/§16.3/§16.5): the
+   primary boot blocker — decode the 169,229 bits after SP block 1.

@@ -9,9 +9,9 @@
 //! | 0xBFFC0000+     | 0x1FFC0000+    | IRAM overlay 64 KiB (loader stack) | hypothesis |
 //! | 0xBFFE0000+     | 0x1FFE0000+    | param/register page 64 KiB | hypothesis |
 //! | 0x80000000+     | 0x00000000+    | DRAM 64 MiB | probable |
-//! | 0x98000000+     | 0x18000000+    | unknown fast RAM/peripheral window | hypothesis |
-//! | 0xB0000000+     | 0x10000000+    | unknown peripheral window | hypothesis |
-//! | 0xF0000000+     | 0x30000000+    | unknown peripheral window | hypothesis |
+//! | 0x98000000+     | 0x18000000+    | flash execution/data mirror (Q2, §16.4) | verified-usage |
+//! | 0xB0000000+     | 0x10000000+    | never accessed by the observed boot (the 0xB0000000/0x90000000 lui constants are address-classification masks, not peripheral bases — §16.4) | verified-nonuse |
+//! | 0xF0000000+     | 0x30000000+    | never accessed; kseg2 (TLB-mapped on stock MIPS32, faults here) — kept as a visible logging stub | verified-nonuse |
 //!
 //! Note the kseg1 arithmetic: `0xBFFC0000 & 0x1FFFFFFF = 0x1FFC0000`, i.e.
 //! the overlay windows sit in the **top 256 KiB of the 4 MiB flash window**
@@ -69,19 +69,24 @@ pub struct MachineConfig {
     /// FIFO) and a high region (+0x3850..0x3878: window + output address).
     pub decomp_offset: u32,
     pub decomp_size: u32,
-    /// Unknown kseg0 window at 0x98000000 (phys 0x18000000).
-    /// Evidence (Milestone B): stage-1 `jal`s into 0xB8000998 after init —
-    /// a fast execution mirror of the SPI flash. Modeled as copy-on-write
-    /// RAM prefilled with the firmware image (linear mirror).
+    /// Flash execution/data mirror (Q2 resolved, §16.4): the 0x98000000
+    /// (code fetch, stage-1/2 execution) and 0x98010000 (data reads, e.g.
+    /// the 0x10000-package descriptors during "LD eCos") accesses both
+    /// land here — one linear mirror of the SPI flash at phys 0x18000000.
     pub win_180_base: u32,
     pub win_180_size: u32,
     /// If true, the 0x18000000 window is prefilled with the flash image
     /// contents (linear mirror hypothesis). Writes persist.
     pub win_180_mirror_flash: bool,
-    /// Unknown kseg1 window at 0xB0000000 (phys 0x10000000).
+    /// Vendor window at phys 0x10000000 (kseg1 0xB0000000 / kseg0
+    /// 0x90000000). NEVER accessed by the observed boot (§16.4); the lui
+    /// constants are address-classification masks. Kept as a visible
+    /// logging stub.
     pub win_100_base: u32,
     pub win_100_size: u32,
-    /// Unknown kseg1 window at 0xF0000000 (phys 0x30000000).
+    /// Vendor window at phys 0x30000000 (kseg2 0xF0000000). NEVER accessed
+    /// by the observed boot; kseg2 is TLB-mapped on stock MIPS32 and
+    /// faults in this model — the stub exists so the map stays explicit.
     pub win_300_base: u32,
     pub win_300_size: u32,
 }
@@ -480,6 +485,12 @@ impl Machine {
             .iter()
             .find(|(n, _)| n == name)
             .map(|(_, log)| log)
+    }
+
+    /// Names of all instrumented windows (for phase-by-phase access
+    /// correlation; see `examples/window_correlation.rs`).
+    pub fn access_log_names(&self) -> Vec<String> {
+        self.logs.iter().map(|(n, _)| n.clone()).collect()
     }
 
     /// Reset the machine to its boot state.

@@ -171,11 +171,11 @@ Histogram of `lui`+`ori` pairs and bare `lui` halves in the first 64 KiB
 |---|---|---|---|
 | 0xBFFE0000 (+0x210/0x284/0x2AC/0x1580/0x15CC/0x1524/0x1504/0x1618/0x3E08/0x3E14/0x8000…) | 73 | Primary register/param window touched throughout the loader | **Verified** as used; decode **Unknown** (Q1) |
 | 0xBFFC0000 / 0xBFFC0E00 / 0xBFFC1EEC | 15+4 | Stack region (0xBFFC0E00) and loader-side constants | **Verified** as used; decode **Unknown** (Q1) |
-| 0x98010000 / 0x98000000 | 74+10 | kseg0 → physical 0x18010000 / 0x18000000 — heavily used window (peripheral or IRAM) | **Verified** as used; decode **Unknown** (Q2) |
+| 0x98010000 / 0x98000000 | 74+10 | kseg0 → physical 0x18010000 / 0x18000000 — the flash mirror: 0x98000000 serves stage-1/2 **code fetch**, 0x98010000 serves **data reads** (the 0x10000-package descriptors during "LD eCos"; §16.4) | **Resolved** (Q2) |
 | 0x82000000 | 55 | kseg0 → physical 0x02000000 (DRAM data area) | **Probable** (DRAM) |
 | 0x80000000 | 16 | kseg0 DRAM base | **Probable** (DRAM) |
 | 0xA0000000 | 6 | kseg1 alias of DRAM base (uncached) | **Probable** |
-| 0xB0000000 / 0xF0000000 / 0x90000000 | 6/6/5 | Vendor peripheral spaces (kseg1 phys 0x10000000 / 0x30000000) | **Verified** as used; decode **Unknown** (Q2) |
+| 0xB0000000 / 0xF0000000 / 0x90000000 | 6/6/5 | **Address-classification masks, not peripheral bases** (Milestone M, §16.4): the sites are `and` with 0xF0000000 + `beq` against 0x90000000/0xB0000000/0xF0000000 in the loader's address-attribute dispatcher; no load/store is issued through them | **Resolved** (code decoded) |
 | masks 0x0FFFFFFF / 0xC0FFFFFF / 0xFC7FFFFF / 0xFFC0FFFF | many | address-mask arithmetic (cache/decode helpers) | — |
 
 ## 7. CPU backend decision (evaluated against evidence)
@@ -192,7 +192,7 @@ Histogram of `lui`+`ori` pairs and bare `lui` halves in the first 64 KiB
 | # | Question | Next concrete experiment |
 |---|---|---|
 | Q1 | What decodes at 0xBFFC0000 and 0xBFFE0000 (SRAM overlay vs registers vs flash alias)? The loader *writes* there and uses 0xBFFC0E00 as stack. | Emulate with hypothesis A (flash XIP at 0xBFC00000; 0xBFFC0000 = RAM overlay, 0xBFFE0000 = register window) and trace every access; a wrong decode shows up as a write fault or an infinite polling loop, which pins the correct model. |
-| Q2 | Which peripherals live at 0x98010000 / 0x98000000 / 0xB0000000 / 0xF0000000? | In the emulator, log the first 50 distinct offsets touched per window after DDR init begins; correlate with the loader's print sequence (`DRAM CPU access…`) to name blocks by function. |
+| Q2 | Which peripherals live at 0x98010000 / 0x98000000 / 0xB0000000 / 0xF0000000? | **Resolved in Milestone M (§16.4)**: 0x98000000/0x98010000 = the flash mirror (code fetch + data reads); 0xB0000000/0x90000000/0xF0000000 = address-classification masks in the loader's dispatcher, never dereferenced. The phys 0x10000000/0x30000000 stubs stay in the access map (never touched by the observed boot). |
 | Q3 | Where is the UART (the loader prints via `putchar`-style writes)? | Trace byte-wide stores (`sb`) in tight loops between instruction-run bursts; the first such window is the UART data register. |
 | Q4 | What is the main-firmware encryption/compression (0x020000–0x37FFFF)? | After boot progresses far enough, dump the DRAM range the stage-2 decompressor writes and compare structure; consider the sboot signature path. |
 | Q5 | Exact reset PC: does the BootROM jump to flash offset 0 mapped at 0xBFC00000, or copy to IRAM first? | Boot-emulation experiment: start PC at 0xBFC00000 with flash mapped there; if the first stores corrupt the instruction stream (stack at 0xBFFC0E00 falls inside the flash window under hypothesis A1), switch to the IRAM-copy hypothesis and record which one survives. |
@@ -953,3 +953,137 @@ small window" escape hatch.
   mapped. The remaining hypothesis space is concentrated on per-match
   value behavior that is *not* explainable by any uniform table, window,
   alignment, or write-transform model tested so far.
+
+## 16. Milestone M — stream structure, checksum, position-shift, and Q2
+
+All experiments are reproducible from the committed tools
+(`tools/fw_stream_structure.py`, `tools/fw_ck_sweep.py`,
+`tools/fw_shift_predicate.py`, `examples/window_correlation.rs`) against
+the pristine flash image.
+
+### 16.1 The SP stream is NOT one deflate block; no standard continuation exists
+
+The RFC walk treats the container as a single dynamic block and finds
+symbol 256 (EOB) twice at mid-stream (RFC-out 28,260 and 45,137). New
+structural facts (`fw_stream_structure.py`):
+
+* **Block 1 is a well-formed FINAL dynamic block** (bfinal=1, btype=2):
+  honored as a block boundary it ends at bit **106,259** with **28,260
+  bytes** of output and 9,606 symbols. Strict validity of that prefix:
+  52.3% — the same bytes the single-block walk produces up to EOB#1.
+* **169,229 stream bits remain** after block 1 — the tail must produce
+  the remaining ~51,612 bytes of the programmed 79,872.
+* **No standard continuation exists.** Exhaustive per-bit search over
+  bits 106,259..107,159 (`find-b2`): every plausible dynamic/fixed block
+  header either fails to decode or terminates degenerately (all
+  fixed-table candidates converge on endbit 106,953 with 33–42 symbols
+  and ≤181 bytes of output — a fixed-decode artifact, not structure).
+  The immediate continuation decodes as btype=1 (fixed) and hits invalid
+  length symbol 286 after 46 bits; the byte-aligned continuation parses
+  a plausible-looking dynamic header (hlit=260, hdist=10 at bit 106,264)
+  but its decode runs to the stream end **without ever reaching an EOB**
+  — misaligned garbage, not a block.
+* A stored-block continuation is refuted: no LEN/NLEN complement pair
+  exists at any byte boundary 13,282..13,340.
+* **The litlen and dist tables are complete (Kraft sum = 1)** — so the
+  walk's "zero bad codes over 25,027 symbols" never protected the tail:
+  complete tables decode ANY bit pattern. The single-block parse of
+  everything after EOB#1 was never actually verified.
+
+Conclusion: the container's tail carries structure outside standard
+DEFLATE block framing — per-chunk framing, a dialect use of symbol 256,
+or a second codec section. Until the tail is decoded, the exact-output
+size constraint (Σ lengths = RFC + 4,474) should be treated as provisional
+(it assumes the tail symbols are all consumed as literals/matches).
+
+### 16.2 Checksum algorithm not in the standard families
+
+The two anchors (§15.2) were swept against ~250 standard checksum
+families (`fw_ck_sweep.py`): CRC-32 catalog (10 polys × init 0/0xFFFFFFFF
+× refin/refout × xorout 0/0xFFFFFFFF), 14 CRC-16 families, Adler-32
+variants, Fletcher-16/32, FNV-1/1a, DJB2/sdbm/JS, Jenkins one-at-a-time,
+sums/XORs (8/16/32, word-wise LE/BE), BSD/SysV, 15 rotations of
+ROR/ROL-accumulate (+ and ^), and weighted sums — each against the driver
+payload (flash 0x2F6C..0x6948 → 0xB56FB05D) and the container
+(0x1002C..0x96B8 → 0xB5EBF9FF, under the container-coverage hypothesis).
+**No family reproduces either anchor.** The algorithm is custom or the
+coverage differs; Q8 stays open, and with it the strongest offline oracle.
+
+### 16.3 Position-shift reframes the length search; exact-count predicates
+
+Every prior length search kept RFC copy accounting — later token
+positions never moved. But the first MATCH in the stream produces output
+byte 2, so only bytes 0..1 (literals `60 81`) are positionally certain.
+If the engine's matches emit more bytes than RFC accounting, **all
+subsequent positions shift**, which would explain simultaneously:
+
+* why the decoded head is a "sparse non-code table" instead of the eCos
+  vector/entry code (the boot walks NOPs from 0xA1600000 until it faults
+  on the literal word `00 00 FF FF` at +0x50 — table bytes, not code);
+* the programmed 78×1024 = 79,872 vs the RFC 75,398 (Δ = 4,474);
+* why every fixed-positions search plateaued at ~50%.
+
+If the shift comes from a uniform-per-predicate extra emission, the
+predicate must satisfy count × adjustment = 4,474 (4,474 = 2 × 2,237;
+2,237 is prime). `fw_shift_predicate.py` enumerates threshold,
+conjunction, singleton, modulo and chunk predicates over (len, dist,
+out). Exact hits at adjustment +2 (2,237 matches each):
+
+| predicate | matches |
+|---|---|
+| `dist < 96` | 2,237 |
+| `dist ≥ 3485` | 2,237 |
+| `len ≥ 5 & dist < 3073` | 2,237 |
+
+None is a natural hardware boundary (96/3485/3073 are not ladder edges),
+so the predicate family is reported but not promoted; the search's real
+conclusion is that **combined length+distance semantics** (not any
+uniform table remap, and not any position-fixed model) is the remaining
+hypothesis class.
+
+### 16.4 Q2 resolved: window naming with runtime + static evidence
+
+`examples/window_correlation.rs` segments the real boot by UART
+milestones (10,000-step segments; per-phase per-window access deltas via
+`Machine::access_log`), producing the phase table this section cites.
+
+* **0x98000000 (phys 0x18000000, offsets 0x0000..0xFFFF)** — code fetch:
+  stage-1 execution (phase "jump to second boot!!"), stage-2 DDR loader
+  (0x0160..), driver execution after "Go!" (0x5D10..). One window, ~10k
+  read accesses per 10k-step phase — the execution mirror.
+* **0x98010000 (mirror offset 0x10000)** — data: exactly during the
+  "LD eCos v1.16 1506f" phase, 44 read accesses land at mirror offsets
+  0x10000.. — the **0x10000-package header/descriptor reads**. The
+  "0x98010000 window" is not a separate peripheral; it is the flash
+  mirror's data path. (Cumulative mirror usage: 49,468 distinct offsets,
+  range 0x002C..0x186B7, 34,488 of them ≥ 0x10000.)
+* **0xB0000000 / 0x90000000 / 0xF0000000 (phys 0x10000000 / 0x30000000)**
+  — **never accessed by the observed boot** (zero accesses in 1.3 M
+  steps). Static decoding of every lui site (`lui $r, 0xB000/0x9000/
+  0xF000` in stage-1/2 and the driver) shows the constants are used in
+  **address-classification chains**: `and` with 0xF0000000, then `beq`
+  against 0x90000000 / 0xB0000000 / 0xF0000000 selecting handler
+  branches (e.g. stage-2 0x0B410, driver 0x04F1C..0x05168) — masks on
+  the *high nibble of arbitrary addresses*, never dereferenced bases.
+  The earlier "vendor peripheral spaces" reading (§6) is corrected.
+
+Model updates shipped with this milestone: `MachineConfig` documents the
+resolved roles (flash mirror; never-accessed stubs), and the stubs stay
+in the instrumented access map so any future firmware that touches them
+becomes immediately visible.
+
+### 16.5 What remains open
+
+* **The SP tail structure (§16.1)** — now the primary LZ blocker: decode
+  the 169,229 bits after block 1. Next probes: (a) per-chunk framing
+  derived from the driver's 128-byte rounding rule; (b) dialect meaning
+  of mid-stream symbol 256 (2 occurrences); (c) whether the tail's bit
+  positions align to the engine's start-bit + k×1024 grid.
+* **Q8 checksum** (§16.2) — custom algorithm or different coverage;
+  disassemble the loader's checksum routine via an access trace on the
+  descriptor reads.
+* **§14 LZ value semantics** — refuted families now include: all §14.3 +
+  §15.6 lists, standard block framings (§16.1), ~250 checksum families
+  (as an oracle hunt), and position-fixed length remaps (§16.3). The
+  remaining space: combined length+distance semantics with position
+  shift, and whatever the tail structure reveals.
