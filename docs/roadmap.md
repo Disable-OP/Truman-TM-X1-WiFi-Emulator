@@ -65,10 +65,25 @@ The plan defined F as "bootloader executes / memory initialization succeeds"
 - **Real firmware now prints "Go eCos" + "Boot from SPI" and jumps to the
   decompressed eCos entry at 0xA1600000** (~1.31 M instructions,
   deterministic). First entry into the eCos stage.
-- **Open (§14)**: the engine's LZ value semantics — the bit parse is exact
-  but the output bytes are not yet valid MIPS code (~83% word validity).
-  The eCos entry trace is the next diagnostic anchor; the display pipeline
-  sits behind it.
+
+## Milestone J — Engine interface decoded; decode defect fixed ✅
+
+- **The driver's engine interface is fully reverse-engineered** (§13.6):
+  start-bit computation, table-upload protocol (command = engine
+  table-RAM address), the canonical counting-sort table builder, the
+  completion accounting formula, and the poll countdown preloading.
+- **The emulator's engine decode had a frozen read pointer** (every
+  match emitted a constant fill of its first source byte). Proven by
+  re-implementation (100.000% byte match against the previous output)
+  and fixed with a regression KAT. All §13.4 measurements taken with
+  the buggy decode are superseded.
+- The bit-stream parse is independently verified exact (25,027 symbols,
+  zero bad codes); the uploaded tables are verified canonical from the
+  DRAM dump; the output size program is verified 78×1024 = 79,872.
+- **Open (§14)**: the engine's LZ value semantics — RFC 1951 values give
+  75,657 bytes of not-yet-valid code vs the programmed 79,872; the
+  length mapping (hardware base tables) is the primary unknown, the
+  desc[6] checksum algorithm the decisive missing oracle.
 
 ## Milestone G — Extension & stabilization (in progress)
 

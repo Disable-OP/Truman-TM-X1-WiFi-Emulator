@@ -598,22 +598,119 @@ semantics the register program implies. The front-panel keys remain
 live inside the wait loop (the poll is shared), and the virtual button
 injection (§12) keeps working through it.
 
-## 14. Next milestone — pinning the engine's LZ value semantics (display path)
+### 13.6 The driver's engine interface — fully decoded (Milestone J), and
+### the emulator-side decode defect it exposed
 
-The eCos stage is now entered (§13.4). The image bytes the engine produced
-are not yet trusted code, so the next evidence steps are:
+Disassembly of the driver (payload 0xA2000000+0x1F50..0x2790, committed
+analysis in `tools/fw_driver_disasm.py`) pins every piece of the engine
+interface:
 
-1. Capture the eCos entry trace: the first faulting PC inside 0xA1600000+
-   localizes the first wrongly decoded region of the image (the entry
-   code itself is literal-driven and therefore correct if the fault is
-   far in).
-2. Solve for the engine's length/distance base tables from the phase
-   drift of the byte alignment along the decoded stream (the drift
-   accumulates only at matches with wrong lengths).
-3. Cross-check candidate tables against the checksum word in the
-   descriptor (desc[6] = 0xB5EBF9FF) once a full decode produces a
-   verifiable output.
+* **Start bit (0xBFFE3818)**: the driver computes
+  `header_end = stream_len + 8 + bfinal` (container bits), rounds the
+  byte count up to a 128-byte boundary (`(x + 0x7F) & ~0x7F` — the
+  observed 1024-bit stream start), adds the 64 container-header bits,
+  masks `& 0x7FFF`, and adjusts to a 32-bit boundary when
+  `header_bits & 0x1F != 0` (path at 0xA200272C adds 0x20). For this
+  container: 1008 header bits → 1024 stream bits → R3818 = 1088.
+* **Table uploads are writes to engine-internal table RAM**, addressed
+  by the command word (0xBFFE3844 = command `0xC000 | addr`, data on
+  0xBFFE3848): lit symbols `0x000`, lit first-codes `0x180`, lit
+  cumulative counts `0x190` (15 halfwords each), dist first-codes
+  `0x1A0`, dist cumulative `0x1B0`, dist symbols `0x1C0`. Each round
+  arms with `0xC000`, waits for ready (R3824 bit 1), then uploads.
+  The tables are built in software at DRAM 0x82005074 (lengths),
+  0x82005578 (counts), 0x820055B8 (cumulative), 0x820055F8 (symbol
+  table) by the builder at 0xA2001C5C — a canonical counting sort:
+  `symtab[exclusive_cumulative[len[s]]++] = s` for each symbol with
+  `len[s] != 0`.
+* **The uploaded tables are canonical, with one indexing convention**:
+  the DRAM dump of the built tables (post-boot, still intact) shows the
+  uploaded `first[L] = first_canonical[L+1]` (e.g. dist: first[5]=16,
+  first[6]=60, first[7]=126 — exactly the canonical first codes of
+  lengths 6/7/8 for count[5]=8, count[6]=14, count[7]=3), i.e. the
+  engine compares a code of length L against `first[L-1]`; the
+  cumulative table is inclusive (`cum[L] = Σ_{l≤L} count[l]`), giving
+  the exclusive symbol offset as `cum[L-1]`. Net effect: the code →
+  symbol assignment is the standard RFC 1951 canonical assignment.
+  Only 28 of the 30 dist symbols have codes (lengths 5–9); the lit
+  upload is 285 words (286 minus the one zero-length symbol).
+* **Completion accounting** (0xA2002630): the block reads R381C and
+  R3820, accumulates R3820 bits 15:13 into a gp counter (acking R3820
+  with a zero write when nonzero), and computes
+  `(R381C + (acc << 16)) * (8 << state) + field10` with
+  `state` = gp variable = 4 → a ×128 unit count (624 × 128 = 79,872 =
+  78 × 1024, corroborating the chunk-programmed output size). The
+  driver's return value is simply `R3828 × limit = 0x400 × 78`.
+* **The wait loop's countdown** (gp[-0x7FB4]) is preloaded to
+  `limit − 1` so the *first* event the (slow) poll observes completes
+  the count — the engine fires one event per 0x400 output bytes and
+  the poll cannot catch them all at hardware speed.
 
-The graphics pipeline (display controller, HDMI/EDID, framebuffer) is
-reachable only after the eCos stage executes real code, which requires
-this decode to be exact.
+**The decode defect (found and fixed in this milestone).** The
+emulator's `inflate_engine`/`inflate_block` match copy read its source
+from a *frozen* index: `let n = window.len()` was captured before the
+copy loop and `window[n - d]` was re-read for every byte of the match.
+Every match therefore produced a constant fill of its first source
+byte instead of a sliding-window copy. The defect is proven, not
+suspected: re-implementing the frozen-pointer semantics in the
+analysis tools (`tools/fw_engine_lz2.py`) reproduces the previous
+engine-model output **byte-for-byte (100.000% over all 75,398 bytes)**.
+The first visible corruption (output byte 195, a `len=7 dist=8` match
+decoded as seven copies of `0xCF`) is exactly the first match whose
+source run was non-constant; earlier matches agreed only because the
+region is zero-dominated. A unit KAT with an overlapping
+(dist=2, len=8) match now pins the live-window semantics
+(`overlapping_match_replicates_from_live_window`).
+
+**Consequence for §13.4's open items**: the frozen-pointer fill decode
+was the vehicle for every earlier "engine semantics" experiment, so
+measurements quoted there (~83% word validity, the byte-alignment
+phase-drift claim, and the ruled-out list) described the *buggy*
+realization, not the hardware. They are superseded by this section and
+by §14.
+
+## 14. Next milestone — the engine's LZ value semantics (revised)
+
+With the decode defect removed, the state of the art is:
+
+* The bit-stream parse is exact and independent: a from-scratch Python
+  canonical-Huffman walk (`tools/fw_engine_lz.py`) decodes all 25,027
+  symbols (15,761 literals, 9,264 matches, 2 end-of-block markers) to
+  the end of the declared stream with **zero bad codes**; the engine
+  consumes exactly the RFC 1951 bit positions (same Huffman codes, same
+  extra-bit counts).
+* The RFC 1951 value semantics (live-window copies, standard
+  LBASE/DBASE tables) produce **75,398 bytes + 259 tail bytes from the
+  engine's 0x8692-byte input window = 75,657 bytes**. The image is *not*
+  valid code: the boot faults at 0xA1600050 on `0x0000FFFF` (a word
+  built from two `0xFF` literals and a zero-fill match), and
+  hardware-lenient word validity is ~79–81% against ~95%+ for known-good
+  SDK code.
+* The driver-programmed output size is 78 × 1024 = **79,872 bytes**
+  (chunk registers R3828/R382C, the accounting formula, and the header's
+  u16@2 all agree), so the engine's value semantics must produce ~4.2 KiB
+  more output than RFC 1951 from the same bits — the length mapping is
+  the primary unknown.
+* Systematically excluded with clean data (tools `fw_engine_lz*.py`):
+  output byte-lane transforms (word-reverse, halfword/byte swap, full
+  and per-chunk reversal), distance-base shifts ±1/±2, distance
+  extra-bit weights ×2/×4/×8 (they fault on window overflow almost
+  immediately), length = base+1 / base+eb·k families solved against the
+  79,872 size oracle and scored by a hardware-lenient MIPS32 validator
+  (best 83.8% = noise), and per-match greedy delta search (97.5% local
+  validity, but the recovered per-code deltas are mutually
+  inconsistent — overfitting, not a table).
+* Ground truth not yet exhausted: the engine's length/distance base
+  tables are hardware constants (the driver uploads only Huffman
+  tables); the checksum word desc[6] = 0xB5EBF9FF has not been matched
+  to an algorithm (CRC32/adler32/sum of the container, stream, and
+  candidate outputs all miss), and would be the decisive oracle for a
+  full decode.
+
+The concrete next steps are unchanged in spirit, but now start from a
+clean baseline: (1) execute the *fixed* RFC decode in the emulator and
+log the first eCos-stage fault (0xA1600050, word 0x0000FFFF built from
+literals at 0x50/0x51 plus a zero-fill match) to localize the first
+wrong region; (2) solve the length mapping from the position drift of
+the literal stream against valid-code constraints; (3) identify the
+desc[6] checksum algorithm to close the loop.

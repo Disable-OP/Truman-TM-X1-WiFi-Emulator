@@ -1,5 +1,46 @@
 # Changelog
 
+## 0.7.0 — Milestone J: engine interface decoded; decode defect found and fixed
+
+### Fixed
+- **Frozen read pointer in the DEFLATE match copy** (`inflate_engine` and
+  `inflate_block`): `window.len()` was captured before the copy loop, so
+  every match wrote a constant fill of its first source byte instead of a
+  live-window copy. Proven, not suspected: re-implementing the frozen
+  semantics reproduces the previous engine output byte-for-byte (100.000%,
+  75,398/75,398). The first visible corruption was output byte 195
+  (a `len=7 dist=8` match decoded as seven copies of `0xCF`); earlier
+  bytes agreed only because the region is zero-dominated. Regression KAT
+  added (`overlapping_match_replicates_from_live_window`).
+- `docs/firmware-analysis.md` §13.4's open-items measurements (word
+  validity, phase drift, ruled-out list) were all taken against the
+  buggy decode and are superseded by §13.6/§14.
+
+### Added
+- **Complete engine-interface reverse-engineering** (§13.6): start-bit
+  computation (128-byte round-up + 32-bit alignment), table-upload
+  protocol (command = engine table-RAM address: lit symbols 0x000,
+  first/cum 0x180/0x190, dist first/cum 0x1A0/0x1B0, dist symbols
+  0x1C0), the canonical table builder at 0xA2001C5C (counting sort),
+  the completion accounting formula `(R381C + acc<<16) * (8 << state) +
+  field10`, and the poll countdown preloading (`limit − 1`).
+- Analysis tools: `tools/fw_engine_lz.py` (independent symbol walk +
+  RFC reference decode), `tools/fw_engine_lz2.py` (divergence map +
+  frozen-pointer proof), `tools/fw_driver_disasm.py` (driver
+  disassembly).
+
+### Verified (independent from-scratch tooling)
+- The container's bit stream parses exactly under canonical Huffman for
+  its whole length (25,027 symbols, zero bad codes); the engine consumes
+  exactly RFC 1951 bit positions.
+- The driver-built Huffman tables (dumped intact from emulated DRAM) are
+  canonical with a one-index `first[]` convention; the code → symbol
+  assignment is standard RFC 1951.
+- Output size program: 78 × 1024 = 79,872 bytes (chunk registers,
+  accounting formula, and header u16@2 agree); RFC 1951 yields 75,657
+  from the engine's input window — the ~4.2 KiB gap is the remaining
+  value-semantics unknown (§14).
+
 ## 0.6.0 — Milestone I: "Go eCos" — the boot chain enters the eCos stage
 
 ### Changed (evidence-driven corrections)

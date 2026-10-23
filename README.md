@@ -47,12 +47,23 @@ decompress/copy → the "1ST BOOT" loader — runs **deterministically under the
 emulator's own MIPS32r2 interpreter** (~1.30 M instructions, covered by an
 automated acceptance test). The loader then talks to the hardware
 decompression engine at 0xBFFE3800 (uploads the Huffman tables it parsed
-from the compressed "SP" container, starts it, and waits for bit 6 of
+from the compressed "SP" container, starts it, and waits for bit 5 of
 0xBFFE384C — the same loop scans the front-panel keys). With the engine
 handshake modeled (`src/inflate.rs`, a dependency-free RFC 1951 decoder) the
 wait loop exits and the loader reaches its result check; the next blocker is
-the engine's per-symbol continuation protocol
-(`docs/firmware-analysis.md` §13).
+the engine's LZ value semantics
+(`docs/firmware-analysis.md` §13.6/§14).
+
+Milestone J: the driver's engine interface is now fully reverse-engineered
+(start-bit computation, table-upload protocol = engine table-RAM addresses,
+completion accounting formula), and a **decode defect was found and fixed**:
+the emulator's match copy used a frozen read pointer (constant fills instead
+of live-window copies) — proven by re-implementation and covered by a
+regression KAT. The bit stream itself is verified exact (25,027 symbols, zero
+bad codes), the uploaded tables are verified canonical, and the programmed
+output size is 78 × 1024 = 79,872 bytes; RFC 1951 value semantics produce
+75,657 bytes of not-yet-valid code, so the engine's length mapping (hardware
+base tables) remains the open question (§14).
 
 Interrupt support (Milestone G, first pass): the CPU implements
 architecture-complete MIPS32r2 interrupt delivery (Status/Cause/EPC/EXL,
@@ -73,7 +84,7 @@ Requires a stable Rust toolchain (https://rustup.rs). No other dependencies.
 
 ```sh
 cargo build --release
-cargo test --release          # 59 tests: boot chain, interrupt delivery, key injection
+cargo test --release          # 68 tests: boot chain, interrupt delivery, key injection
 
 # Identify a firmware image
 ./target/release/truman-emulator inspect firmware/*.bin

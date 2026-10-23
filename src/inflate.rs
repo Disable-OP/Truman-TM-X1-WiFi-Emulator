@@ -405,8 +405,14 @@ pub fn inflate_engine(
                             dist: d as usize,
                         });
                     }
-                    for _ in 0..length {
-                        let b = window[n - d as usize];
+                    // Live-window copy: the read offset must track the bytes
+                    // this match itself writes (RFC 1951 overlapping-match
+                    // semantics). Reading from a frozen `n - d` produced a
+                    // constant fill for every match — the defect that made
+                    // the engine output invalid (docs/firmware-analysis.md
+                    // §13.6).
+                    for i in 0..length {
+                        let b = window[n - d as usize + i as usize];
                         push(&mut window, out, b, max_out)?;
                     }
                 }
@@ -485,8 +491,9 @@ fn inflate_block(
                         dist: d as usize,
                     });
                 }
-                for _ in 0..length {
-                    let b = window[n - d as usize];
+                // Live-window copy (see inflate_engine; §13.6).
+                for i in 0..length {
+                    let b = window[n - d as usize + i as usize];
                     push(window, out, b, max_out)?;
                 }
             }
@@ -618,6 +625,23 @@ mod tests {
             }
         }
         data
+    }
+
+    /// Overlapping match (dist 2, len 8) must replicate the pattern
+    /// byte-by-byte from a live window: "ab" + 8 copies of "ab" = the
+    /// 10-byte pattern "ababababab". This is the exact case the frozen
+    /// read-pointer defect failed (it produced "abaaaaaaaa") — the defect
+    /// that made the real eCos container decode invalid; see
+    /// docs/firmware-analysis.md §13.6.
+    #[test]
+    fn overlapping_match_replicates_from_live_window() {
+        // Fixed-Huffman block: 'a', 'b', len sym 262 (=8, no extra),
+        // dist sym 1 (=2, no extra), EOB.
+        let data = [0x4bu8, 0x4c, 0x82, 0x41, 0x00];
+        let mut out = Vec::new();
+        let n = inflate(&data, 0, &mut out, 64).unwrap();
+        assert_eq!(n, 10);
+        assert_eq!(&out, b"ababababab");
     }
 
     /// The real payload stream from the firmware decodes to a stable size.
