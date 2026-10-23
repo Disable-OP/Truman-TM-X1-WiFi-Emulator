@@ -66,6 +66,37 @@ The plan defined F as "bootloader executes / memory initialization succeeds"
   decompressed eCos entry at 0xA1600000** (~1.31 M instructions,
   deterministic). First entry into the eCos stage.
 
+## Milestone N — the engine identified: it is a PNG decoder ✅
+
+- **0xBFFE3800..0x387C = PNG_DEC_***, named by the SPHE15xx platform
+  register header (`regfile.h`, Team-Proton/linux-sunplus-15xx; CPU =
+  MIPS 24KEc per the platform DTS). Every programmed value fits: IMG_WIDTH
+  0x400 (driver constant), IMG_HEIGHT 78 (container u16@2), IMG_TYPE 0x68
+  (driver constant), BLK_INFO = (btype<<1)|bfinal, PXL_LINE countdown.
+- The boot renders a **1024x78 8-bpp image into 0x01600000 and jumps into
+  the pixel buffer**: the vendor tool used the boot ROM's PNG engine as a
+  decompressor; the eCos binary is the pixel data.
+- **The +4,474 size-delta premise is dissolved**: 79,872 = 78 rows x
+  1024 px is the image allocation; the engine completes every row (events
+  = per-row completion; the "LZ window" = the PNG band buffer, 32 KiB =
+  32 rows; the "scratch" = the scaling buffer) and pads short streams
+  from the zero-filled band. The §16.1 tail-structure question is moot.
+- Engine model updated (`Machine::service_decomp_engine`): row padding to
+  the programmed image size and the PNG_BS_USED_CNT completion accounting
+  (624 units x 128 px = 79,872 — matches the real device's DRAM-pinned
+  value). `Machine::decomp_reg`/`decomp_last_result` accessors +
+  `tests/png.rs` pin the whole PNG register program on the real firmware.
+- Refutation battery (new tools, §17.3): the §16.3 shift predicates
+  **refuted by decoding** (not just counting); all four match-token field
+  orders; Kraft-validated second-header search (none); raw-8-bit filter
+  geometry (row 0 refutes); 682 exact-count (predicate, adjustment) pairs
+  and 135 group-constant ladders for the 79,950 filtered target (zero
+  pass the PNG filter-byte oracle); global distance offsets +-16 (flat).
+- **Open**: the engine's LZ *value* semantics for the (now image-framed)
+  stream; the container is NOT a filtered PNG zlib stream (row 0's first
+  byte is the binary's own `60 81`), so IMG_TYPE 0x68 appears to select
+  raw filter-less rows.
+
 ## Milestone M — Q2 resolved; SP stream structure probed; CI ✅
 
 - **Q2 closed with runtime + static evidence** (§16.4): 0x98000000/

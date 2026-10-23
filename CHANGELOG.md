@@ -1,5 +1,49 @@
 # Changelog
 
+## 0.11.0 — Milestone N: the engine is a PNG decoder; row semantics modeled; shift/field-order/filter families refuted
+
+### Added
+- `tests/png.rs` — pins the firmware's PNG register program on the real
+  firmware (IMG_WIDTH 0x400, IMG_HEIGHT 78, IMG_TYPE 0x68, BLK_INFO 5,
+  PXL_LINE 77) and the completion accounting (BS_USED_CNT 624,
+  last_result 79,872).
+- `Machine::decomp_reg(off)` / `Machine::decomp_last_result()` — engine
+  register/result accessors for diagnostics and tests.
+- `EngineShared::set_reg` — machine-side engine-internal register writes
+  (completion feedback).
+- Analysis tools: `fw_png_attack.py` (682 exact-count candidates vs the
+  PNG filter-byte oracle), `fw_png_rows.py` (raw-filter row geometry),
+  `fw_png_ladder.py` (135 exact-size ladders vs the PNG oracle),
+  `fw_field_order.py` (match-token field orders), `fw_shift_decode.py`
+  (the §16.3 predicates decoded, not just counted), `fw_tail_probe.py`
+  (Kraft-validated header search + validity profile),
+  `fw_literal_diagnostic.py` (literal-ancestry provenance).
+
+### Changed
+- `Machine::service_decomp_engine` now models the PNG row semantics: the
+  output is padded/truncated to the programmed PNG_IMG_WIDTH x
+  PNG_IMG_HEIGHT pixel image (rows complete from the zero-filled band
+  buffer when the bitstream ends early), and PNG_BS_USED_CNT reports the
+  completed 128-pixel units (624 x 128 = 79,872 — equal to the real
+  device's DRAM-pinned accounting). Engine register docs now carry the
+  PNG_DEC_* names (docs/firmware-analysis.md §17).
+
+### Resolved
+- **The engine's identity** (§17.1): PNG decoder — register map, image
+  geometry, per-row events, band/scaling buffers, and the jump-into-pixel
+  output all cohere.
+- **The §16.3 size-delta premise** (§17.2): 79,872 is the image
+  allocation (row padding), not a decoded-byte claim; the SP tail
+  "structure" question is moot.
+
+### Documented (docs/firmware-analysis.md §17, docs/roadmap.md)
+- Refuted with decoding (not just counting): the §16.3 position-shift
+  predicates (48.5/48.2/46.8/48.0% vs baseline 48.3%), all four
+  match-token field orders, raw-8-bit PNG filter geometry, 682
+  exact-count candidates + 135 group-constant ladders for the filtered
+  target, global distance offsets -16..+16 (flat 48-50%), and any
+  second dynamic block header after EOB#1 (Kraft-validated search).
+
 ## 0.10.0 — Milestone M: Q2 resolved (windows named by evidence); SP stream structure probed; CI
 
 ### Added

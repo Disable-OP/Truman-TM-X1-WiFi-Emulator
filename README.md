@@ -50,9 +50,16 @@ decompression engine at 0xBFFE3800 (uploads the Huffman tables it parsed
 from the compressed "SP" container, starts it, and waits for bit 5 of
 0xBFFE384C — the same loop scans the front-panel keys). With the engine
 handshake modeled (`src/inflate.rs`, a dependency-free RFC 1951 decoder) the
-wait loop exits and the loader reaches its result check; the next blocker is
-the engine's LZ value semantics
-(`docs/firmware-analysis.md` §13.6/§14).
+wait loop exits and the loader reaches its result check. Milestone N
+identified the hardware: the "decompression engine" is a **PNG decoder**
+(the SPHE15xx platform header names the whole 0xBFFE3800 block
+`PNG_DEC_*`). The boot renders a 1024x78 8-bpp image into 0x01600000 and
+**jumps into the pixel buffer** — the vendor tool used the boot ROM's PNG
+engine as a decompressor and the eCos binary is the pixel data. The
+emulator models the PNG row semantics (the engine completes every
+programmed row; `tests/png.rs` pins the whole register program); the
+remaining blocker is the engine's LZ *value* semantics — which bytes a
+match copies (`docs/firmware-analysis.md` §17).
 
 Milestone J: the driver's engine interface is now fully reverse-engineered
 (start-bit computation, table-upload protocol = engine table-RAM addresses,

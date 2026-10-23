@@ -1087,3 +1087,133 @@ becomes immediately visible.
   (as an oracle hunt), and position-fixed length remaps (§16.3). The
   remaining space: combined length+distance semantics with position
   shift, and whatever the tail structure reveals.
+
+## 17. Milestone N — the engine is a PNG decoder; the output is an image
+
+### 17.1 Identification (external, verifiable)
+
+The SPHE15xx platform register header (`arch/mips/include/asm/mach-sphe15xx/
+regfile.h` in the public `Team-Proton/linux-sunplus-15xx` tree; the same SoC
+line, CPU `mips,mips24KEc` per the platform DTS) names the entire
+0xBFFE3800..0x387C block **PNG_DEC_*** — a hardware PNG decoder. Every
+register the firmware programs maps onto a PNG semantic:
+
+| register | kernel name | firmware program |
+|---|---|---|
+| 0xBFFE3800 | PNG_DEC_MODE | 1, then 0x90 |
+| 0xBFFE3804/08 | PNG_BS_STR_ADDR_M/L | bitstream base (the copied container) |
+| 0xBFFE380C/10 | PNG_BS_END_ADDR_M/L | round128(base + stream_len + 8) |
+| 0xBFFE3814 | PNG_BS_BUF_ADDR | 0 |
+| 0xBFFE3818 | PNG_BS_OFFSET | start bit (1088 = 1024 + 64 container bits) |
+| 0xBFFE381C | PNG_BS_USED_CNT | engine-internal (completion feedback) |
+| 0xBFFE3820 | PNG_BS_USED_BIT | engine-internal (completion feedback) |
+| 0xBFFE3824 | PNG_DEC_CTRL | start (bit 0), ready (bit 1) |
+| 0xBFFE3828 | PNG_IMG_WIDTH | **0x400 — driver constant (1024)** |
+| 0xBFFE382C | PNG_IMG_HEIGHT | container u16@2 = 78 |
+| 0xBFFE3830 | PNG_IMG_TYPE | **0x68 — driver constant** |
+| 0xBFFE3834/38 | PNG_CHUNK_SIZE_M/L | stream_len + 8 + (len&1) + 6 |
+| 0xBFFE383C | PNG_BLK_INFO | (btype<<1)\|bfinal = 5 |
+| 0xBFFE3840 | PNG_HUF_TB_ADDR | 0x20 |
+| 0xBFFE3844/48 | PNG_HUF_TB_CTRL/DATA | Huffman table upload FIFO |
+| 0xBFFE384C | PNG_INTERRUPT | event/ack line (shared with the key scan) |
+| 0xBFFE3850/54 | PNG_SCL_EXT_ADDR_M/L | scaling buffer 0x02048000 |
+| 0xBFFE3858 | PNG_SCL_BUF_ADDR | 0xC0 |
+| 0xBFFE385C/60 | PNG_BW_EXT_ADDR_M/L | band buffer 0x02040000 (32 KiB = 32 rows) |
+| 0xBFFE3864 | PNG_REM_CHUNK_SIZE_M | 1 |
+| 0xBFFE386C/70 | PNG_PXL_EXT_ADDR_M/L | pixel output 0x01600000 |
+| 0xBFFE3874 | PNG_PXL_LINE | row countdown preload (77 = limit−1) |
+
+Re-read from the driver disassembly with the PNG names: PNG_IMG_WIDTH =
+0x400 and PNG_IMG_TYPE = 0x68 are **hardcoded constants** (0xA2002134,
+0xA200222C); PNG_IMG_HEIGHT = the container's BE u16@2; PNG_CHUNK_SIZE =
+stream_len + 8 + (len&1) + 6 (the +6 is a constant fudge added at
+0xA2002224); PNG_PXL_LINE is preloaded with height−1 (0xA200214C..58).
+The driver has **no software post-processing pass** — after the accounting
+block (0xA2002630..0xA20026C0) it gates the clock and returns; the
+engine's pixel output is the final image.
+
+### 17.2 What the boot actually does
+
+The "decompression" stage renders a **1024×78 8-bpp image into
+0x01600000 and the boot then jumps into the pixel buffer**
+(0xA1600000 = kseg1 alias of the PNG_PXL_EXT_ADDR). The eCos binary is
+shipped as the *pixel data* of a PNG-engine-compatible stream: the vendor
+tool used the boot ROM's PNG decoder as a decompressor. Everything that
+looked like a decompression quirk is image mechanics:
+
+* the "79,872 output bytes" = 78 rows × 1024 pixels — an **allocation**,
+  not a decode-length claim;
+* the per-0x400-byte "events" = **per-row completion** (PNG_PXL_LINE
+  counts rows; 78 rows, one event each);
+* the "LZ window" at 0x02040000 = the PNG **band buffer** (32 rows ×
+  1024 B); the 256 KiB "scratch" = the PNG **scaling buffer**
+  (PNG_SCL_EXT_ADDR) — both zero-filled by the driver;
+* the completion accounting `(USED_CNT + acc<<16) × 128 + field10`
+  counts **completed 128-pixel units**: 624 × 128 = 79,872 px — pure
+  row accounting, *not* a decoded-byte count.
+
+**The §14.1/§16.3 size-delta premise dissolves.** The engine completes
+every programmed row; when the bitstream ends early (the stream decodes
+to 75,398 bytes ≈ 73.6 rows) the remaining rows come from the zero-filled
+band buffer, and a decode longer than the image would stop at the image
+end. The +4,474 "gap" is row padding — the container legitimately holds
+73.6 rows of content, and the tail "structure" question (§16.1) is
+moot: the stream is one block consumed to input end, exactly as the
+emulator already models.
+
+### 17.3 Refutations shipped with this milestone (new tools)
+
+All against the pristine flash; strict validity = the calibrated
+MIPS oracle (§14.2).
+
+* `tools/fw_shift_decode.py` — actually DECODES the §16.3 predicate
+  candidates instead of only counting them: `dist<96 +2` 48.5%,
+  `dist≥3485 +2` 48.2%, `len≥5&dist<3073 +2` 46.8%, `(dist<96|dist≥3485)
+  +1` 48.0% vs the RFC baseline 48.3% — the position-shift family with
+  copy-extension semantics is **refuted by decoding** (the three
+  equal-count predicates are mutually disjoint, so at most one could
+  have been real).
+* `tools/fw_field_order.py` — all four match-token field orders
+  (RFC; len,dist,extras; len,dist,dist_eb,len_eb; dist-first) decode to
+  75.4–75.5 kB at 46.8–47.9% — field-order variation refuted.
+* `tools/fw_tail_probe.py` — Kraft-completeness filter (validated: it
+  finds the known-good header at bit 0 and nothing else in 0..1100) over
+  bits 106,259..110,355 after EOB#1: **no** dynamic header exists there
+  (the byte-aligned candidate at 106,264 has litlen Kraft 5.25).
+* `tools/fw_png_rows.py` — raw-8-bit filter bytes between 1024-token rows:
+  row filters come out random (241, 254, 251, …) and the certain head
+  `60 81` is destroyed — the raw-filter geometry is refuted at row 0.
+* `tools/fw_png_attack.py` — 682 exact-count (predicate, adjustment)
+  pairs for the 79,950 filtered-stream target: **zero** pass the PNG
+  filter-byte check (row starts ∈ {0..4}).
+* `tools/fw_png_ladder.py` — 135 group-constant length-ladder solutions
+  for the 79,950 target: zero pass the filter-byte oracle.
+* global distance-offset sweep −16..+16: flat 48.1–49.7%.
+
+The PNG filter-byte structure is also inconsistent with RFC semantics at
+row 0 (the first output byte is the binary's own `60 81`, not a filter
+value), so the container is **not** a filtered PNG zlib stream: with
+PNG_IMG_TYPE = 0x68 the engine appears to consume raw (filter-less)
+image rows.
+
+### 17.4 What this reframes — and what stays open
+
+* The decode target is now **the pixel image**: 75,398 bytes ≈ 73.6 rows
+  of real content + padding. The strict-validity oracle must be applied
+  to the image (the eCos binary), which is what the existing tools do —
+  the 67%→45% decay profile (§16 profile) is a *content* defect, not a
+  framing defect.
+* The remaining blocker is unchanged in kind but narrowed in scope: the
+  engine's LZ **value** semantics (which bytes a match copies) for a
+  stream whose parse, tables, start bit and row geometry are all
+  verified. §14.3/§15.6/§17.3 refutations now cover: table remaps
+  (uniform, per-group exact-size), distance remaps (±k, rotations,
+  global offsets ±16), ring sizes/indexing, presets, byte transforms,
+  extra-bit polarity, start bits, field orders, block framings,
+  position-shift predicates, and PNG filter geometries.
+* Sharpest open hypotheses: (a) the band buffer's write granularity vs
+  the compressor's reference model (a tool that computed distances
+  against a byte-wise window while the engine commits rows would produce
+  exactly the observed near-miss copies — but it must be reconciled with
+  the real device booting correctly); (b) the compressor's distance
+  domain (band/stream vs pixel); (c) Q8 (checksum) still open.

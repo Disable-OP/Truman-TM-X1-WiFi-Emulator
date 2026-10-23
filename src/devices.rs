@@ -810,6 +810,35 @@ impl IntController {
 #[derive(Debug)]
 pub struct EngineShared {
     /// Register file covering sysreg+0x3800..0x3878 (little-endian bytes).
+    ///
+    /// The block is a PNG decoder; register names follow the SPHE15xx
+    /// platform header (`regfile.h`, linux-sunplus-15xx), see
+    /// docs/firmware-analysis.md §17:
+    ///
+    /// | off   | kernel name            | firmware program              |
+    /// |-------|------------------------|-------------------------------|
+    /// | 0x00  | PNG_DEC_MODE           | 1 then 0x90                   |
+    /// | 0x04/08 | PNG_BS_STR_ADDR_M/L  | bitstream base (0x02088000)   |
+    /// | 0x0C/10 | PNG_BS_END_ADDR_M/L  | round128(base+stream_len+8)   |
+    /// | 0x14  | PNG_BS_BUF_ADDR        | 0                             |
+    /// | 0x18  | PNG_BS_OFFSET          | start bit (1088)              |
+    /// | 0x1C  | PNG_BS_USED_CNT        | engine-internal (completion)  |
+    /// | 0x20  | PNG_BS_USED_BIT        | engine-internal (completion)  |
+    /// | 0x24  | PNG_DEC_CTRL           | start bit 0 / ready bit 1     |
+    /// | 0x28  | PNG_IMG_WIDTH          | 0x400 (driver constant)       |
+    /// | 0x2C  | PNG_IMG_HEIGHT         | container u16@2 (78)          |
+    /// | 0x30  | PNG_IMG_TYPE           | 0x68 (driver constant)        |
+    /// | 0x34/38 | PNG_CHUNK_SIZE_M/L   | stream_len+8+(len&1)+6        |
+    /// | 0x3C  | PNG_BLK_INFO           | (btype<<1)\|bfinal = 5        |
+    /// | 0x40  | PNG_HUF_TB_ADDR        | 0x20                          |
+    /// | 0x44/48 | PNG_HUF_TB_CTRL/DATA | table upload FIFO             |
+    /// | 0x4C  | PNG_INTERRUPT          | event/ack line (shared w/key) |
+    /// | 0x50/54 | PNG_SCL_EXT_ADDR_M/L | scaling buffer 0x02048000     |
+    /// | 0x58  | PNG_SCL_BUF_ADDR       | 0xC0                          |
+    /// | 0x5C/60 | PNG_BW_EXT_ADDR_M/L  | band buffer 0x02040000 (32K)  |
+    /// | 0x64  | PNG_REM_CHUNK_SIZE_M   | 1                             |
+    /// | 0x6C/70 | PNG_PXL_EXT_ADDR_M/L | pixel output (0x01600000)     |
+    /// | 0x74  | PNG_PXL_LINE           | row countdown preload (77)    |
     pub regs: Vec<u8>,
     /// Pending decompression request (source phys, dest phys).
     pub request: Option<(u32, u32)>,
@@ -866,6 +895,14 @@ impl EngineShared {
             None => Ok(written),
         });
         self.done.set(1);
+    }
+
+    /// Machine-side engine-internal register write (e.g. the completion
+    /// accounting feeds PNG_BS_USED_CNT, 0xBFFE381C, §17).
+    pub fn set_reg(&mut self, off: usize, value: u32) {
+        if off + 4 <= self.regs.len() {
+            self.regs[off..off + 4].copy_from_slice(&value.to_le_bytes());
+        }
     }
 
     fn read_regs(&self, off: u32, size: crate::memory::AccessSize) -> u32 {

@@ -460,6 +460,40 @@ impl Machine {
         );
         match res {
             Ok(n) => {
+                // PNG row semantics (§17): the engine is a PNG decoder
+                // (PNG_DEC_* registers, docs/firmware-analysis.md §17). It
+                // completes every programmed row of the 0xBFFE3828 x
+                // 0xBFFE382C (PNG_IMG_WIDTH x PNG_IMG_HEIGHT) pixel image;
+                // when the bitstream ends early the remaining rows come
+                // from the zero-filled band buffer, and a decode longer
+                // than the image stops at the image end. The driver has no
+                // software post-processing pass (0xA2002630..0xA20026C0 is
+                // accounting only), so the pixel output is the final image.
+                let (width, height) = {
+                    let sh = self.decomp.borrow();
+                    (sh.reg(0x28), sh.reg(0x2C))
+                };
+                let pixels = width as usize * height as usize;
+                let written = if pixels > 0 && pixels <= 0x4_0000 {
+                    let target = pixels.min(0x4_0000);
+                    if out.len() > target {
+                        out.truncate(target);
+                    } else if out.len() < target {
+                        out.resize(target, 0);
+                    }
+                    target
+                } else {
+                    n
+                };
+                // PNG_BS_USED_CNT (0xBFFE381C): completed 128-pixel units.
+                // The driver's accounting multiplies it by (8 << state)
+                // with state = 4, i.e. x128; the real device's post-boot
+                // DRAM stores 624 x 128 = 79,872 (§13.6), which pins this
+                // unit size (78 rows x 8 units of 128 px).
+                if pixels > 0 {
+                    let units = (written as u32) / 128;
+                    self.decomp.borrow_mut().set_reg(0x1C, units);
+                }
                 // Write the decoded image through the kseg1 alias so the
                 // bus translation and region dispatch stay canonical.
                 for (i, &b) in out.iter().enumerate() {
@@ -468,7 +502,7 @@ impl Machine {
                         .bus
                         .store(va, crate::memory::AccessSize::Byte, u32::from(b));
                 }
-                self.decomp.borrow_mut().complete(n, None);
+                self.decomp.borrow_mut().complete(written, None);
             }
             Err(e) => {
                 self.decomp
@@ -485,6 +519,18 @@ impl Machine {
             .iter()
             .find(|(n, _)| n == name)
             .map(|(_, log)| log)
+    }
+
+    /// Read a decompression-engine register (PNG_DEC_* block, sysreg
+    /// +0x3800+off; §17). Diagnostics/tests: pins the firmware's engine
+    /// program and the completion accounting.
+    pub fn decomp_reg(&self, off: usize) -> u32 {
+        self.decomp.borrow().reg(off)
+    }
+
+    /// The engine's last completion result (bytes written or an error).
+    pub fn decomp_last_result(&self) -> Option<Result<usize, String>> {
+        self.decomp.borrow().last_result.clone()
     }
 
     /// Names of all instrumented windows (for phase-by-phase access
