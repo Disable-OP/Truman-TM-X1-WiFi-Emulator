@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.8.0 — Milestone K: engine register program fully decoded; LZ semantics search widened, then narrowed
+
+### Added
+- `Machine::access_log(name)` — public diagnostics access to the
+  instrumented-window access logs, and `examples/engine_probe.rs`: runs the
+  real boot and prints the decompression engine's complete register program
+  plus the post-decode window/scratch/output memory state. Every value in
+  docs/firmware-analysis.md §13.2 is now reproducible from a fresh clone.
+
+### Documented (docs/firmware-analysis.md §13.2/§14)
+- **The engine register program is now complete.** New decodings from the
+  driver disassembly: 0xBFFE380C/3810 is the **input end pointer**
+  (`(base + container_len + 0x7F) & ~0x7F` = 0x02090700, not a second
+  source); 0xBFFE3834/0x3838 is the 32-bit input length (container length
+  **+ 6**, the add is visible at 0xA2002224); **0xBFFE383C =
+  `(BTYPE << 1) | BFINAL` = 5**, built by the driver's own bit-reader from
+  the stream header; 0xBFFE3830 = 0x68 stays semantically unknown. The
+  §13.1 zero-fill range is now identified as the 32 KiB LZ window
+  (0x02040000..0x02048000) plus 256 KiB scratch.
+- **The LZ value semantics search was widened and then narrowed** (§14):
+  calibrated validity oracles (lenient capstone scoring cannot separate
+  garbage from data — random words score 62.5%; strict common-instruction
+  scoring puts real code at 91–95% and the RFC decode at 45.9%), the
+  below-base "window violation" resolved in favor of a legitimate 32 KiB
+  zero preset dictionary, and new refutation sweeps: window presets,
+  output rotations/lanes/per-position XOR-ADD, length remap families,
+  distance remap families, absolute ring indexing and reversed copies.
+  Conclusion (§14.4): the wrongness is structural, not a wrong base
+  table; the remaining hypothesis classes and next steps are listed.
+- Stale "bit 6" completion references in code comments corrected to the
+  verified bit-5 event line (§13.3).
+
 ## 0.7.0 — Milestone J: engine interface decoded; decode defect found and fixed
 
 ### Fixed

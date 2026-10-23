@@ -312,7 +312,7 @@ impl Machine {
         // Hardware decompression engine at +0x3800..+0x3878 (hypothesis
         // H12; see devices::DecompEngineLo). Two register regions share one
         // EngineShared state; the run loop performs the DEFLATE decode and
-        // raises the done line the loader polls (0xBFFE384C bit 6).
+        // raises the event line the loader polls (0xBFFE384C bit 5, §13.3).
         let decomp_log = LoggingDevice::new("decomp-log", 0).log_handle();
         let (decomp_lo, decomp_shared) = DecompEngineLo::new(
             "decomp-engine",
@@ -471,6 +471,15 @@ impl Machine {
                     .complete(out.len(), Some(format!("{e}")));
             }
         }
+    }
+
+    /// Access the recorded access log of an instrumented window by name
+    /// (e.g. `"decomp-engine"`, `"uart"`) for diagnostics.
+    pub fn access_log(&self, name: &str) -> Option<&crate::machine::AccessLog> {
+        self.logs
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, log)| log)
     }
 
     /// Reset the machine to its boot state.

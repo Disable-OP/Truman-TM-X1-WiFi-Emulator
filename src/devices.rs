@@ -787,11 +787,13 @@ impl IntController {
 ///   0xBFFE386C/70 = 0x0160_0000, then table-upload commands on
 ///   0xBFFE3844 with data bytes on 0xBFFE3848, and finally starts the
 ///   engine by writing 0xBFFE3824 = 1;
-/// * it then polls 0xBFFE384C **bit 6** ("engine done") — the poll loop is
-///   the same loop that scans front-panel keys, so keys stay live while
-///   the engine runs;
-/// * when bit 6 reads 1 the loader clears bit 13 of 0xBFFE3824, returns
-///   and jumps to the output (0xA1600000).
+/// * it then polls 0xBFFE384C **bit 5** (the engine event line, §13.3) —
+///   the poll loop is the same loop that scans front-panel keys, so keys
+///   stay live while the engine runs;
+/// * when bit 5 reads 1 the driver acks (writes 0x2000), counts the event
+///   against the container's chunk limit and, at the limit, enters the
+///   accounting block and returns non-zero (success). The bit-6 branch of
+///   the same poll is the *failure* epilogue (returns 0 → "LD eCos fail").
 ///
 /// The compressed image itself is a raw DEFLATE stream behind an 8-byte
 /// "SP" header (verified: the header parse the firmware performs produces
@@ -804,7 +806,7 @@ impl IntController {
 /// but not interpreted: the decode re-derives equivalent tables from the
 /// stream itself (the RFC 1951 canonical codes of the stream's lengths
 /// equal the uploaded arrays bit-for-bit). The done flag is shared with
-/// the [`KeyPort`] so bit 6 of 0xBFFE384C reads 1 after completion.
+/// the [`KeyPort`] so bit 5 of 0xBFFE384C reads 1 after completion.
 #[derive(Debug)]
 pub struct EngineShared {
     /// Register file covering sysreg+0x3800..0x3878 (little-endian bytes).
@@ -813,7 +815,7 @@ pub struct EngineShared {
     pub request: Option<(u32, u32)>,
     /// True between the start write and the machine completing the decode.
     pub busy: bool,
-    /// Completion flag (read as bit 6 of 0xBFFE384C via [`KeyPort`]).
+    /// Completion flag (read as bit 5 of 0xBFFE384C via [`KeyPort`]).
     pub done: std::rc::Rc<std::cell::Cell<u8>>,
     /// Decode result for diagnostics: bytes written or an error string.
     pub last_result: Option<Result<usize, String>>,

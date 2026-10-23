@@ -66,6 +66,19 @@ The plan defined F as "bootloader executes / memory initialization succeeds"
   decompressed eCos entry at 0xA1600000** (~1.31 M instructions,
   deterministic). First entry into the eCos stage.
 
+## Milestone K — engine register program complete; LZ semantics narrowed ✅
+
+- The driver's engine program is fully decoded from the runtime access
+  log (`Machine::access_log` + `examples/engine_probe.rs`): input base /
+  **input end** (`round128(base+len)`), 32 KiB zeroed window, output,
+  32-bit input length = container+6, and `0xBFFE383C = (BTYPE<<1)|BFINAL`
+  (docs/firmware-analysis.md §13.2).
+- The LZ value-semantics search was widened (presets, transforms, ring
+  indexing, remap families) against **calibrated** validity oracles and
+  then narrowed: the wrongness is structural, not a wrong base table
+  (§14.2–§14.4). Next: stage-2 decompressor disassembly (Q4) and
+  chunk-periodicity mapping of the corruption.
+
 ## Milestone J — Engine interface decoded; decode defect fixed ✅
 
 - **The driver's engine interface is fully reverse-engineered** (§13.6):

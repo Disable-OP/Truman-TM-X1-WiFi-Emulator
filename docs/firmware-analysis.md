@@ -477,20 +477,31 @@ After the "LD eCos v1.16 1506f" banner the loader (executing at
    0x82004BA0 (ops[4] = SPI byte-read through the 0x98000000 flash mirror):
    `src=0x1002C, len=0x868C, dst=0x81600000, flags&3=1`;
 2. for flag==1: zero-fills [0xA2040000, 0xA2088000) (0x48000 bytes — the
-   engine's window + scratch), copies the container flash→0xA2088000;
+   engine's 32 KiB LZ window at 0x02040000..0x02048000 plus 256 KiB of
+   scratch at 0x02048000..0x02088000), copies the container
+   flash→0xA2088000;
 3. calls the driver at 0xA2001F50 with (image, 0x81600000, 0).
 
 ### 13.2 The driver's engine program — VERIFIED register writes
 
 * clock gates: 0xBFFE0024 |= 0x2000, 0xBFFE0044 |=/~ 0x2000;
-* engine regs: 0xBFFE3800 = 1 then 0x90; 0xBFFE3814 = 0; 0xBFFE3840 = 0x20;
-  0xBFFE3858 = 0xC0; source 0xBFFE3804/0808 = 0x0208/0x8000 (=0x02088000,
-  the copied image); second pair 0xBFFE380C/3810 = 0x0209/0x0700;
-  window base 0xBFFE385C/60 = 0x0204/0x0000 (0x02040000) with end
-  0xBFFE3850/54 = 0x0204/0x8000 (32 KiB); output 0xBFFE386C/70 =
-  0x0160/0x0000 (=0x01600000); 0xBFFE3864 = type (1); length register
-  0xBFFE3838 = 0x8692; misc 0xBFFE3828 = 0x400, 0xBFFE382C = header u16@2,
-  0xBFFE3830 = 0x68;
+* engine regs (complete program, re-verified from the emulator's
+  `decomp-engine` access log — `Machine::access_log`, example
+  `examples/engine_probe.rs`): 0xBFFE3800 = 1 then 0x90 (mode); 0xBFFE3814
+  = 0; 0xBFFE3840 = 0x20; 0xBFFE3858 = 0xC0; **input base** 0xBFFE3804/0808
+  = 0x0208/0x8000 (=0x02088000, the copied image); **input end**
+  0xBFFE380C/3810 = round128(src + container_len) = 0x0209/0x0700 (the
+  driver computes `(base + len + 0x7F) & ~0x7F` at 0xA20021D4..E8 and
+  splits it hi/lo — the 128-byte-aligned end of the compressed input);
+  **window base** 0xBFFE385C/60 = 0x0204/0x0000 (0x02040000) with end
+  0xBFFE3850/54 = 0x0204/0x8000 (32 KiB); **output** 0xBFFE386C/70 =
+  0x0160/0x0000 (=0x01600000); 0xBFFE3864 = type (1); **input length**
+  0xBFFE3834/0x3838 (32-bit) = 0x8692 — the container length 0x868C **+ 6**
+  added at 0xA2002224; 0xBFFE3830 = 0x68 (constant, semantics unknown);
+  **block header** 0xBFFE383C = `(BTYPE << 1) | BFINAL` = 5 (built at
+  0xA20022C0..E4 from the driver's own bit-reader parse of the stream
+  header); chunk registers 0xBFFE3828 = 0x400, 0xBFFE382C = header u16@2;
+  event-countdown mirror 0xBFFE3874 = limit − 1 = 77;
 * the driver parses the container header: bytes[0:2] = "SP", u32@4 (BE) =
   0x8684 = stream length, then a DEFLATE dynamic block header — HLIT/HDIST/
   HCLEN at 5/5/4 bits + 17×3-bit code-length codes (all standard RFC 1951);
@@ -669,48 +680,109 @@ phase-drift claim, and the ruled-out list) described the *buggy*
 realization, not the hardware. They are superseded by this section and
 by §14.
 
-## 14. Next milestone — the engine's LZ value semantics (revised)
+## 14. Next milestone — the engine's LZ value semantics (revised twice)
 
-With the decode defect removed, the state of the art is:
+With the decode defect removed (§13.6) and the register program fully
+decoded (§13.2), the state of the art after the Milestone K re-examination:
+
+### 14.1 What is certain
 
 * The bit-stream parse is exact and independent: a from-scratch Python
   canonical-Huffman walk (`tools/fw_engine_lz.py`) decodes all 25,027
-  symbols (15,761 literals, 9,264 matches, 2 end-of-block markers) to
-  the end of the declared stream with **zero bad codes**; the engine
-  consumes exactly the RFC 1951 bit positions (same Huffman codes, same
-  extra-bit counts).
-* The RFC 1951 value semantics (live-window copies, standard
-  LBASE/DBASE tables) produce **75,398 bytes + 259 tail bytes from the
-  engine's 0x8692-byte input window = 75,657 bytes**. The image is *not*
-  valid code: the boot faults at 0xA1600050 on `0x0000FFFF` (a word
-  built from two `0xFF` literals and a zero-fill match), and
-  hardware-lenient word validity is ~79–81% against ~95%+ for known-good
-  SDK code.
-* The driver-programmed output size is 78 × 1024 = **79,872 bytes**
-  (chunk registers R3828/R382C, the accounting formula, and the header's
-  u16@2 all agree), so the engine's value semantics must produce ~4.2 KiB
-  more output than RFC 1951 from the same bits — the length mapping is
-  the primary unknown.
-* Systematically excluded with clean data (tools `fw_engine_lz*.py`):
-  output byte-lane transforms (word-reverse, halfword/byte swap, full
-  and per-chunk reversal), distance-base shifts ±1/±2, distance
-  extra-bit weights ×2/×4/×8 (they fault on window overflow almost
-  immediately), length = base+1 / base+eb·k families solved against the
-  79,872 size oracle and scored by a hardware-lenient MIPS32 validator
-  (best 83.8% = noise), and per-match greedy delta search (97.5% local
-  validity, but the recovered per-code deltas are mutually
-  inconsistent — overfitting, not a table).
-* Ground truth not yet exhausted: the engine's length/distance base
-  tables are hardware constants (the driver uploads only Huffman
-  tables); the checksum word desc[6] = 0xB5EBF9FF has not been matched
-  to an algorithm (CRC32/adler32/sum of the container, stream, and
-  candidate outputs all miss), and would be the decisive oracle for a
-  full decode.
+  symbols (15,761 literals, 9,264 matches, 2 end-of-block markers) to the
+  end of the declared stream with **zero bad codes**; the engine consumes
+  exactly the RFC 1951 bit positions (same Huffman codes, same extra-bit
+  counts). Any hypothesis that changes what bits are read is dead.
+* The 15,761 literal bytes are the image's true bytes (a literal symbol is
+  a byte on any sane engine), up to their positions.
+* The 458 matches whose RFC distance exceeds the current output position
+  are **not** evidence of a wrong distance table: the driver zero-fills the
+  32 KiB window before starting the engine (§13.1), so a compressor with a
+  32 KiB zero preset dictionary legitimately emits them (they copy preset
+  zeros). The window-legality "oracle" is therefore void, and the
+  compressor is a standard deflate with a preset dictionary.
+* The engine's completion accounting (§13.6) computes
+  `(R381C + (acc<<16)) * 128 + field10 = 624 × 128 = 79,872` — consistent
+  with either (a) an exact decode of 79,872 bytes (Σ match lengths then
+  must be RFC + 4,474), or (b) an exact decode of RFC's 75,657 bytes with
+  the engine rounding output up to full 1 KiB chunks (78 allocated vs 74
+  needed — the header's 78 then over-allocates by 4 chunks). Both readings
+  stay open.
 
-The concrete next steps are unchanged in spirit, but now start from a
-clean baseline: (1) execute the *fixed* RFC decode in the emulator and
-log the first eCos-stage fault (0xA1600050, word 0x0000FFFF built from
-literals at 0x50/0x51 plus a zero-fill match) to localize the first
-wrong region; (2) solve the length mapping from the position drift of
-the literal stream against valid-code constraints; (3) identify the
-desc[6] checksum algorithm to close the loop.
+### 14.2 Calibrated output-validity oracles (new — prior numbers were unreliable)
+
+Word-"validity" scoring is only meaningful after calibration against
+known-good data from the same image (reproduce with capstone; the numbers
+below are this document's reference):
+
+| Data | Lenient (capstone decodes) | Strict (common code instructions only) |
+|---|---|---|
+| stage-1 zeroBoot (pure code) | 98.8% | 91.1% |
+| stage-2 DDR loader | 97.7% | 94.8% |
+| satellite DB (pure data) | 34.5% | 23.5% |
+| **uniform random words** | **62.5%** | — |
+| RFC 1951 decode of the SP container | 61–62% | 45.9% |
+
+Two conclusions: (1) the lenient metric cannot distinguish garbage from
+data (random scores 62.5%), so earlier "~79–83% valid" claims were noise
+around the garbage level; (2) under the strict metric the RFC decode
+(45.9%) is far from code (91–95%) — the match-produced ~79% of the image
+is genuinely wrong, not "partly valid code".
+
+Byte statistics agree: the decode's byte histogram matches known-good code
+closely (cosine 0.975–0.986) with **no** XOR/ADD transform (constant key
+correlation peaks at 0), but its zero-byte ratio is 24.7% vs 39.6–57.3%
+for real code and its entropy is 6.22 bits/byte vs ≤5.15 for real code —
+the decode has too few zero runs and too much entropy, i.e. matches copy
+plausible-but-wrong content.
+
+### 14.3 Systematically refuted (clean data, strict metric; tools this milestone)
+
+* window presets 0x00 and 0xFF (the head is literal-certain in both);
+* output transforms: word/halfword rotations (broad "gains" are a
+  validator artifact — pure data also "improves" from 31% to 83% under
+  rotation), byte-lane swaps/reversals, per-position XOR/ADD families
+  (i·a, i>>s, masks 0x0F..0xFF);
+* length remaps: `eb+k` (k=3..5), `base+eb±1`, `base` alone;
+* distance remaps: `deb+k` (k=1,2), `base` alone, `base+deb±1`,
+  `nextbase−deb`;
+* ring-buffer indexing: absolute (`ring[dist±1]` instead of
+  `ring[write−dist]`) forward and reversed, plus reversed relative copies;
+* (from Milestone J, unchanged) extra-bit polarity, code-bit reversal,
+  distance-list rotations, halfword/byte swaps of the output,
+  lengths-at-256 remapping, alternate start bits.
+
+### 14.4 What this forces
+
+The symbol stream, the Huffman assignment, the literal bytes and the
+engine's zero-preset 32 KiB ring are all verified; a *table-level* remap
+of lengths or distances is refuted far beyond ±1; and per-match greedy
+corrections recover local validity (97.5%) but with mutually inconsistent
+deltas — so the wrongness is **structural**, not a wrong base table. The
+remaining hypothesis classes:
+
+1. the engine's copy hardware has byte-lane/position-dependent behavior
+   the driver never exercises in a way the header reveals (mode word
+   0xBFFE3800 = 0x90, and the unknown constants 0xBFFE3830 = 0x68,
+   0xBFFE3840 = 0x20, 0xBFFE3858 = 0xC0 are the only unexplained
+   programming inputs left);
+2. the container's plaintext is transformed *before* compression by the
+   SDK tool (the engine would then decode correctly and the loader jumps
+   into a transformed image — but the boot executes it directly, so the
+   transform must be code-compatible, e.g. a byte-lane permutation done
+   at link time; the head literal `60 81 00 00` is exactly the load
+   address 0x81600000 >> 16, which fits a header word, and the first ~111
+   bytes decode to a sparse non-code table under any length mapping);
+3. the descriptor's flag==1 path is not the engine path that produced the
+   shipped boots (flags 2/3 would select a different engine mode).
+
+The concrete next steps: (1) disassemble the stage-2 decompressor that
+produced the known-good 0xA2000000 payload from the 0xCED9D8CC container —
+it is the only other consumer of the SDK's compression tool and will name
+the container/codec and any pre-transform (Q4); (2) search the main
+firmware's eCos routines for the engine's register block usage (the main
+firmware talks to 0xBFFE38xx again after boot, which may expose more
+modes); (3) execute the eCos-stage image with `run --trace` from
+0xA1600000 and map strict-validity against the producing match classes
+per 1 KiB chunk to test whether corruption is chunk-periodic (which would
+point at the 0x400-granularity copy hardware).
