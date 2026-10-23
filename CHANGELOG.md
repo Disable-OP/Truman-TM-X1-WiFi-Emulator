@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.9.0 — Milestone L: container formats resolved; engine LZ narrowed by five refutation families
+
+### Added
+- `tests/boot.rs::driver_payload_is_stored_plaintext_in_flash` — pins the
+  Milestone L discovery that the driver payload (0x3ADC bytes) is stored
+  **plaintext** at flash 0x2F6C and "copy fw to RAM" is a byte-for-byte
+  copy (100.000% verbatim vs the post-boot DRAM state).
+- Analysis tools (all reproducible against the pristine flash):
+  `fw_dist_stats.py` (symbol-stream distance/length statistics),
+  `fw_ring_sweep.py` (ring-size sweep + calibrated strict-validity oracle),
+  `fw_corruption_map.py` (per-chunk/burst corruption structure),
+  `fw_align_copy.py` (word-aligned copy-source variants),
+  `fw_snapshot_copy.py` (snapshot-copy variant + delta-class search),
+  `fw_keydetect.py` (position-periodic write-transform detection),
+  `fw_length_search.py` (size-constrained length-base-table search),
+  `fw_checksum_oracle.py` (checksum anchor sweep).
+
+### Documented (docs/firmware-analysis.md §15, docs/roadmap.md)
+- **Q4 resolved for the driver**: payload plaintext at flash 0x2F6C;
+  §4/§10.3 corrected accordingly.
+- The 0x10000 `CED9D8CC` package structure: 12-byte header + 28-byte
+  descriptors at 0x100010+idx*28 with the full field map (src, len, dst,
+  len2, flags, driver arg, unused checksum) and the flags 0/1/2 dispatch.
+- **flags 2 = software LZMA decoder** (0xA2002EF8 → 0xA200304C): props
+  byte div-45/mod-45/div-9 = pb/lp/lc, u64 LE size at bytes 5..13 — the
+  first software decompressor identified in the SDK image.
+- Two checksum anchors recorded (driver payload 0xB56FB05D, eCos
+  descriptor 0xB5EBF9FF); simple checksum families swept without a match
+  (Q8).
+- Engine window-usage scan: no engine access outside the already-decoded
+  loader/driver/key-dispatcher regions — no hidden engine modes.
+- Engine LZ value semantics: five new refutation families (ring sizes
+  with a W=32768 ≡ RFC cross-check, word/halfword-aligned copy sources,
+  snapshot copy, position-periodic write transforms, size-constrained
+  length-base-table groups) plus the corruption-structure map (validity
+  decays 67→45%, not chunk-periodic; match-class shares flat). Open
+  questions Q7 (copy-path source fields) and Q8 (checksum algorithm)
+  recorded.
+
+
 ## 0.8.0 — Milestone K: engine register program fully decoded; LZ semantics search widened, then narrowed
 
 ### Added

@@ -292,3 +292,53 @@ fn real_firmware_boots_through_ddr_training_into_main_firmware() {
     // so a memory scan cannot find it. The console output above IS the proof
     // that the decompressed main-firmware code runs from DRAM.
 }
+
+/// Milestone L (§15.1): the driver payload is stored PLAINTEXT in the flash
+/// at file offset 0x2F6C (0x3ADC bytes) — the stage-2 loader's "copy fw to
+/// RAM" is a byte-for-byte copy, not a decrypt/decompress. Verified offline
+/// at 100.000% against a post-boot DRAM dump; this test pins it in code so
+/// any future memory-model regression that disturbs the payload copy is
+/// caught immediately.
+///
+/// The driver's runtime data (BSS, ops table at +0x4BA0, Huffman table
+/// area at +0x5074) lies beyond the 0x3ADC image, so the code region stays
+/// pristine through the whole observed boot.
+#[test]
+fn driver_payload_is_stored_plaintext_in_flash() {
+    let Some(path) = real_firmware_path() else {
+        eprintln!("skipping: real firmware not present in firmware/");
+        return;
+    };
+    const FLASH_OFF: usize = 0x2F6C;
+    const PAYLOAD_LEN: usize = 0x3ADC;
+    const DRAM_PHYS: u32 = 0x0200_0000;
+
+    let image = firmware::load(&path).expect("load real firmware");
+    let mut machine = Machine::new(MachineConfig::default(), &image);
+    boot::reset_with_diagnostics(&mut machine, false);
+    machine.run(1_330_000);
+
+    let expected = &image.bytes[FLASH_OFF..FLASH_OFF + PAYLOAD_LEN];
+    let mut mismatches = 0usize;
+    let mut first = None;
+    for (i, want) in expected.iter().enumerate() {
+        let got = machine
+            .bus
+            .peek_phys(
+                DRAM_PHYS + i as u32,
+                truman_emulator::memory::AccessSize::Byte,
+            )
+            .unwrap_or(0xFF) as u8;
+        if got != *want {
+            mismatches += 1;
+            if first.is_none() {
+                first = Some((i, *want, got));
+            }
+        }
+    }
+    assert_eq!(
+        mismatches, 0,
+        "driver payload at DRAM phys {DRAM_PHYS:#x} must equal flash \
+         [0x{FLASH_OFF:x}..+{PAYLOAD_LEN:#x}] verbatim; first mismatch: {first:?}"
+    );
+}

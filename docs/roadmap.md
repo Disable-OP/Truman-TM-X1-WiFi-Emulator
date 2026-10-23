@@ -66,6 +66,26 @@ The plan defined F as "bootloader executes / memory initialization succeeds"
   decompressed eCos entry at 0xA1600000** (~1.31 M instructions,
   deterministic). First entry into the eCos stage.
 
+## Milestone L — container formats resolved; LZ narrowed by five families ✅
+
+- **Q4 resolved for the driver**: the payload is stored **plaintext** at
+  flash 0x2F6C (100.000% verbatim vs a post-boot DRAM dump); "copy fw to
+  RAM" is a plain copy — pinned by
+  `tests/boot.rs::driver_payload_is_stored_plaintext_in_flash`.
+- The 0x10000 `CED9D8CC` package decoded: 28-byte descriptors at
+  0x100010+idx*28; flags dispatch = 0 plain copy / 1 hardware engine /
+  **2 software LZMA decoder** (props div-45/div-9, u64 size, decoder at
+  0xA200304C) — a second codec found in the image (§15.3–§15.4).
+- desc[6] checksum is never read by the loader; two checksum anchors
+  recorded (Q8). Engine window-usage scan: no modes beyond the decoded
+  driver/loader/key-dispatcher traffic (§15.5).
+- Engine LZ value semantics narrowed by five new refutation families —
+  ring-size sweep (incl. a W=32768≡RFC cross-check), word-aligned copy
+  sources, snapshot copy, position-periodic write transforms, and the
+  size-constrained length-base-table search (64 exact-size solutions,
+  all ~50%) — plus the corruption-structure map: validity **decays**
+  67→45% and is **not chunk-periodic** (§15.6).
+
 ## Milestone K — engine register program complete; LZ semantics narrowed ✅
 
 - The driver's engine program is fully decoded from the runtime access
@@ -115,8 +135,11 @@ Track by evidence-first value, in rough order:
    button presses are proven end-to-end on the real firmware
    (`devices::KeyPort`, `Machine::press_key`). **Open**: button labels
    (keycode→UI mapping) and a front-end that surfaces presses.
-3. **Payload codec identification** (file 0x10000+): trace the stage-2
-   decompressor to name the container/codec (Q4 in the analysis doc).
+3. ✅ **Payload codec identification** — resolved in Milestone L: the
+   driver payload is plaintext in flash (no codec); the eCos "SP"
+   container is a DEFLATE-shaped stream consumed only by the hardware
+   engine; the SDK also ships a software LZMA decoder (flags 2 path).
+   Remaining: the engine's LZ value semantics (§15.6/§14).
 4. **0x98010000 / 0xB0000000 / 0xF0000000 windows**: name blocks by access
    correlation with the UART banner sequence (Q2).
 5. **Performance**: ~5 M instr/s today; a decode cache would lift the

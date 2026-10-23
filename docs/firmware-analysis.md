@@ -106,9 +106,9 @@ Regions derived from the entropy map + strings + disassembly
 
 | Flash offset | Size | Entropy | Content | Confidence |
 |---|---|---|---|---|
-| 0x000000–0x007FFF | 32 KiB | 4.5 | **Stage-1 loader** "zeroBoot v1.0 for 1506F": MIPS32r2 code, strings `SPI SCS flow`, `jump to second boot!!`, `Get RAM Param and configure RAM`, `copy fw to RAM`, `TEST KEY` | **Verified** |
+| 0x000000–0x007FFF | 32 KiB | 4.5 | **Stage-1 loader** "zeroBoot v1.0 for 1506F": MIPS32r2 code, strings `SPI SCS flow`, `jump to second boot!!`, `Get RAM Param and configure RAM`, `copy fw to RAM`, `TEST KEY`; a data area at 0x1210+ (descriptor table, §15.2) and — **Verified (Milestone L)** — the **driver payload stored PLAINTEXT at 0x2F6C..0x6948** (0x3ADC bytes; see §15.1) | **Verified** |
 | 0x008000–0x00FFFF | 32 KiB | 4.5–7.3 | **Stage-2 loader** "Boot form SPI v1.13": DDR controller init, DRAM eye/deskew training prints (`WL_IPRD0`, `REYE_*`, `WEYE_*`, `CTCAL_ERR flag`), `DRAM CPU access FAIL !!!` | **Verified** |
-| 0x010000–0x01FFFF | 64 KiB | 7.3 | **Encrypted payload + header**: 0x30-byte header (magic `0xCED9D8CC`, version `1`, fields `0x40000000`, size `0x1B000`, dst `0x81600000`, `0x0000868C`) followed by high-entropy data | header structure **Verified**; payload meaning **Probable** |
+| 0x010000–0x01FFFF | 64 KiB | 7.3 | **eCos module package (Milestone L, §15.3)**: `CED9D8CC` header + 28-byte descriptor table at 0x10010 + the "SP" DEFLATE container of the eCos image (0x1002C..0x186B8) + trailing package data | structure **Verified**; container decode semantics open (§14) |
 | 0x020000–0x37FFFF | 3.5 MiB | 8.00 | **Main firmware, encrypted/compressed** — no readable strings, no known compression magic, first word `0xACB60400` | encrypted or compressed — **Probable** (mechanism **Unknown**) |
 | 0x380000–0x38Axxx | ~43 KiB | 6.0 | High-entropy data (unknown) | **Unknown** |
 | 0x38B000–0x38B1xx | — | — | **`SPHE15` descriptor block**: SoC string, build date 2022-09-02, size/offset table, checksum word at 0x38B0FC | structure **Verified**, semantics **Probable** |
@@ -243,12 +243,17 @@ map") provides the runtime evidence.
 
 ### 10.3 Payload copy and main-firmware entry
 
-- Descriptor table (mirror window, file offsets): [0x1214] = **0xA2000000**
-  load address, [0x1218] = 0x00010000 source offset, [0x1220] = 0x00003ADC size.
-- "copy fw to RAM" + "Go!": the loader decompresses/decrypts the payload and
-  copies it to kseg1 0xA2000000 (phys 0x02000000) — **this transformation is
-  performed by the firmware's own code running under our interpreter**; no
-  dedicated crypto hardware had to be modeled for it to work.
+- Descriptor table (stage-1 data area, file offsets): [0x1214] = **0xA2000000**
+  load address, [0x1218] = 0x00010000, [0x121C] = 0x0000135C,
+  [0x1220] = 0x00003ADC size, [0x1224] = 0xB56FB05D (checksum word,
+  §15.2/Q8), [0x1228] = 0x7F. Milestone L resolved the mechanism (§15.1):
+  the payload is **stored plaintext at flash 0x2F6C** and "copy fw to RAM"
+  is a byte-for-byte copy; the interpretation of the [0x1218]/[0x121C]
+  source fields against the 0x2F6C placement is **open (Q8)**.
+- "copy fw to RAM" + "Go!": the loader copies the payload to kseg1
+  0xA2000000 (phys 0x02000000) — **Verified plaintext copy** (Milestone L,
+  pinned by the test `driver_payload_is_stored_plaintext_in_flash`); no
+  crypto or decompression is involved in this step.
 - "1ST BOOT" banner: printed via **unrolled immediate stores** (PCs
   0xA2000340..0xA2000448) — the banner bytes never exist in memory, which is
   why file/DRAM scans cannot find them.
@@ -786,3 +791,165 @@ modes); (3) execute the eCos-stage image with `run --trace` from
 0xA1600000 and map strict-validity against the producing match classes
 per 1 KiB chunk to test whether corruption is chunk-periodic (which would
 point at the 0x400-granularity copy hardware).
+
+## 15. Milestone L — the boot chain's container formats resolved; engine LZ
+## narrowed by five refutation families
+
+Every claim below is reproducible from a fresh clone with the committed
+tools (`tools/fw_*.py`, capstone ≥ 5) and the pristine flash image.
+
+### 15.1 The driver payload is stored PLAINTEXT (Q4 resolved for the driver)
+
+The stage-2 loader's "copy fw to RAM" step does **not** decrypt or
+decompress anything. The driver payload (0x3ADC bytes) is stored verbatim
+in the flash at file offset **0x2F6C** — inside the stage-1 32 KiB region,
+not in the 0x020000+ main-firmware area:
+
+* post-boot DRAM dump (phys 0x02000000, 1.4 M-step boot) vs
+  `flash[0x2F6C..0x2F6C+0x3ADC]`: **15068/15068 bytes = 100.000% verbatim**;
+* the payload is surrounded by zero padding; its code statistics are real
+  (strict validity 98–100% over the whole image, 61.8% zero bytes);
+* pinned in code by `tests/boot.rs::driver_payload_is_stored_plaintext_in_flash`.
+
+Consequences: the SDK ships this module uncompressed; the "encrypted/
+compressed" label of §4 applied to the wrong region for this module; and
+the eCos "SP" container is the **only** compressed artifact in the
+observed boot chain. There is no software DEFLATE decoder producing
+known-good output anywhere in the boot code — the hardware engine is the
+only consumer of "SP" containers.
+
+### 15.2 The stage-1 data area descriptor table and two checksum anchors
+
+The stage-1 data area (0x1210+) holds a table whose first entry reads:
+
+| file offset | value | reading |
+|---|---|---|
+| 0x1210 | 0x00000018 | entry/handle word (semantics open) |
+| 0x1214 | 0xA2000000 | load address (kseg1 DRAM) |
+| 0x1218 | 0x00010000 | source field (interpretation **open**, Q8) |
+| 0x121C | 0x0000135C | second source field (**open**, Q8) |
+| 0x1220 | 0x00003ADC | payload size — matches the plaintext payload |
+| 0x1224 | 0xB56FB05D | checksum word (**open**, Q8) |
+| 0x1228 | 0x0000007F | flags/config (**open**) |
+
+Later entries reference 0xBFFE0000 (the sysreg window) and look like
+register-init data rather than descriptors. Two checksum anchors are now
+known — once the algorithm is recovered from the loader code, both must
+validate:
+
+| coverage | expected checksum |
+|---|---|
+| driver payload (flash 0x2F6C..0x6948) | `0xB56FB05D` (desc word @0x1224) |
+| eCos descriptor (§13.1) | `0xB5EBF9FF` (desc[6] @0x10028) |
+
+Neither simple sums (u8/u16/u32 LE/BE), XOR, CRC32, Adler-32 nor the BSD
+sum over the candidate regions reproduces either word
+(`tools/fw_checksum_oracle.py`); the algorithm lives in as-yet-unlocated
+loader code. **Q8: locate the checksum routine and validate both anchors.**
+
+### 15.3 The 0x10000 package: header, descriptor stride, and flag dispatch
+
+The 0xCED9D8CC package at 0x10000 decodes as: 12-byte package header
+(magic, version 1, 0x40000000, size 0x1B000) followed by a **descriptor
+table whose entries are 28 bytes each at 0x100010 + index*28** (disassembly
+of the loader at 0xA200197C..0xA2001C30: `sll/sllv/subu` computes index*28,
+`jalr ops[1]` reads 0x1C bytes into the stack frame). Descriptor fields:
+
+| word | meaning (eCos entry values) |
+|---|---|
+| 0 | source flash address (0x0001002C) |
+| 1 | container length (0x0000868C) |
+| 2 | destination (0x81600000) |
+| 3 | length copy (0x0000868C) |
+| 4 | method flags &3 (1 = hardware engine) |
+| 5 | driver argument, passed as `a2 & 0xFFFF` (0) |
+| 6 | checksum 0xB5EBF9FF — **never read by the loader** |
+
+The flags value dispatches the load method (all three verified in the
+disassembly):
+
+* **flags 0** — direct SPI read `ops[1](src → dst, len)`: plain copy;
+* **flags 1** — the hardware-engine path (zero-fill window, stage container
+  to 0xA2088000, call the driver at 0xA2001F50 — our boot's path);
+* **flags 2** — stage container to 0xA2088000, then call the routine at
+  **0xA2002EF8** with (dst, 0, staging, len) — a **software LZMA decoder**.
+
+### 15.4 flags 2 is an LZMA decoder (new firmware capability, verified)
+
+The routine at 0xA2002EF8 parses a 13-byte LZMA header: byte 0 = props
+(decoded by the classic div-45 / mod-45 / div-9 loops at 0xA2002FCC into
+pb/lp/lc, bounded `< 0xE1`), bytes 5..13 = **u64 LE uncompressed size**
+(assembled by the shift-accumulate loop at 0xA2002F68), then calls the
+decoder at **0xA200304C** with (state, src+13, len−13, &out, dst, size).
+This is a complete second codec in the SDK image and the first
+identified software decompressor; it is *not* used by the observed boot
+(flags 1) but is fully present in the known-good driver payload.
+
+### 15.5 The engine window-usage scan: no additional modes (§14.4 item 2)
+
+An exhaustive scan of the known-good driver image for accesses to
+0xBFFE3800..0xBFFE3880 (s6-relative and lui-based) finds engine traffic
+only inside the already-decoded regions: the loader (0xA2001A10..0xA2001C30),
+the engine driver (0xA2001F50..0xA2002790), and the bit-6 failure path
+(0xA2002ECC/0xA2002EEC). **No additional engine modes are exercised
+anywhere in the image** — the unexplained constants (0xBFFE3830 = 0x68,
+0xBFFE3840 = 0x20, 0xBFFE3858 = 0xC0, mode 0xBFFE3800 = 0x90) are the
+complete set of engine programming inputs, as far as this firmware goes.
+
+### 15.6 The LZ value semantics: five families refuted; structure mapped
+
+All experiments decode the verified symbol stream (25,027 symbols, exact
+parse) and score the result with the calibrated strict-validity oracle
+(`tools/fw_ring_sweep.py`: stage-1 98.2%, stage-2 97.4%, satellite DB
+30.2%, PRNG 35.9% — real code separates cleanly). RFC baseline:
+**48.3%**, zeros 24.7%, entropy 6.22 (reproduces §14.2 exactly).
+
+1. **Ring-size sweep (window aliasing)** — `ring[(write−dist) mod W]` for
+   W ∈ {512, 1024, 2048, 4096, 8192, 16384, 24576, 32768}, pre-zeroed
+   ring, live-window copies: all 47.4–48.3%, no improvement; W=32768
+   reproduces the RFC output byte-for-byte (implementation cross-check).
+   The driver's 32 KiB zero-fill matches the engine's true window; the
+   0x400 chunk register is not a smaller LZ window.
+2. **Word-aligned copy source** (DMA fetch granularity): source rounded
+   down/up to word or halfword, copy length exact or rounded to
+   word/halfword — all 46.8–48.4%. (The output-size delta 4,474 also
+   matches no natural length-rounding class: odd-len count is 4,711.)
+3. **Snapshot copy** (DMA without overlap handling): only 142 of 9,264
+   matches have dist < len — the family cannot move the result.
+4. **Position-periodic write transforms** — XOR/ADD/SUB with key
+   (x mod P), P ∈ {16..32768}: best 52.5% (xor, P=64) — an artifact-level
+   gain, not a solution (`tools/fw_keydetect.py`).
+5. **Size-constrained length-base-table search** — under reading (a)
+   (exact 78×1024 output), the base-table contribution must rise by
+   exactly +4,474 with per-extra-bit-group offsets g0..g5: exactly 64
+   solutions exist; **all 64 score 49.1–50.6% strict** (`tools/fw_length_search.py`).
+   The length-table family does not contain the answer either.
+
+**Corruption structure** (`tools/fw_corruption_map.py`): strict validity
+**decays monotonically** from 67.2% (chunk 0) through ~52% (chunk 10) to
+a ~44–50% plateau; it is **not chunk-periodic** at 1 KiB or 128 B
+granularity (refuting the "0x400-granularity copy hardware" reading of
+§14.4 step 3), and the match-class mix (literal / dist ≤ 1K / dist > 1K
+shares) is flat across the image — the decay correlates with no
+producing-match class. The plateau (~45%) sits between PRNG (35.9%) and
+real code (98%): the decode settles into self-consistent plausible
+garbage through its own copy chains.
+
+**Distance statistics** (`tools/fw_dist_stats.py`): distances span
+1..32,743 (44.2% of matches exceed 1 KiB) — the compressor used the full
+32 KiB window, so the engine must too; there is no "compressor used a
+small window" escape hatch.
+
+### 15.7 What remains open
+
+* **Q7 (new)**: how the stage-1/2 loader's copy path reconciles the
+  descriptor source fields (0x10000 / 0x135C) with the plaintext payload
+  placement at 0x2F6C — disassemble the stage-1/2 copy loop.
+* **Q8 (new)**: the checksum algorithm (two anchors, §15.2) — its
+  recovery would give an offline validity oracle strictly stronger than
+  instruction statistics.
+* **§14 engine LZ value semantics** — now narrowed by five refuted
+  families (§15.6) plus the §14.3 list, with the corruption structure
+  mapped. The remaining hypothesis space is concentrated on per-match
+  value behavior that is *not* explainable by any uniform table, window,
+  alignment, or write-transform model tested so far.
