@@ -1217,3 +1217,55 @@ image rows.
   exactly the observed near-miss copies — but it must be reconciled with
   the real device booting correctly); (b) the compressor's distance
   domain (band/stream vs pixel); (c) Q8 (checksum) still open.
+
+### 17.5 Milestone O — the ladder hunt (session record)
+
+All experiments against the pristine flash; strict validity = the
+calibrated oracle; tools committed.
+
+* `tools/fw_pixel_lz.py` — fixed-filter pixel-domain LZ (literal
+  unfiltered with a fixed PNG filter, matches copying pixels): None/Sub/
+  Up/Average/Paeth score 49.7/41.2/42.6/38.8/40.6% — refuted.
+* Row-wise fixed-filter unfiltering of the RFC decode (no filter bytes;
+  the filter from IMG_TYPE): None 48.3%, Sub 36.5%, Up 36.7%, Average
+  35.2%, Paeth 36.2% — refuted in this direction too.
+* `tools/fw_beam_lz.py` — beam search over per-match length adjustments
+  (delta in {0,1,2}, exact incremental word-validity scoring): reaches
+  **73.8%** strict (vs 48.3% baseline) but the winning delta sequence has
+  NO structure by len, dist, alignment, column or match index — it is
+  oracle exploitation, not a semantics. Two facts survive: (a) the
+  validity oracle is satisfiable far above the baseline by per-match
+  choices, (b) the extra-byte rate stays ~1.08/match throughout.
+* Uniform +1/+2/+3 per match WITH image truncation at 79,872 (the PNG
+  framing invalidates the old full-output scoring of size-overflowing
+  ladders): 50.3/50.4/51.1% — still refuted, but the truncated head
+  region improves monotonically (56.6→60.2% over the first 16 KiB).
+* `examples/pixel_precontent.rs` — the emulator's DRAM at the pixel
+  buffer (phys 0x01600000) is zero before the decode, so the dist>output
+  matches copy zeros in any emulator-side replay regardless of window
+  placement; the real device's pre-decode content there is unknown.
+* `tools/fw_fixed_ladder.py` — **structural result**: walks that do NOT
+  consume the distance extra bits (a fixed 30-entry distance ladder, the
+  natural simple-hardware design) consume the stream in a way that
+  FILLS the 79,872-byte image exactly (m2: image_full with 26,549
+  symbols; m4 — no extra bits at all — likewise). Every model that
+  consumes dist extras under-shoots (75.4 kB). The ladder mini-grid
+  (DBASE / dsym+1 / +1 / +2 / halved, len ±1) stays at 46.6–49.6% — the
+  ladder VALUES are silicon ROM, not RFC's.
+* Distance-symbol histogram (for the ladder hunt): symbols 12/14/16/18/
+  20/21/22/26 dominate (5–6% each) at RFC bases 65/129/257/513/1025/
+  1537/2049/8193 — power-of-2-ish distances, exactly the repetition
+  structure of real binaries (jump tables, row pitches). This supports
+  an RFC-like ladder ordering, leaving the length side as the likelier
+  defect.
+* Row-boundary predicates: 49 matches cross a 1024-B row, 6 end on one,
+  9 start on one — none yields the 2,237 count, and no boundary-crossing
+  rule explains the delta.
+
+Next probes (Milestone P): (1) treat the length ladder as 29 unknown ROM
+values and search it under the m2 (fixed-dist) bit accounting, with the
+image-truncated validity oracle and the 73.8% beam bound as the sanity
+ceiling; (2) extract the real device's pre-decode DRAM content at
+0x01600000 from hardware (or bound it: DDR-training patterns vs loader
+staging) to resolve the dist>output copy semantics; (3) Q8 checksum
+remains the decisive missing oracle.

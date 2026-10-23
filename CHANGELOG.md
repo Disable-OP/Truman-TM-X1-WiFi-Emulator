@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.11.1 — Milestone O: the ladder hunt (analysis session)
+
+### Added
+- `tools/fw_pixel_lz.py` — fixed-filter pixel-domain LZ probe (5 PNG
+  filters, both directions) — refuted.
+- `tools/fw_fixed_ladder.py` — walks that consume NO distance extra bits
+  (fixed 30-entry distance ladder): the only model family that fills the
+  79,872-byte image exactly from the stream; ladder mini-grid recorded.
+- `tools/fw_beam_lz.py` — beam search over per-match length adjustments
+  with exact incremental word-validity scoring: 73.8% oracle upper
+  bound, no consistent delta rule (oracle exploitation).
+- `examples/pixel_precontent.rs` — dumps the pre-decode DRAM around the
+  pixel buffer and the band-buffer zero-fill state.
+
+### Documented (docs/firmware-analysis.md §17.5)
+- Fixed-filter unfiltering refuted in both directions; uniform +k/match
+  re-scored with image truncation (the PNG framing invalidates the old
+  full-output scoring of size-overflowing ladders) — still refuted;
+  distance-symbol histogram supports an RFC-like ladder ordering (the
+  length side is the likelier defect); row-boundary predicates refuted;
+  next probes listed for Milestone P.
+
 ## 0.11.0 — Milestone N: the engine is a PNG decoder; row semantics modeled; shift/field-order/filter families refuted
 
 ### Added
