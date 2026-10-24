@@ -232,3 +232,28 @@ Track by evidence-first value, in rough order:
   ACCOUNTING itself — m4-style all-fixed accounting with BOTH ladders
   (59 unknowns) solved jointly against the same linear anchor; Q8
   checksum; DDR residue needs hardware.
+
+## Milestone Q — the executable-head oracle ✅ (session record)
+
+- **Head paradox (§19.1)**: the boot provably executes LZ output byte 0
+  (the loader's `jr v0` → 0xA1600000, `v1` = the driver's return value
+  live in the register dump) — yet under m1..m4 every decoded head hits a
+  reserved/trap word within +0x74, on LITERAL bytes. The device boots, so
+  the true decode's head differs from every tested model.
+- **Refutations (§19.2)**: uniform extra-width family (100 combos),
+  start-bit variants (1008..1216 × m1/m2/m4), table-RAM convention
+  variants (first[] shift, cum[] inclusive) — all fail the head oracle.
+  Vendor entry signature absent from all decodes; pixel-format
+  expansions contradict the completion accounting.
+- **Structural conclusion (§19.3)**: the heads die on literals —
+  length/distance ladder values cannot fix the head; the m2/m4 joint
+  ladder solve (§18.4) is NOT the next step. The remaining space is the
+  symbol→value mapping (engine syms[] interpretation) or an unmodeled
+  output transform, both parse-preserving.
+- **Tools**: `tools/fw_first_corruption.py` (per-byte attribution + word
+  classifier + survey), `tools/fw_head_sweep.py` (uniform widths),
+  `examples/pixel_dump.rs` (fresh engine output dump).
+- **Head-branch DFS run (§19.4)**: escapes exist only via degenerate d=1
+  self-copy floods (m1/m4) and m2 admits no escape within 400k nodes —
+  the transform is NOT ladder-shaped; next: the symbol-mapping family or
+  an emulator entry harness (register-aware oracle).

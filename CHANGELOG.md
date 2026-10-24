@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.13.0 — Milestone Q: the executable-head oracle; accounting/convention families refuted
+
+### Added
+- `tools/fw_first_corruption.py`: per-byte emit attribution of the engine
+  decode (literals = ground truth, matches = suspect), a MIPS32r2 word
+  classifier, and `--survey` mode (first reserved word / first branch per
+  accounting).
+- `tools/fw_head_sweep.py`: uniform extra-bit-width sweep (len/dist fields
+  at fixed widths 0..8) against the executable-head oracle.
+- `examples/pixel_dump.rs`: boots the real firmware and dumps the engine's
+  pixel output with the PNG geometry read from the engine registers.
+- docs/firmware-analysis.md §19: the head paradox, the refutation record,
+  the structural conclusion (ladders cannot fix literal-byte faults), and
+  the designed head-branch DFS.
+
+### Analysis (§19)
+- The head paradox: the boot provably executes LZ output byte 0, yet every
+  tested accounting (m1..m4 × uniform widths × start bits × table-RAM
+  conventions) reserved-faults within +0x74 on literal bytes.
+- Consequence: length/distance ladder values are irrelevant to the entry;
+  the remaining hypothesis space is the symbol→value mapping or an
+  unmodeled output transform, both parse-preserving.
+
 ## 0.12.0 — Milestone P: the size anchor; m2 length-ladder refuted; pre-decode DRAM bounded
 
 ### Added

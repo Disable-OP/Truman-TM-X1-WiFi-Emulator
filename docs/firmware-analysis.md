@@ -1397,3 +1397,115 @@ Consequences:
 * Q8 (the desc[6] checksum) remains the decisive missing oracle (§14).
 * DDR-training residue below the pixel base: bounded, not extracted
   (§18.3 item 2) — needs hardware, not more software.
+
+## 19. Milestone Q — the executable-head oracle: every tested accounting
+### produces a non-executable eCos entry (session record)
+
+### 19.1 The head paradox, stated
+
+The boot chain provably jumps to the pixel-buffer base with the driver's
+return value live: the loader's `jr v0` targets `0xA1600000` exactly
+(emulator trace of the real firmware, register dump: `v0=0xa1600000`,
+`v1=0x00013800` — the driver's success return `0x400 × 78`), so LZ output
+byte 0 IS the first executed instruction word. Under the m1..m4 accountings
+(§17.5) the decoded head is:
+
+```
+0000: 00008160  add $s0,$0,$0     (literals 60 81 + match zeros — hard
+0004: 00000000  nop                in EVERY accounting: bytes 0-1 are the
+...                                 first two litlen codes under any
+0014: 02140000  sll (m1/m3)        convention, and bytes 2-3 can only be
+0018: 01000000  beq +0 (m2/m4)     {00,60,81} — the window holds only
+...                                 the preset zeros and the 60 81 pair)
+0050: 0000ffff  SPECIAL funct 0x3F — RESERVED (m1/m3)
+```
+
+A reserved-instruction fault at +0x50 cannot happen on a booting device:
+**the true decode's head differs from every model we test.** This is a new
+oracle, stronger than the validity percentage: the eCos entry must be
+executable MIPS from word 0 (harmless ops allowed, but the first
+reserved/trap word must never be reached before a branch).
+
+### 19.2 What the oracle refuted (all tools committed)
+
+* `tools/fw_first_corruption.py` — per-byte emit attribution (literals are
+  ground truth under a given accounting; matches can be wrong), a MIPS32r2
+  word classifier (executable-head scanner), and the `--survey` mode. It
+  pins WHERE each accounting's head dies and on WHAT:
+  * m1/m3: word +0x50 = `0x0000ffff` — built from **literals `ff ff`**
+    (ground truth under m1) — fatal.
+  * m2: word +0x18 = `0x6200003b` (opcode 0x18, reserved) — **literal
+    bytes 3b/62** — fatal.
+  * m4: word +0x6c = `0xa5000000` (SH to kuseg with $s4=0 → TLB fault)
+    then +0x74 `0x00000097` (funct 0x17, reserved) — **literal bytes
+    a5/97** — fatal.
+* `tools/fw_head_sweep.py` — the UNIFORM extra-width family (len/dist
+  extra fields read at fixed widths 0..8 and 'r', masked per symbol; the
+  natural simple-hardware read): 100 combos — **every one reserved-faults
+  at +0x4..+0x50**. Uniform widths are refuted by the head.
+* Start-bit variants (stream-relative 1008/1072/1088/1152/1216 vs
+  container 1088−64=1024) × {m1,m2,m4}: all reserved-fault within +0x100.
+* Table-RAM convention variants (§13.6's first[]/cum[] indexing):
+  * the canonical reading (cum exclusive, first canon) reproduces the
+    m1..m4 heads exactly (validates the harness);
+  * first[] interval shift (+1 length): dies at the FIRST match
+    (bad distance at bit 1035) — refuted;
+  * cum[] used inclusively (symbol index off by count[L]): the parse dies
+    within ~100 bytes (bad distance) — refuted.
+* The vendor's entry signature (`addiu $zero,$zero,0x6fb5`, present in
+  both the stage-1 loader and the driver payload) appears NOWHERE in any
+  decode → the eCos stage is a different toolchain (expected) and the
+  entry is not hidden at an offset inside the buffer.
+* Output-transform spot checks: word byte-swap → opcode 0x18 at word 0
+  (dead); halfword swap / bit-reverse → no branch structure possible
+  (dead); 16bpp/RGBA/1bpp pixel-format expansions contradict the
+  completion accounting (624 × 128 = 79,872 = bytes, §13.6) — dead.
+
+### 19.3 The structural conclusion (narrows the remaining space)
+
+In every tested accounting the head dies on **literal bytes** (fixed by
+the parse), not on match bytes. Two consequences:
+
+1. **Length/distance ladder values cannot fix the head.** The m2/m4
+   ladder-solve programs (§18.4) are therefore NOT the next step: no
+   ladder choice changes a literal. (They remain relevant for the image
+   BODY, but they cannot resolve the entry.)
+2. The remaining hypothesis space is the **symbol→value mapping or an
+   output transform**: which value each litlen code produces (the engine's
+   syms[] table-RAM interpretation), or a transformation between the LZ
+   output and the pixel buffer that we have not modeled. Both must keep
+   the verified parse (the code tables are canonical; the driver's upload
+   convention analysis §13.6 holds) while changing what the decoded
+   symbols MEAN.
+
+Suggestive (not evidence): m2/m4's head contains `beq $0,$0,+0` at word 1
+and — under m4 — `blez $v1` at word +0x18, where `v1 = 0x13800` is exactly
+the driver's return value at the jump (register dump). A vendor eCos entry
+that validates the loader's return code is plausible; the pattern dies on
+later literals under every tested mapping.
+
+### 19.4 The head-branch DFS (`tools/fw_head_dfs.py`) — run, and what it showed
+
+DFS over per-match distance assignments for the head (literals fixed,
+match spans parse-fixed, live-window copy), pruning at the first
+reserved/trap word and stopping at a non-trivial branch/jump ("escape"):
+
+* m1: an "escape" at word +0x2c = `00008f48` (JR $a3) — but via d=1
+  self-copy floods (the head becomes `60 81 81 81 …`) and $a3 = 0 at
+  entry: a jump to 0 = kuseg TLB fault. **Spurious.**
+* m2: 400k DFS nodes exhausted, **no escape at all** — the m2 head cannot
+  be made executable by distance choices within that budget.
+* m4: an "escape" at word +0x18 = `18623b3b` (BLEZ $v1, +0x3b3b) — again
+  a d=1 self-copy flood feeding the offset. **Spurious as semantics.**
+
+Conclusion: the raw head-branch criterion is satisfiable only by
+degenerate self-copy assignments, which no compressor would emit, and m2
+— the most structured head — admits NO escape. A distance-ladder
+transform therefore cannot rescue the head for m2 and produces only
+garbage for m1/m4: the transform is NOT ladder-shaped. Per §19.3 the
+search moves to the symbol-mapping family (per-length symbol
+permutations compatible with the uploaded syms[]/first[]/cum[] arrays),
+or to the decisive instrument: an entry harness that boots the emulator
+from 0xA1600000 with the loader's register state and counts executed
+instructions per candidate decode — the register-aware oracle the DFS
+lacks.
