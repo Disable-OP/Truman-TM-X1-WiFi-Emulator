@@ -304,15 +304,20 @@ impl Machine {
         logs.push(("ddrphy".to_string(), ddr_log));
         bus.add_device("ddrphy", cfg.sysreg_base + 0x1580, 0x60, Box::new(ddrphy));
         // DDR controller command/status block at +0x1500..+0x16A0 (see
-        // devices::DdrCtrl). Carved out of the upper param RAM.
+        // devices::DdrCtrl). Carved out of the upper param RAM, and split
+        // around the PHY window into two regions sharing one register file
+        // (§31: the hot-region memo requires non-overlapping regions).
         let ddc_log = LoggingDevice::new("ddrctrl-log", 0).log_handle();
-        let ddrctrl = DdrCtrl::new("ddrctrl", std::rc::Rc::clone(&ddc_log));
-        logs.push(("ddrctrl".to_string(), ddc_log));
+        let (ddrctrl, ddr_shared) = DdrCtrl::new("ddrctrl", std::rc::Rc::clone(&ddc_log));
+        logs.push(("ddrctrl".to_string(), ddc_log.clone()));
+        bus.add_device("ddrctrl", cfg.sysreg_base + 0x1500, 0x80, Box::new(ddrctrl));
+        let ddrctrl_hi =
+            DdrCtrl::with_shared("ddrctrl-hi", 0xE0, ddr_shared, std::rc::Rc::clone(&ddc_log));
         bus.add_device(
-            "ddrctrl",
-            cfg.sysreg_base + 0x1500,
-            0x1A0,
-            Box::new(ddrctrl),
+            "ddrctrl-hi",
+            cfg.sysreg_base + 0x15E0,
+            0xC0,
+            Box::new(ddrctrl_hi),
         );
         // Front-panel key data port at +0x384C (verified read/write
         // semantics; see devices::KeyPort). Carved out of the upper param

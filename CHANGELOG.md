@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.23.1 — Milestone AB: memory-subsystem correctness repair (§31)
+
+### Fixed
+- The `DdrPhy` block (0xBFFE1580..0xBFFE15E0) was registered *inside* the
+  `DdrCtrl` span (0xBFFE1500..0xBFFE16A0); region lookup resolved it by
+  first match, but the Milestone V hot-region memo requires
+  non-overlapping regions — and its own `debug_assert!` has rejected
+  every debug-mode test run since Milestone V (release mode, which CI
+  uses, compiled the assert out and kept the memo). `DdrCtrl` is now
+  exposed as two non-overlapping windows (`ddrctrl` + `ddrctrl-hi`)
+  sharing one register file; access-log content and register semantics
+  are byte-identical, and the pinned boot chain is unchanged (§31).
+- First clean debug-mode test run since Milestone V: 119/119 pass in
+  both debug and release; fmt/clippy/check green.
+
 ## 0.23.0 — Milestone AA: the vendor driver lineage (the engine program named; the offline program closed)
 
 ### Added

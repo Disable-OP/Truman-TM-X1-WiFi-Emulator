@@ -2619,3 +2619,53 @@ family-by-family but structurally (§30.3). The hardware session
 and this milestone makes that session trivial to prepare: the register
 program, the container format, and the engine's programming sequence are
 all documented from the vendor's own code.
+
+## 31. Engineering correction: the hot-region memo vs. nested device regions (v0.23.1)
+
+Found during session reconstruction (a clean checkout of 601a22e fails the
+boot tests in a **debug** build with the Milestone V layout assertion):
+
+```
+overlapping regions: ddrctrl [0x1ffe1500..0x1ffe16a0) vs ddrphy [0x1ffe1580..0x1ffe15e0)
+```
+
+### 31.1 The defect
+
+The `DdrPhy` training block (0xBFFE1580..0xBFFE15E0) has always been
+registered *inside* the `DdrCtrl` span (0xBFFE1500..0xBFFE16A0); the
+pre-Milestone-V bus resolved the overlap by linear-scan first match
+(PHY registered first, so PHY accesses win), and `DdrCtrl`'s doc note
+documented that reliance. Milestone V added the 4-slot hot-region memo
+(§24) together with a `debug_assert!` that regions do not overlap — the
+soundness condition the memo's re-validation actually needs, because the
+two DDR windows share one 4 KiB page: a slot last filled with `ddrctrl`
+validates for an access landing in the PHY window and misroutes it
+(the cached-range check cannot see the nested region). Debug builds
+took the assert; release builds (CI's `cargo test --release`) compiled
+the assert out and kept the memo. Deterministic misrouting did not
+perturb the pinned boot chain — all boot markers, the step range, and
+the final-PC pin reproduce identically — but the invariant the memo
+itself declares was violated in the shipped layout, and local debug
+test runs have been impossible since Milestone V without noticing.
+
+### 31.2 The fix
+
+`DdrCtrl` is now exposed as two **non-overlapping** windows backed by
+one shared register file (`DdrCtrlShared`, the same pattern the
+decompression engine already uses): `ddrctrl` (0x1500..0x1580) and
+`ddrctrl-hi` (0x15E0..0x16A0, absolute offset = local + 0xE0). Both
+windows record into the shared `ddrctrl` access log with absolute
+offsets, so the access log content is byte-identical to the
+single-region device; register identity (+0x1504/+0x1600/+0x1628
+status bits) is keyed on the absolute offset and unchanged.
+
+### 31.3 Verification
+
+- 119/119 tests pass in **debug** (first clean debug run since
+  Milestone V) *and* release; fmt, clippy (`-D warnings`), check green.
+- The boot-chain test's observable pins (console markers through
+  "Go eCos"/"Boot from SPI", step range, final PC page 0xA1600000) are
+  unchanged — confirming the release-mode memo misroute was benign for
+  the pinned horizon and the fix is behavior-preserving.
+- No new evidence about the §30 blocker; this is a correctness repair
+  to the emulator's own memory subsystem, not a firmware finding.

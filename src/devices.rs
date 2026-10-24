@@ -613,23 +613,81 @@ impl Device for DdrPhy {
 /// because emulated commands complete instantly (hypothesis H6, falsifiable
 /// via the access log if the boot later takes a wrong path).
 ///
-/// NOTE: the DdrPhy training block (0x1580..0x15E0) sits inside this range;
-/// it is registered in the address space *before* this device and region
-/// lookup is first-match-wins, so PHY accesses take precedence there.
+/// The block is exposed as **two non-overlapping regions** that share one
+/// register file: `ddrctrl` (0x1500..0x1580, local offset = absolute) and
+/// `ddrctrl-hi` (0x15E0..0x16A0, absolute = local + 0xE0, skipping the PHY
+/// window). Both record into the shared "ddrctrl" access log with absolute
+/// offsets, so logs are byte-identical to the pre-split single-region
+/// device (§31: the split exists because the Milestone V hot-region memo
+/// requires non-overlapping regions; nested-region first-match routing was
+/// unsound under the memo).
+#[derive(Debug)]
+pub struct DdrCtrlShared {
+    regs: std::collections::BTreeMap<u32, u32>,
+}
+
 #[derive(Debug)]
 pub struct DdrCtrl {
     name: String,
-    regs: std::collections::BTreeMap<u32, u32>,
+    /// Absolute-offset shift for this window: 0 for the low region,
+    /// 0xE0 for the high region (skipping the PHY window 0x1580..0x15E0).
+    offset_base: u32,
+    shared: std::rc::Rc<std::cell::RefCell<DdrCtrlShared>>,
     log: AccessLog,
     log_capacity: usize,
 }
 
+impl DdrCtrlShared {
+    fn read_regs(&self, offset: u32) -> u32 {
+        let mut v = self.regs.get(&offset).copied().unwrap_or(0);
+        match offset {
+            0x04 => v |= 0x4,       // +0x1504 bit 2: hw ready (H6)
+            0x100 => v |= 0x1,      // +0x1600 bit 0: ready (H6)
+            0x128 => v |= 0x6_0000, // +0x1628 bits 17/18: ack + init done (H6)
+            _ => {}
+        }
+        v
+    }
+
+    fn write_regs(&mut self, offset: u32, value: u32) {
+        self.regs.insert(offset, value);
+    }
+}
+
 impl DdrCtrl {
-    /// Create a DDR controller block sharing `log`.
-    pub fn new(name: &str, log: AccessLog) -> Self {
+    /// Create the low DDR controller window (absolute offsets 0x000..0x080).
+    /// Returns the device plus the shared register file for the high window.
+    pub fn new(
+        name: &str,
+        log: AccessLog,
+    ) -> (Self, std::rc::Rc<std::cell::RefCell<DdrCtrlShared>>) {
+        let shared = std::rc::Rc::new(std::cell::RefCell::new(DdrCtrlShared {
+            regs: std::collections::BTreeMap::new(),
+        }));
+        (
+            Self {
+                name: name.to_string(),
+                offset_base: 0,
+                shared: std::rc::Rc::clone(&shared),
+                log,
+                log_capacity: 16_384,
+            },
+            shared,
+        )
+    }
+
+    /// Create the high DDR controller window (`offset_base` = 0xE0) attached
+    /// to the shared register file.
+    pub fn with_shared(
+        name: &str,
+        offset_base: u32,
+        shared: std::rc::Rc<std::cell::RefCell<DdrCtrlShared>>,
+        log: AccessLog,
+    ) -> Self {
         Self {
             name: name.to_string(),
-            regs: std::collections::BTreeMap::new(),
+            offset_base,
+            shared,
             log,
             log_capacity: 16_384,
         }
@@ -650,20 +708,16 @@ impl Device for DdrCtrl {
     }
 
     fn read(&mut self, offset: u32, size: crate::memory::AccessSize) -> u32 {
-        let mut v = self.regs.get(&offset).copied().unwrap_or(0);
-        match offset {
-            0x04 => v |= 0x4,       // +0x1504 bit 2: hw ready (H6)
-            0x100 => v |= 0x1,      // +0x1600 bit 0: ready (H6)
-            0x128 => v |= 0x6_0000, // +0x1628 bits 17/18: ack + init done (H6)
-            _ => {}
-        }
-        self.record(offset, size, v, false);
+        let abs = self.offset_base + offset;
+        let v = self.shared.borrow().read_regs(abs);
+        self.record(abs, size, v, false);
         v
     }
 
     fn write(&mut self, offset: u32, size: crate::memory::AccessSize, value: u32) {
-        self.record(offset, size, value, true);
-        self.regs.insert(offset, value);
+        let abs = self.offset_base + offset;
+        self.record(abs, size, value, true);
+        self.shared.borrow_mut().write_regs(abs, value);
     }
 }
 

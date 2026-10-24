@@ -1,5 +1,21 @@
 # Roadmap
 
+## Milestone AB — memory-subsystem correctness repair ✅ (v0.23.1)
+
+- **Defect (§31.1)**: the `DdrPhy` window was registered inside the
+  `DdrCtrl` span; first-match routing predates the Milestone V
+  hot-region memo, whose non-overlap invariant the nesting violates —
+  a cached `ddrctrl` slot can misroute an access landing in the PHY
+  window (both share one 4 KiB page). Debug builds tripped the memo's
+  own `debug_assert!`; release builds (CI) compiled it out.
+- **Fix (§31.2)**: `DdrCtrl` split into two non-overlapping windows
+  sharing one register file (the decomp engine's pattern); access log
+  byte-identical; register semantics unchanged.
+- **Verification (§31.3)**: 119/119 in debug *and* release — the first
+  clean debug run since Milestone V; boot pins unchanged, confirming
+  the misroute was benign for the pinned horizon. No change to the §30
+  hardware-session conclusion.
+
 ## Milestone AA — the vendor driver lineage; the offline program closed ✅
 
 - **The engine program is named by the vendor's own driver code**
