@@ -70,6 +70,56 @@ const CL_ORDER: [usize; 19] = [
     16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15,
 ];
 
+/// The engine's length/distance value semantics — the LZ77 ladder the
+/// hardware applies to (code, extra-bits) pairs.
+///
+/// The bit-level frame (block headers, code-length alphabet, canonical
+/// Huffman codes) parses RFC-canonically on the vendor's own test vector
+/// (§30.2); what differs on the real hardware is exactly this ladder —
+/// the 29+30 base/extra constants, chip ROM the vendor never published
+/// and that offline fitting cannot recover (§30.3). This struct is the
+/// **single seam** where the recovered values plug in: replace
+/// [`ENGINE_VALUE_TABLES`] (or pass a different [`ValueTables`] to
+/// [`inflate_engine_with`]) and re-run `dram_compare --post`
+/// (docs/hardware-session.md). Every family the offline analyses
+/// bounded is representable here: RFC±per-code deltas, uniform extra
+/// widths, and the m4 no-extra-bits accounting (all extras zero).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ValueTables {
+    /// Length base values for length codes 257..=285.
+    pub lbase: [u16; 29],
+    /// Extra-bit counts for length codes 257..=285.
+    pub lextra: [u8; 29],
+    /// Distance base values for distance codes 0..=29.
+    pub dbase: [u16; 30],
+    /// Extra-bit counts for distance codes 0..=29.
+    pub dextra: [u8; 30],
+}
+
+impl ValueTables {
+    /// The RFC 1951 §3.2.5 ladder (the current default model).
+    pub fn rfc1951() -> Self {
+        Self {
+            lbase: LBASE,
+            lextra: LEXTRA,
+            dbase: DBASE,
+            dextra: DEXTRA,
+        }
+    }
+}
+
+/// The engine value table the machine's decode path uses today: the RFC
+/// ladder, which §30 proved is NOT the hardware's. The hardware-session
+/// edit is replacing this one constant with the recovered ROM values
+/// (docs/hardware-session.md — `dram_compare --post` then decides the
+/// decode in one command).
+pub static ENGINE_VALUE_TABLES: ValueTables = ValueTables {
+    lbase: LBASE,
+    lextra: LEXTRA,
+    dbase: DBASE,
+    dextra: DEXTRA,
+};
+
 /// Canonical Huffman decode table built from per-symbol code lengths.
 struct Huffman {
     /// (length, code) -> symbol
@@ -302,6 +352,27 @@ pub fn inflate_engine(
     out: &mut Vec<u8>,
     max_out: usize,
 ) -> Result<usize, InflateError> {
+    inflate_engine_with(
+        data,
+        start_bit,
+        preset_len,
+        out,
+        max_out,
+        &ENGINE_VALUE_TABLES,
+    )
+}
+
+/// [`inflate_engine`] with an explicit value ladder ([`ValueTables`]).
+/// This is the entry point the hardware session uses once the ROM
+/// constants are recovered: the same call, the recovered tables.
+pub fn inflate_engine_with(
+    data: &[u8],
+    start_bit: usize,
+    preset_len: usize,
+    out: &mut Vec<u8>,
+    max_out: usize,
+    tables: &ValueTables,
+) -> Result<usize, InflateError> {
     out.clear();
     // Parse the dynamic block header from bit 0 to rebuild the tables.
     let mut reader = BitReader::new(data);
@@ -377,13 +448,13 @@ pub fn inflate_engine(
                             table: "literal/length",
                         });
                     }
-                    let extra = LEXTRA[li];
+                    let extra = tables.lextra[li];
                     let ebits = if extra > 0 {
                         reader.bits(extra)? as u16
                     } else {
                         0
                     };
-                    let length = LBASE[li] + ebits;
+                    let length = tables.lbase[li] + ebits;
                     let dsym = reader.decode(&dist_h, "distance")? as usize;
                     if dsym >= 30 {
                         return Err(InflateError::BadCode {
@@ -391,13 +462,13 @@ pub fn inflate_engine(
                             table: "distance",
                         });
                     }
-                    let dextra = DEXTRA[dsym];
+                    let dextra = tables.dextra[dsym];
                     let debits = if dextra > 0 {
                         reader.bits(dextra)? as u16
                     } else {
                         0
                     };
-                    let d = DBASE[dsym] + debits;
+                    let d = tables.dbase[dsym] + debits;
                     let n = window.len();
                     if d as usize > n {
                         return Err(InflateError::BadDistance {

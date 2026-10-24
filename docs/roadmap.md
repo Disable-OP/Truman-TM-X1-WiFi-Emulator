@@ -1,5 +1,17 @@
 # Roadmap
 
+## Milestone AC — the value-table seam ✅ (v0.23.2)
+
+- **Prep for the hardware session (§31.4)**: the engine's length/
+  distance ladder is now an injectable value (`inflate::ValueTables`);
+  the machine decode path goes through the named
+  `ENGINE_VALUE_TABLES` constant. Replacing it with the recovered ROM
+  values is the whole post-capture edit.
+- **Differential test**: a hand-encoded minimal dynamic block (bits
+  carry no value information) decodes to different pinned outputs under
+  the RFC and custom ladders — tables proven to flow through the engine
+  path end-to-end. 120 tests; all pins unchanged.
+
 ## Milestone AB — memory-subsystem correctness repair ✅ (v0.23.1)
 
 - **Defect (§31.1)**: the `DdrPhy` window was registered inside the

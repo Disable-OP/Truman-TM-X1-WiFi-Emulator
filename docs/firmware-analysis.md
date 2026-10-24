@@ -2669,3 +2669,20 @@ status bits) is keyed on the absolute offset and unchanged.
   the pinned horizon and the fix is behavior-preserving.
 - No new evidence about the §30 blocker; this is a correctness repair
   to the emulator's own memory subsystem, not a firmware finding.
+
+### 31.4 The value-table seam (v0.23.2)
+
+§30.2/§30.3 bound the hardware's LZ value semantics to a 59-constant
+ladder that offline fitting cannot recover. The engine decode path now
+exposes exactly that ladder as an injectable value
+(`inflate::ValueTables`, RFC 1951 §3.2.5 by default): the machine's
+decode goes through the named `ENGINE_VALUE_TABLES` constant, and
+`inflate_engine_with` accepts any recovered assignment — every family
+the offline analyses bounded is representable (per-code deltas, uniform
+extra widths, the m4 no-extra-bits accounting). A differential test
+hand-encodes a minimal dynamic block whose bits carry no value
+information and pins different outputs under the RFC and custom
+ladders, proving the tables flow through the engine path end-to-end.
+The hardware-session edit is therefore literally one constant: replace
+`ENGINE_VALUE_TABLES` with the capture-recovered values and run
+`dram_compare --post` (docs/hardware-session.md).

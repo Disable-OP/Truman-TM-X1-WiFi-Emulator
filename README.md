@@ -117,7 +117,7 @@ Requires a stable Rust toolchain (https://rustup.rs). No other dependencies.
 
 ```sh
 cargo build --release
-cargo test --release          # 119 tests: boot chain, entry harness, interrupt + COP0 timer delivery, key injection,
+cargo test --release          # 120 tests: boot chain, entry harness, interrupt + COP0 timer delivery, key injection,
                               # watchpoints, Q8 runtime evidence, timer program, keycode-consumer pin,
                               # perf-model regressions (lazy describe, hot-region memo)
 cargo build --release --example bench

@@ -487,12 +487,17 @@ impl Machine {
             src_bytes.push(b as u8);
         }
         let mut out = Vec::new();
-        let res = crate::inflate::inflate_engine(
+        // The value ladder is the named seam for the hardware session
+        // (src/inflate.rs `ENGINE_VALUE_TABLES`, docs/firmware-analysis.md
+        // §31.4): replacing that constant with the recovered ROM values is
+        // the whole post-capture edit.
+        let res = crate::inflate::inflate_engine_with(
             &src_bytes,
             start_bit.min(src_bytes.len() * 8),
             0x8000,
             &mut out,
             0x4_0000,
+            &crate::inflate::ENGINE_VALUE_TABLES,
         );
         match res {
             Ok(n) => {

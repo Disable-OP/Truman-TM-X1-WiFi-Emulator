@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.23.2 — Milestone AC: the value-table seam (§31.4)
+
+### Added
+- `inflate::ValueTables` — the engine's length/distance ladder as an
+  injectable value (29+30 base/extra constants), with `rfc1951()` as the
+  current default and `inflate_engine_with()` as the explicit-table
+  decode entry point. The machine's decode path now goes through the
+  named `ENGINE_VALUE_TABLES` constant: replacing it with the recovered
+  hardware ROM values (docs/hardware-session.md) is the whole
+  post-capture edit.
+- `tests/decomp.rs` differential test: a hand-encoded minimal dynamic
+  block (RFC frame, no value information in the bits) decodes to
+  different pinned outputs under the RFC and custom ladders — proving
+  the engine decode path consumes injected tables end-to-end, in the
+  exact shape of the §30 hardware situation (RFC frame, ROM ladder).
+
+### Notes
+- Behavior-preserving: `ENGINE_VALUE_TABLES` pins the RFC ladder, so
+  all pins (boot chain, decode sizes) are unchanged; 120 tests.
 ## 0.23.1 — Milestone AB: memory-subsystem correctness repair (§31)
 
 ### Fixed
