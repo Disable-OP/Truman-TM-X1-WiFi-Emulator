@@ -43,6 +43,15 @@ pub type AccessLog = std::rc::Rc<
 /// [`Machine::map_handoff`].
 pub const DEFAULT_HANDOFF_ENTRY: u32 = 0xA160_0000;
 
+/// The engine decode's zero-preset dictionary length (§13: the driver
+/// zero-fills the 32 KiB band window before starting; match distances may
+/// reach into it and such matches yield zeros, §14.1/§30.2).
+pub const ENGINE_PRESET_BYTES: usize = 0x8000;
+
+/// The engine decode's hard output cap (§13; the machine additionally
+/// clamps the programmed W×H pixel count on top of this).
+pub const ENGINE_MAX_OUT: usize = 0x4_0000;
+
 /// Machine hardware configuration.
 #[derive(Debug, Clone)]
 pub struct MachineConfig {
@@ -513,6 +522,16 @@ impl Machine {
                 .unwrap_or(0);
             src_bytes.push(b as u8);
         }
+        let start_bit = start_bit.min(src_bytes.len() * 8);
+        // Byte-exact replay capture (§36): the stream bytes and start bit
+        // actually handed to the decoder, stored at service time so the
+        // post-boot trace instrument replays the boot's decode regardless
+        // of later DRAM writes to the container region.
+        {
+            let mut sh = self.decomp.borrow_mut();
+            sh.last_stream = Some(src_bytes.clone());
+            sh.last_start_bit = Some(start_bit as u32);
+        }
         let mut out = Vec::new();
         // The value ladder is the named seam for the hardware session
         // (docs/firmware-analysis.md §31.4/§35): the active ladder comes
@@ -522,10 +541,10 @@ impl Machine {
         let tables = self.config.value_tables.clone();
         let res = crate::inflate::inflate_engine_with(
             &src_bytes,
-            start_bit.min(src_bytes.len() * 8),
-            0x8000,
+            start_bit,
+            ENGINE_PRESET_BYTES,
             &mut out,
-            0x4_0000,
+            ENGINE_MAX_OUT,
             &tables,
         );
         match res {
@@ -544,6 +563,10 @@ impl Machine {
                     (sh.reg(0x28), sh.reg(0x2C))
                 };
                 let pixels = width as usize * height as usize;
+                // The decode's own output length (pre-PNG-row semantics):
+                // the boundary the attribution instrument needs between
+                // decode-produced bytes and the zero-filled band region.
+                self.decomp.borrow_mut().last_decoded_len = Some(out.len());
                 let written = if pixels > 0 && pixels <= 0x4_0000 {
                     let target = pixels.min(0x4_0000);
                     if out.len() > target {
@@ -601,6 +624,20 @@ impl Machine {
     /// The engine's last completion result (bytes written or an error).
     pub fn decomp_last_result(&self) -> Option<Result<usize, String>> {
         self.decomp.borrow().last_result.clone()
+    }
+
+    /// The exact inputs of the last serviced engine decode (§36): the
+    /// stream bytes and start bit captured at service time (byte-exact
+    /// regardless of later DRAM writes to the container region), plus the
+    /// decode's own output length before the machine's PNG-row
+    /// truncate/zero-fill (§17). `None` if the engine never ran this boot.
+    pub fn engine_decode_inputs(&self) -> Option<EngineDecodeInputs> {
+        let sh = self.decomp.borrow();
+        Some(EngineDecodeInputs {
+            stream: sh.last_stream.as_ref()?.clone(),
+            start_bit: sh.last_start_bit? as usize,
+            decoded_len: sh.last_decoded_len?,
+        })
     }
 
     /// Names of all instrumented windows (for phase-by-phase access
@@ -1117,6 +1154,128 @@ pub struct DumpComparison {
     pub divergent_blocks: Vec<usize>,
     /// Longest run of consecutive matching bytes in the compared prefix.
     pub longest_match_run: usize,
+}
+
+/// The exact inputs of a serviced engine decode (§36), as returned by
+/// [`Machine::engine_decode_inputs`]. Feeding these to
+/// [`crate::inflate::inflate_engine_with_traced`] with the same
+/// [`MachineConfig::value_tables`] the machine booted with replays the
+/// boot's decode byte-for-byte (pinned by `tests/solve.rs`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EngineDecodeInputs {
+    /// The stream bytes the decoder consumed (after the 8-byte "SP"
+    /// header, after the input-length clamp; §13).
+    pub stream: Vec<u8>,
+    /// The symbol start bit inside `stream` (the engine's PNG_BS_OFFSET
+    /// minus the 64 header bits, post-clamp; §13).
+    pub start_bit: usize,
+    /// The decode's own output length (pre-PNG-row semantics): window
+    /// bytes at or above this index are the zero-filled band region
+    /// (§17), not decode output.
+    pub decoded_len: usize,
+}
+
+/// The mechanical half of the P1 DIVERGENT row (§36): which decode event
+/// produced the first divergent byte, and what the identical prefix pins
+/// about it.
+///
+/// The value-semantics space is bounded (§14–§26) but a device capture
+/// decides it; this function turns the capture's `first_divergence` into
+/// the named symbol without any search, so the pre-registered next action
+/// ("the first divergent byte identifies the first match whose value
+/// semantics differ", docs/hardware-session.md) is a lookup. The function
+/// reports facts and their documented meaning only — it asserts no
+/// hypothesis about the true decode.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DivergenceAttribution {
+    /// The divergent byte's index in the window.
+    pub byte_index: usize,
+    /// The decode's own output length (the band boundary, §17).
+    pub decoded_len: usize,
+    /// The compared window length.
+    pub window_len: usize,
+    /// The event covering the byte, when the byte is decode-produced and
+    /// a produced-output event covers it (end-of-block markers span no
+    /// bytes and are skipped; a byte at or beyond `decoded_len` is band
+    /// fill and has no event).
+    pub event: Option<EventAttribution>,
+    /// The reference (emulator) byte value.
+    pub reference_byte: u8,
+    /// The capture's byte value.
+    pub captured_byte: u8,
+}
+
+/// One covering event, with the position of the divergent byte inside
+/// the event's output span. Every byte of the span before `offset_in_event`
+/// is capture-identical by the first-divergence definition — for a match,
+/// that pins the referenced source bytes (and so the distance behavior)
+/// for that prefix, and bounds any length-value explanation from below.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EventAttribution {
+    /// The covering event's [`DecodeEvent::index`].
+    pub event_index: usize,
+    /// First output byte of the event's span.
+    pub out_start: usize,
+    /// Output bytes the event produced.
+    pub out_len: usize,
+    /// The divergent byte's position inside the span (`byte_index -
+    /// out_start`; always < `out_len`).
+    pub offset_in_event: usize,
+    /// The event's kind, with the ladder contribution the active
+    /// [`MachineConfig::value_tables`] made to it.
+    pub kind: crate::inflate::DecodeEventKind,
+}
+
+/// Attribute the first divergent byte to its producing decode event.
+///
+/// * `events` — the traced decode's events (decode order, spans absolute
+///   into the decode output).
+/// * `decoded_len` — the decode's own output length (band boundary).
+/// * `reference` / `captured` — the compared windows; `byte_index` must
+///   be a divergence found by [`compare_dumps`] (i.e. < both lengths).
+///
+/// The reference window's first `decoded_len` bytes are the decode's
+/// output (the machine's PNG-row fill only ever appends zeros or
+/// truncates, §17), so byte attribution is exact by construction.
+pub fn attribute_divergence(
+    events: &[crate::inflate::DecodeEvent],
+    decoded_len: usize,
+    reference: &[u8],
+    captured: &[u8],
+    byte_index: usize,
+) -> DivergenceAttribution {
+    assert!(
+        byte_index < reference.len() && byte_index < captured.len(),
+        "byte_index beyond the compared prefix"
+    );
+    let event = if byte_index >= decoded_len {
+        // Band-fill region: no decode event produced this byte (§17).
+        None
+    } else {
+        // First event whose span covers byte_index. Spans are ascending
+        // and non-overlapping; produced-output events only (a span of 0
+        // covers nothing).
+        events
+            .iter()
+            .find(|e| {
+                e.out_len > 0 && byte_index >= e.out_start && byte_index < e.out_start + e.out_len
+            })
+            .map(|e| EventAttribution {
+                event_index: e.index,
+                out_start: e.out_start,
+                out_len: e.out_len,
+                offset_in_event: byte_index - e.out_start,
+                kind: e.kind.clone(),
+            })
+    };
+    DivergenceAttribution {
+        byte_index,
+        decoded_len,
+        window_len: reference.len().min(captured.len()),
+        event,
+        reference_byte: reference[byte_index],
+        captured_byte: captured[byte_index],
+    }
 }
 
 /// Compare a captured device region against the emulator's reference.

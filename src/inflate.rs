@@ -576,6 +576,74 @@ pub fn inflate_engine_with(
     max_out: usize,
     tables: &ValueTables,
 ) -> Result<usize, InflateError> {
+    inflate_engine_with_traced(data, start_bit, preset_len, out, max_out, tables, None)
+}
+
+/// One decoded symbol and the output span it produced (§36).
+///
+/// The event list of a decode is the mechanical half of the P1 DIVERGENT
+/// row (docs/hardware-session.md): with it, "the first divergent byte
+/// identifies the first match whose value semantics differ" becomes a
+/// lookup, not a search — [`crate::machine::attribute_divergence`] maps a
+/// divergence offset to the covering event. Events are recorded in decode
+/// order; `out_start`/`out_len` are absolute offsets into the decode's
+/// own output (before the machine's PNG row semantics zero-fill, §17).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DecodeEvent {
+    /// Symbol ordinal in decode order (0-based).
+    pub index: usize,
+    /// First output byte this symbol produced.
+    pub out_start: usize,
+    /// Output bytes produced (0 for end-of-block markers).
+    pub out_len: usize,
+    /// What the symbol was.
+    pub kind: DecodeEventKind,
+}
+
+/// The decoded symbol's kind, with the ladder contribution the current
+/// [`ValueTables`] made to it (the quantities a value-table difference
+/// can move — nothing else in a match's output is ladder-reachable).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DecodeEventKind {
+    /// A literal byte (stream-determined; ladder-independent, §19.3).
+    Literal { value: u8 },
+    /// The end-of-block marker (256) — a marker, not a terminator (§13):
+    /// the engine keeps decoding to input end.
+    EndOfBlock,
+    /// A length/distance match.
+    Match {
+        /// Length code 257..=285.
+        len_code: u16,
+        /// The ladder's extra-bit width for this length code.
+        len_extra_w: u8,
+        /// Extra bits read from the stream.
+        len_extra_v: u16,
+        /// The produced length: `lbase[len_code-257] + len_extra_v`.
+        length: u16,
+        /// Distance code 0..=29.
+        dist_code: u16,
+        /// The ladder's extra-bit width for this distance code.
+        dist_extra_w: u8,
+        /// Extra bits read from the stream.
+        dist_extra_v: u16,
+        /// The produced distance: `dbase[dist_code] + dist_extra_v`.
+        dist: u16,
+    },
+}
+
+/// [`inflate_engine_with`] that additionally records a per-symbol
+/// [`DecodeEvent`] trace. The decode itself is byte-identical (same call
+/// path — the trace is a passive observer), pinned by `tests/solve.rs`
+/// against the machine's own decode output.
+pub fn inflate_engine_with_traced(
+    data: &[u8],
+    start_bit: usize,
+    preset_len: usize,
+    out: &mut Vec<u8>,
+    max_out: usize,
+    tables: &ValueTables,
+    mut events: Option<&mut Vec<DecodeEvent>>,
+) -> Result<usize, InflateError> {
     out.clear();
     // Parse the dynamic block header from bit 0 to rebuild the tables.
     let mut reader = BitReader::new(data);
@@ -636,13 +704,37 @@ pub fn inflate_engine_with(
         }
         // One symbol step; input exhaustion (the final symbol needing bits
         // past the end register) terminates the decode cleanly.
+        let sym_index = match events {
+            Some(ref e) => e.len(),
+            None => 0,
+        };
         let step = (|| -> Result<(), InflateError> {
+            let out_start = out.len();
             let sym = reader.decode(&lit_h, "literal/length")?;
             match sym {
-                0..=255 => push(&mut window, out, sym as u8, max_out)?,
+                0..=255 => {
+                    push(&mut window, out, sym as u8, max_out)?;
+                    if let Some(e) = events.as_deref_mut() {
+                        e.push(DecodeEvent {
+                            index: sym_index,
+                            out_start,
+                            out_len: 1,
+                            kind: DecodeEventKind::Literal { value: sym as u8 },
+                        });
+                    }
+                }
                 // End-of-block marker: the engine keeps decoding (the
                 // driver's success exit requires the full declared stream).
-                256 => {}
+                256 => {
+                    if let Some(e) = events.as_deref_mut() {
+                        e.push(DecodeEvent {
+                            index: sym_index,
+                            out_start,
+                            out_len: 0,
+                            kind: DecodeEventKind::EndOfBlock,
+                        });
+                    }
+                }
                 _ => {
                     let li = (sym - 257) as usize;
                     if li >= 29 {
@@ -679,6 +771,23 @@ pub fn inflate_engine_with(
                             dist: d as usize,
                         });
                     }
+                    if let Some(e) = events.as_deref_mut() {
+                        e.push(DecodeEvent {
+                            index: sym_index,
+                            out_start,
+                            out_len: 0, // corrected below, after the copy
+                            kind: DecodeEventKind::Match {
+                                len_code: sym,
+                                len_extra_w: extra,
+                                len_extra_v: ebits,
+                                length,
+                                dist_code: dsym as u16,
+                                dist_extra_w: dextra,
+                                dist_extra_v: debits,
+                                dist: d,
+                            },
+                        });
+                    }
                     // Live-window copy: the read offset must track the bytes
                     // this match itself writes (RFC 1951 overlapping-match
                     // semantics). Reading from a frozen `n - d` produced a
@@ -688,6 +797,13 @@ pub fn inflate_engine_with(
                     for i in 0..length {
                         let b = window[n - d as usize + i as usize];
                         push(&mut window, out, b, max_out)?;
+                    }
+                    if let Some(e) = events.as_deref_mut() {
+                        // The span is known exactly now; the event was
+                        // pushed before the copy so an overflow error
+                        // mid-copy still leaves the event recorded.
+                        let last = e.last_mut().expect("event pushed above");
+                        last.out_len = out.len() - out_start;
                     }
                 }
             }

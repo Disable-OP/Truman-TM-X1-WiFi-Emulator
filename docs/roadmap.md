@@ -1,5 +1,35 @@
 # Roadmap
 
+## Milestone AI — the divergence→symbol map: the P1 solve, fed ✅ (v0.28.0)
+
+- **The P1 DIVERGENT row is executable end-to-end (§36)**: the
+  pre-registered "first divergent byte identifies the first match whose
+  value semantics differ" is now a lookup — `solve_divergence` boots,
+  compares, replays the boot's own decode with a per-symbol event trace,
+  **verifies the replay byte-identical before attributing** (integrity
+  gate), and names the covering event with its ladder contribution.
+- **Passive-observer refactor**: `inflate_engine_with` and the new
+  `inflate_engine_with_traced` share one decode core (byte-identical by
+  construction); the machine captures the exact decode inputs at service
+  time (`engine_decode_inputs()`), so post-boot replay is byte-exact
+  regardless of later DRAM writes. `attribute_divergence` is the pure
+  mechanical half (library-level, unit-tested).
+- **The reference decode's trace is pinned structural data**: 25,031
+  events (15,762 literals / 9,267 matches / 2 end-of-block markers);
+  decode length 75,408 vs the 79,872 image — the 4,464-byte zero-filled
+  band region measured (§17); and the §19.1 head decomposes exactly:
+  `60 81` are stream LITERALS (ladder-unreachable, §19.3), bytes 2..7
+  are one preset-reaching match (lc=259, len=5, d=223 → zeros).
+- **No semantics change**: 142 tests (+7), debug and release, green; the
+  boot pins and the `0xcd8d03bf` fingerprint re-verify; fmt/clippy
+  clean. All five verdict paths smoke-tested (identical,
+  prefix-identical, literal, match, band). Fresh evidence survey:
+  nothing new beyond §34.5/§35.2.
+- Blocker unchanged: the 59 value-ROM constants (§30.4) — data-gated.
+  This milestone shortens the capture→verdict distance: the capture's
+  decisive constraint is now a command output.
+
+
 ## Milestone AH — the value-table file seam: the post-capture swap as data ✅ (v0.27.0)
 
 - **The ladder is now a data file (§35)**: `ValueTables::to_bytes` /

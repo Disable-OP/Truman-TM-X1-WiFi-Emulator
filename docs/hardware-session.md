@@ -142,6 +142,24 @@ cargo run --release --example dram_compare -- \
     --ref saved_pixel_dump.bin p1_pixel.bin        # offline re-analysis
 ```
 
+The P1 DIVERGENT row's decisive constraint is one command (§36,
+Milestone AI): it boots, compares, replays the boot's own decode with a
+per-symbol event trace, verifies the replay byte-identical against the
+boot window (hard error otherwise), and attributes the first divergent
+byte to its producing event — literal (value-table-unreachable, §19.3),
+match (the first match whose value semantics differ), or band fill
+(the §26.4 length-accounting family):
+
+```
+cargo run --release --example solve_divergence -- \
+    firmware/<flashfile>.bin p1_pixel.bin --value-tables recovered.spvt \
+    --out p1_events.tsv
+```
+
+Exit codes: `0` identical (the P1 IDENTICAL row applies — suspect the
+capture point first) · `1` divergent or size-Δ (the attribution report
+is the actionable data) · `2` usage, IO or replay-integrity error.
+
 The post-capture value swap (§35, Milestone AH) is a data file, not a
 recompile: `dram_compare --post` (and the CLI `map`) accept
 `--value-tables <file>` — a 191-byte `SPHEVTBL` container written with
@@ -174,7 +192,7 @@ out explicitly in the session record.
 |---|---|---|
 | P1 IDENTICAL (same size, no divergence) | the emulator's engine decode equals the device's — contradicting §19 (this reference's head dies in-emulator) | suspect the capture point first: re-capture at the `jr v0` handoff, kseg1 view; only then revisit the engine model |
 | P1 PREFIX-IDENTICAL, size Δ | same decode, different allocation/length accounting | record both lengths (§26.4's 75,398 vs 79,872 family); re-run the size-anchor algebra with the true length |
-| P1 DIVERGENT | the LZ value semantics differ from every model tested in §14–§26 | `first_divergence` + block map become the decisive constraint; feed the solve (the first divergent byte identifies the first match whose value semantics differ) |
+| P1 DIVERGENT | the LZ value semantics differ from every model tested in §14–§26 | run `solve_divergence` (§36): the first divergent byte is attributed to its producing decode event — the first match whose value semantics differ — with the identical prefix's pin; the `--out` event trace is the per-symbol map for the solve |
 | P2 ZERO | residue ruled out in the captured window | widen the P2 window (the 1 MiB below the base), repeat once; then the paradox residue is elsewhere in DRAM |
 | P2 RESIDUE PRESENT | the §21.6 item-2 answer: the engine starts from non-zero state | load the residue via `AddressSpace::copy_in` before the engine start in a fresh emulator boot and re-run the decode compare — the emulator supports this today |
 | P3 MATCHES `0xcd8d03bf` | the device's decode equals the emulator's reference output (a 2^-32 coincidence for any other decode) | first re-verify the capture point per the P1 IDENTICAL row (a match this strong must survive the same suspicion); then the blocker reframes: the engine decode is known — re-run the §18.4 algebra with the *true* output and re-pin `ENGINE_VALUE_TABLES` from the solved semantics |

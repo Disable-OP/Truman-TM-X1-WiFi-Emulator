@@ -940,6 +940,20 @@ pub struct EngineShared {
     pub done: std::rc::Rc<std::cell::Cell<u8>>,
     /// Decode result for diagnostics: bytes written or an error string.
     pub last_result: Option<Result<usize, String>>,
+    /// The exact stream bytes the last serviced decode consumed
+    /// (post-"SP"-header, post input-length clamp, §36): captured at
+    /// service time so the post-boot replay instrument
+    /// ([`crate::machine::Machine::engine_decode_inputs`]) is byte-exact
+    /// regardless of later DRAM writes. One container per observed boot.
+    pub last_stream: Option<Vec<u8>>,
+    /// The start bit the last serviced decode ran with (post-clamp, the
+    /// value actually handed to the decoder).
+    pub last_start_bit: Option<u32>,
+    /// The last serviced decode's own output length — the pre-PNG-row
+    /// decode length, before the machine's truncate/zero-fill to the
+    /// programmed W×H (§17). Window bytes at or above this index are the
+    /// zero-filled band region, not decode output.
+    pub last_decoded_len: Option<usize>,
     /// How many bytes of source to feed the decoder.
     pub input_len: u32,
     /// Borrow-free request hint (Milestone Z, §28): set when a start
@@ -959,6 +973,9 @@ impl EngineShared {
             busy: false,
             done,
             last_result: None,
+            last_stream: None,
+            last_start_bit: None,
+            last_decoded_len: None,
             input_len: 0,
             pending: std::rc::Rc::new(std::cell::Cell::new(false)),
         }))

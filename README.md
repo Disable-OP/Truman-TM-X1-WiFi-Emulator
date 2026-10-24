@@ -184,6 +184,12 @@ python3 tools/fw_keycode_consumer.py firmware/*.bin
 ./target/release/truman-emulator map firmware/*.bin --value-tables recovered.spvt
 ./target/release/examples/ladder_eval firmware/*.bin \
     --value-tables candidates/foo.spvt --fingerprint 0xCAPTURED   # P3 elimination loop
+
+# Divergence→symbol map (Milestone AI / §36): the P1 DIVERGENT row as one
+# command — the first divergent byte attributed to its decode event, with
+# a replay-integrity gate and the full per-symbol trace as TSV
+./target/release/examples/solve_divergence firmware/*.bin p1_pixel.bin \
+    --value-tables recovered.spvt --out p1_events.tsv
 ```
 
 Exit codes: `0` step-limit (clean), `1` usage/IO, `2` emulation stopped on a

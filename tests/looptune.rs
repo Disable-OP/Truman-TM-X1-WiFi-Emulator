@@ -55,6 +55,9 @@ fn engine_pending_hint_tracks_request_lifecycle() {
         busy: false,
         done: Rc::new(Cell::new(0)),
         last_result: None,
+        last_stream: None,
+        last_start_bit: None,
+        last_decoded_len: None,
         input_len: 0,
         pending: Rc::new(Cell::new(false)),
     };

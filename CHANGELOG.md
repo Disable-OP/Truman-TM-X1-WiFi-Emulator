@@ -1,5 +1,56 @@
 # Changelog
 
+## 0.28.0 — Milestone AI: the divergence→symbol map; the P1 solve, fed (§36)
+
+### Added
+- `inflate::inflate_engine_with_traced` (src/inflate.rs): the engine
+  decode with a passive per-symbol event trace — `DecodeEvent` (index,
+  output span) × `DecodeEventKind` (Literal / EndOfBlock / Match with
+  the active ladder's full contribution named). `inflate_engine_with`
+  delegates to the same core with tracing off: one decode path,
+  byte-identical by construction (all pins re-verify).
+- `Machine::engine_decode_inputs` (src/machine.rs): the exact decode
+  inputs captured at engine service time (`last_stream`/`last_start_bit`
+  in `EngineShared`, plus the pre-PNG-row `last_decoded_len`) — a
+  post-boot replay is byte-exact regardless of later DRAM writes.
+  `ENGINE_PRESET_BYTES`/`ENGINE_MAX_OUT` name the decode constants.
+- `machine::attribute_divergence` (src/machine.rs): the mechanical P1
+  DIVERGENT half — the event whose output span covers the first
+  divergent byte, with the byte's offset inside it; band-fill bytes
+  (≥ decoded_len, §17) report no event. Pure, unit-tested.
+- `examples/solve_divergence.rs`: the P1 DIVERGENT row executor —
+  boots, compares, replays with tracing, **verifies the replay
+  byte-identical before attributing** (integrity gate), and prints the
+  attribution with the documented meaning per kind (literal = §19.3
+  ladder-unreachable; match = the first match whose value semantics
+  differ; band = the §26.4 length-accounting family).
+  `--out` writes the full event trace (TSV); `--value-tables` boots
+  and replays under a candidate ladder (§35). Exit 0 identical /
+  1 divergent or size-Δ / 2 usage-IO-integrity.
+- `tests/solve.rs` (+7 = 142 total): pure attribution units (match
+  span/offset, literal kind, band region, zero-span events, compared-
+  prefix bound) and real-firmware gates — the traced replay is
+  byte-exact against the boot decode and the event spans tile its
+  output exactly; the RFC reference decode's event census is pinned
+  (25,031 events: 15,762 literals / 9,267 matches / 2 end-of-block);
+  and the end-to-end P1 DIVERGENT row on a candidate-ladder capture
+  (first divergence at byte 5 → the head match, event #2, offset 3).
+- docs/firmware-analysis.md §36 (instrument, pinned trace data,
+  verification, survey), roadmap Milestone AI,
+  docs/hardware-session.md (the P1 DIVERGENT row and the ingestion
+  section now name the command), README.
+
+### Documented
+- **The §19.1 head paradox decomposes exactly** (§36.2, pinned): the
+  executable head `60 81 00 00…` is two stream LITERALS (0x60, 0x81 —
+  ladder-unreachable under a symbol-identical parse, §19.3) then one
+  preset-reaching match (lc=259, len=5, d=193+30=223 → the zeros).
+  The decode's own output length is 75,408 vs the 79,872 image: the
+  4,464-byte zero-filled band region measured on this container.
+- Fresh evidence survey (§36.4): nothing new beyond §34.5/§35.2; the
+  second-container option stays owner-gated (§32.3).
+
+
 ## 0.27.0 — Milestone AH: the value-table file seam; the post-capture swap as data (§35)
 
 ### Added

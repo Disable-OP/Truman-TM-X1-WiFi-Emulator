@@ -3071,3 +3071,132 @@ done
 # the menu-path map under the surviving ladder:
 truman-emulator map firmware/*.bin --value-tables recovered.spvt
 ```
+
+## 36. Milestone AI — the divergence→symbol map: the P1 solve, fed (v0.28.0)
+
+The hardware-session decision tree pre-registers the P1 DIVERGENT row's
+next action — "*first_divergence + block map become the decisive
+constraint; feed the solve (the first divergent byte identifies the first
+match whose value semantics differ)*" — but until this milestone the
+identification itself was manual: `dram_compare` reports the byte offset,
+and mapping it to the producing symbol required re-deriving the decode by
+hand. The capture side of that row is now one command.
+
+### 36.1 The instrument
+
+Three pieces, all passive observers of the existing decode path:
+
+* **The event trace** (`src/inflate.rs`): `inflate_engine_with_traced` —
+  the engine decode with a per-symbol [`DecodeEvent`] record (index,
+  output span, kind). Kinds: `Literal` (the stream byte),
+  `EndOfBlock` (the §13 marker), and `Match` with the ladder's full
+  contribution named (len_code/extra_w/extra_v/length,
+  dist_code/extra_w/extra_v/dist). The plain
+  `inflate_engine_with` now delegates to the same core with tracing
+  off — the decode is byte-identical by construction (one code path),
+  and the fingerprint pin (`0xcd8d03bf`) plus the boot pins re-verify it.
+* **The replay capture** (`src/devices.rs`, `src/machine.rs`): at engine
+  service time the machine stores the exact decode inputs
+  (`last_stream` — post-"SP"-header, post input-length clamp — and
+  `last_start_bit`) and the decode's own output length
+  (`last_decoded_len`, pre-PNG-row semantics). `Machine::engine_decode_inputs()`
+  returns them, so a post-boot replay is byte-exact regardless of later
+  DRAM writes to the container region. The engine decode's preset/cap
+  constants become named (`ENGINE_PRESET_BYTES`, `ENGINE_MAX_OUT`).
+* **The attribution** (`src/machine.rs`): `attribute_divergence(events,
+  decoded_len, reference, captured, k)` — a lookup, not a search: the
+  event whose output span covers byte *k*, with the byte's position
+  inside that span. Bytes at or beyond `decoded_len` are the zero-filled
+  band region (§17) and report no event.
+
+The executor is `examples/solve_divergence.rs` — boots the real
+firmware, extracts the reference window, compares (the `dram_compare
+--post` semantics), and on divergence replays the boot's decode with
+tracing, **verifies the replay byte-identical against the boot window
+before attributing** (integrity gate; a mismatch is a hard error, never
+a report), then prints the attribution with the documented meaning per
+kind:
+
+* **divergence on a Literal** — value tables cannot move a literal
+  (§19.3): under a symbol-identical parse the divergence is not a
+  value-table difference; the parse itself differs. The report routes to
+  the capture-point suspicion check first (the P1 tree's own order).
+* **divergence inside a Match span** — the named match: its first
+  `offset_in_event` output bytes are capture-identical (the
+  first-divergence definition), so its referenced source bytes were
+  correct for that prefix; the length value and the symbol sequence
+  around it are the remaining movers. This is the pre-registered
+  "first match whose value semantics differ".
+* **divergence at/beyond `decoded_len`** — band fill (§17): a non-zero
+  capture byte there is a length-accounting difference (the §26.4
+  family), not a value difference.
+* **size Δ with an identical prefix** — the P1 PREFIX-IDENTICAL row.
+
+`--out <file>` writes the full event trace as TSV (the reference
+decode's per-symbol map); `--value-tables` boots and replays under a
+candidate ladder (§35). Exit codes: 0 identical, 1 divergent /
+size-Δ (actionable), 2 usage/IO/integrity error.
+
+### 36.2 What the reference decode's own trace pins (new structural data)
+
+The trace of the RFC reference decode (deterministic, pinned by
+`tests/solve.rs`):
+
+| quantity | value |
+|---|---|
+| events (symbols decoded) | 25,031 |
+| literals | 15,762 (63.0%) |
+| matches | 9,267 (37.0%) |
+| end-of-block markers | 2 |
+| decode's own output length | 75,408 bytes |
+| image (engine W×H) | 79,872 bytes |
+| zero-filled band region | 4,464 bytes (5.6%) |
+
+Two consequences. First, the **§19.1 head paradox now decomposes
+precisely**: the executable head `60 81 00 00 …` is event #0 (literal
+0x60), event #1 (literal 0x81), event #2 (match lc=259, len=5,
+dist=193+30=223 into the 32 KiB zero preset → the five zeros). Under a
+symbol-identical parse, head bytes 0–1 are fixed by the stream itself —
+no ladder value can move them — while bytes 2–7 are one preset-reaching
+match (ladder-movable). §19.3's "heads die on literals" is thus exact:
+the first two bytes of the executed stage are stream literals.
+Second, the decode's own length is 75,408, not 79,872: the machine's
+PNG-row fill supplies the final 4,464 bytes (§17), so the §26.4
+length-Δ family has a measured shape on this container.
+
+### 36.3 Verification without hardware
+
+7 new tests (`tests/solve.rs`, +7 = 142 total):
+
+* pure attribution units on hand-built event lists: match-span
+  attribution with offset, literal attribution (the §19.3 kind), band
+  region → no event, zero-span (end-of-block) events never cover a
+  byte, and the compared-prefix bound (`should_panic`);
+* real-firmware gates: the traced replay is **byte-exact** against the
+  boot's own decode output and the event spans **tile** that output
+  exactly (contiguous, no gaps/overlaps, total = 75,408); the event
+  census and the §19.1 head decomposition are pinned event-by-event;
+  and the end-to-end P1 DIVERGENT row — a candidate-ladder boot as the
+  synthetic capture — first diverges at byte 5, attributed to the head
+  match (event #2, span 2..7, offset 3), with the identical prefix
+  re-checked byte-for-byte.
+
+The example is smoke-verified on all five verdict paths (identical /
+prefix-identical / literal divergence / match divergence / band
+divergence) with the pinned boot chain unchanged (handoff step
+1,301,763, trap at 0xA1600050, fingerprint `0xcd8d03bf`). fmt/clippy
+clean; 142 tests, debug and release, green.
+
+**No semantics change**: the decode path is one shared core with a
+passive observer; every boot pin and the fingerprint re-verify. The
+milestone claims no boot progress — the blocker stays the 59 value-ROM
+constants (§30.4), data-gated — but the capture's decisive constraint
+is now a command output instead of an analysis session.
+
+### 36.4 Fresh evidence survey
+
+A fresh public-evidence sweep (SPHE15xx/PNG_DEC/sp_gzip sources and
+SDK mirrors, Sunplus toolchains, Truman dumps) found nothing beyond
+§34.5/§35.2: the vendor compressor remains unpublished, no source
+uploads a value ladder, and the same-SoC second-container option
+remains owner-gated and unexercised (§32.3).
