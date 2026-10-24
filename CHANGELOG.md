@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.21.0 — Milestone Y: the hardware-session handoff (P1/P2 one-command ingestion)
+
+### Added
+- `Machine::compare_dumps` / `Machine::classify_residue` (`src/machine.rs`)
+  — the pure, integer-only comparison behind the §22.5 handoff: matching
+  count/per-mille, first divergence, 1024-byte block maps, longest runs;
+  size mismatch compares the shorter prefix and records both lengths.
+  Deterministic; pinned by `tests/hwsession.rs` (10 tests, incl. the
+  real-firmware pixel-reference extraction and a determinism re-pin).
+- `examples/dram_compare.rs` — one command per decisive experiment:
+  `--post` (boot + engine reference vs device capture), `--pre` (residue
+  classification vs the §18.3 all-zero expectation), `--ref` (offline
+  file-vs-file); `--out` writes the block map; exit codes 0/1/2
+  distinguish clean matches from actionable divergence.
+- `docs/hardware-session.md` — the capture protocol (windows, sizes,
+  halt points, JTAG/EJTAG plan explicitly labeled unvalidated,
+  integrity checklist) and the pre-registered decision tree for P1/P2.
+
+### Findings (docs/firmware-analysis.md §27)
+- No new hardware claims: the full path is verified in-emulator only
+  (synthetic perturbations localized exactly; boot determinism re-pinned
+  through the comparator's extraction path). §26's refutations stand;
+  the SP stream remains hardware-blocked — but the session cost is now
+  one command per experiment.
+
 ## 0.20.0 — Milestone X: the combined length+distance class refuted jointly
 
 ### Added

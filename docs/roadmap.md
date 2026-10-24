@@ -3,6 +3,21 @@
 Milestones follow the original project plan (A → G). Status reflects what is
 actually demonstrated by code + tests in this repository.
 
+## Milestone Y — the hardware-session handoff ✅
+
+- **§22.5/§26.4's remainder made one-command**: pure comparison analysis
+  (`Machine::compare_dumps` / `Machine::classify_residue`,
+  `src/machine.rs`, integer-only and deterministic, 10 tests incl. the
+  real-firmware reference extraction) plus `examples/dram_compare.rs`
+  (`--post` P1 / `--pre` P2 / `--ref` offline).
+- **Capture protocol registered** (`docs/hardware-session.md`): windows,
+  sizes, halt points, the (unvalidated) JTAG/EJTAG plan, capture
+  integrity checklist, and the pre-registered decision tree for both
+  experiments — verdicts are interpreted before data exists.
+- Nothing about the evidence changes: §26's refutations stand; the SP
+  stream stays hardware-blocked. The hardware session's cost drops to
+  one command per experiment.
+
 ## Milestone X — the combined length+distance class: refuted ✅
 
 - **The last in-silico class swept jointly** (§26): every prior length

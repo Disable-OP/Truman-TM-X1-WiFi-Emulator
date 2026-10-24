@@ -117,7 +117,7 @@ Requires a stable Rust toolchain (https://rustup.rs). No other dependencies.
 
 ```sh
 cargo build --release
-cargo test --release          # 106 tests: boot chain, entry harness, interrupt + COP0 timer delivery, key injection,
+cargo test --release          # 116 tests: boot chain, entry harness, interrupt + COP0 timer delivery, key injection,
                               # watchpoints, Q8 runtime evidence, timer program, keycode-consumer pin,
                               # perf-model regressions (lazy describe, hot-region memo)
 cargo build --release --example bench
@@ -148,6 +148,12 @@ python3 tools/fw_syms_family.py firmware/*.bin
 ./target/release/examples/timer_probe firmware/*.bin
 ./target/release/examples/keycode_consumer firmware/*.bin
 python3 tools/fw_keycode_consumer.py firmware/*.bin
+
+# Hardware-session ingestion (Milestone Y): the two decisive experiments
+# of docs/firmware-analysis.md §22.5, one command each, decision tree
+# pre-registered in docs/hardware-session.md
+./target/release/examples/dram_compare --post firmware/*.bin p1_pixel.bin
+./target/release/examples/dram_compare --pre p2_predecode.bin
 ```
 
 Exit codes: `0` step-limit (clean), `1` usage/IO, `2` emulation stopped on a
@@ -164,6 +170,7 @@ fault/unknown instruction.
 | `src/firmware.rs`, `src/boot.rs` | Image identification/validation, reset/diagnostics |
 | `src/bin/truman-emulator.rs` | CLI frontend (`inspect` / `run` / `trace`) |
 | `tests/boot.rs`, `tests/interrupt.rs` | Integration tests: real-firmware boot chain, interrupt injection |
+| `tests/hwsession.rs` | Milestone Y: capture-comparison/residue analysis pins + the real-firmware reference path |
 | `tests/watch.rs`, `tests/q8.rs` | Watchpoint mechanics; the §22 runtime-evidence pins (loader reads exactly three descriptor words, one-pass copy, no checksum pass) |
 | `tests/timer.rs` | SoC timer model semantics + the real boot's timer register program (§23.4) |
 | `docs/firmware-analysis.md` | The evidence base: CPU arch, flash map, register models |
@@ -176,6 +183,8 @@ fault/unknown instruction.
   evidence, security observations
 - `docs/architecture.md` — module boundaries and design decisions
 - `docs/roadmap.md` — milestone status (A–G) and next steps
+- `docs/hardware-session.md` — DRAM-capture protocol and the
+  pre-registered decision tree for the two §22.5 experiments
 
 ## License & scope
 

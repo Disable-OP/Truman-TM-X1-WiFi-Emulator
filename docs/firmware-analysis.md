@@ -2329,3 +2329,49 @@ from the firmware and the tools, and any further progress requires a
 real device's post-decode DRAM dump (the §22.5 instrument set is ready
 for it).
 
+## 27. Milestone Y — the hardware-session handoff: ingestion and the
+### pre-registered decision tree (session record)
+
+§26.4 closed the in-silico program with exactly one remainder: a real
+device's post-decode DRAM dump (§22.5). The missing piece was not
+analysis but logistics — nothing ingested a capture, and no decision
+tree was registered for the two decisive experiments. Milestone Y adds
+exactly that, and nothing else.
+
+### 27.1 What was added
+
+* **Pure comparison analysis** (`src/machine.rs`): `compare_dumps`
+  (matching count/per-mille, first divergence, 1024-byte divergent-block
+  map, longest match run; size mismatch compares the shorter prefix and
+  records both lengths) and `classify_residue` (non-zero structure of a
+  capture against the §18.3 all-zero expectation). Integer-only,
+  deterministic, pinned by `tests/hwsession.rs` (10 tests incl. the
+  real-firmware reference extraction and a boot-determinism pin).
+* **One-command ingestion** (`examples/dram_compare.rs`): `--post` (P1:
+  boot, extract the engine's pixel reference, compare), `--pre` (P2:
+  residue classification), `--ref` (offline file-vs-file). Exit codes
+  distinguish clean matches (0) from actionable divergence (1).
+* **The capture protocol** (`docs/hardware-session.md`): windows, sizes
+  (79,872 = 0x400 × 78 from the engine's registers), halt points, the
+  JTAG/EJTAG plan (OpenOCD `mips_m4k`, `dump_image`; explicitly
+  unvalidated on this board), capture-integrity checklist, and the
+  pre-registered decision tree for P1/P2 outcomes.
+
+### 27.2 Verification without hardware
+
+The full path is exercised with the tools the repo already trusts: the
+real firmware boots, the pixel reference is extracted (79,872 bytes,
+1024×78), and the comparator localizes synthetic perturbations exactly
+(single-byte flip → `first_divergence` at the flipped offset, one
+divergent block; two flips → two blocks; the boot is byte-deterministic
+across runs, re-pinned through the comparator's own extraction path).
+The capture protocol itself remains unvalidated until a hardware
+session — as this document says everywhere it could.
+
+### 27.3 What this changes
+
+Nothing about the evidence. §26's refutations stand; the SP-stream
+program remains hardware-blocked. What changes is the cost of the
+hardware session: the moment a capture exists, one command produces the
+verdict and its block map, and the decision tree says what each verdict
+means before anyone sees the data. That is the whole milestone.

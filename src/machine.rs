@@ -792,6 +792,149 @@ impl Machine {
     }
 }
 
+/// Hardware-session comparison (Milestone Y, docs/hardware-session.md):
+/// the pure-data analysis behind the §22.5 handoff. When a real device's
+/// DRAM capture arrives, [`compare_dumps`] decides whether the emulator's
+/// engine reference and the device agree, and where they first diverge.
+///
+/// All arithmetic is integer-only and the function is deterministic —
+/// the same inputs always produce the same report (pinned by tests).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DumpComparison {
+    /// Length of the reference (emulator) side in bytes.
+    pub reference_len: usize,
+    /// Length of the captured (device) side in bytes.
+    pub captured_len: usize,
+    /// Bytes actually compared: `min(reference_len, captured_len)`.
+    pub compared_len: usize,
+    /// Matching bytes within the compared prefix.
+    pub matching_bytes: usize,
+    /// Matching bytes per thousand of the compared prefix
+    /// (0 when nothing was compared; integer math, no floats).
+    pub match_permille: u64,
+    /// Byte index of the first mismatch within the compared prefix.
+    pub first_divergence: Option<usize>,
+    /// Indices of 1024-byte blocks (within the compared prefix) that
+    /// contain at least one mismatching byte, ascending.
+    pub divergent_blocks: Vec<usize>,
+    /// Longest run of consecutive matching bytes in the compared prefix.
+    pub longest_match_run: usize,
+}
+
+/// Compare a captured device region against the emulator's reference.
+///
+/// A size mismatch is not an error: the comparison covers the shorter
+/// prefix and both lengths are reported so the caller can act on the
+/// delta (e.g. §26.4's 75,398 vs 79,872 question).
+pub fn compare_dumps(reference: &[u8], captured: &[u8]) -> DumpComparison {
+    let compared = reference.len().min(captured.len());
+    let mut matching = 0usize;
+    let mut first_divergence: Option<usize> = None;
+    let mut divergent_blocks: Vec<usize> = Vec::new();
+    let mut longest_run = 0usize;
+    let mut run = 0usize;
+    let mut last_divergent_block: Option<usize> = None;
+    for i in 0..compared {
+        if reference[i] == captured[i] {
+            matching += 1;
+            run += 1;
+            if run > longest_run {
+                longest_run = run;
+            }
+        } else {
+            if first_divergence.is_none() {
+                first_divergence = Some(i);
+            }
+            run = 0;
+            let block = i / 1024;
+            if last_divergent_block != Some(block) {
+                divergent_blocks.push(block);
+                last_divergent_block = Some(block);
+            }
+        }
+    }
+    let match_permille = if compared == 0 {
+        0
+    } else {
+        (matching as u64 * 1000) / compared as u64
+    };
+    DumpComparison {
+        reference_len: reference.len(),
+        captured_len: captured.len(),
+        compared_len: compared,
+        matching_bytes: matching,
+        match_permille,
+        first_divergence,
+        divergent_blocks,
+        longest_match_run: longest_run,
+    }
+}
+
+/// Hardware-session residue classification (Milestone Y): the pure-data
+/// analysis for experiment P2 (§22.5). The emulator side proves the boot
+/// never writes below the pixel base (§18.3), so the expected pre-decode
+/// content is all-zero; what a real device actually holds there is the
+/// open head-paradox question (§21.6 item 2). This report structures a
+/// capture without assuming either answer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResidueReport {
+    /// Capture length in bytes.
+    pub len: usize,
+    /// Non-zero bytes in the capture.
+    pub nonzero_bytes: usize,
+    /// Non-zero bytes per thousand of the capture (0 when empty).
+    pub nonzero_permille: u64,
+    /// Byte index of the first non-zero byte.
+    pub first_nonzero: Option<usize>,
+    /// Longest run of consecutive non-zero bytes.
+    pub longest_nonzero_run: usize,
+    /// Indices of 1024-byte blocks containing at least one non-zero byte,
+    /// ascending.
+    pub nonzero_blocks: Vec<usize>,
+}
+
+/// Classify a captured region against the all-zero expectation.
+pub fn classify_residue(captured: &[u8]) -> ResidueReport {
+    let mut nonzero = 0usize;
+    let mut first_nonzero: Option<usize> = None;
+    let mut nonzero_blocks: Vec<usize> = Vec::new();
+    let mut longest_run = 0usize;
+    let mut run = 0usize;
+    let mut last_flagged_block: Option<usize> = None;
+    for (i, &b) in captured.iter().enumerate() {
+        if b != 0 {
+            nonzero += 1;
+            run += 1;
+            if run > longest_run {
+                longest_run = run;
+            }
+            if first_nonzero.is_none() {
+                first_nonzero = Some(i);
+            }
+            let block = i / 1024;
+            if last_flagged_block != Some(block) {
+                nonzero_blocks.push(block);
+                last_flagged_block = Some(block);
+            }
+        } else {
+            run = 0;
+        }
+    }
+    let nonzero_permille = if captured.is_empty() {
+        0
+    } else {
+        (nonzero as u64 * 1000) / captured.len() as u64
+    };
+    ResidueReport {
+        len: captured.len(),
+        nonzero_bytes: nonzero,
+        nonzero_permille,
+        first_nonzero,
+        longest_nonzero_run: longest_run,
+        nonzero_blocks,
+    }
+}
+
 /// Ring-buffer instruction tracer.
 pub struct Tracer {
     buf: std::collections::VecDeque<StepReport>,
