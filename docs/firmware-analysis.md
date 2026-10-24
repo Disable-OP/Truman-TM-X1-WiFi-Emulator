@@ -2464,3 +2464,56 @@ pins in `tests/looptune.rs`.
 The per-step loop program is complete: every removable cost identified
 by measurement has been removed, and what remains is the evidence
 model's own cost.
+
+## 29. Independent reproduction on a fresh toolchain (session record)
+
+No code change in this session. Its purpose was independent
+verification of the 0.22.0 state after an environment reset, because
+the P1/P2 decision tree (§22.5, `docs/hardware-session.md`) leans on
+one claim above all: that the emulator-side reference is stable. A
+reconstructed environment is the cheapest way to test that claim
+without hardware.
+
+### 29.1 Environment and method
+
+This session began from a reset environment: the workspace snapshot
+had reverted to a pre-Milestone-N commit and the toolchain was gone.
+The recovery path is itself part of the verification — it exercises
+the reconstruction a new contributor would face:
+
+* toolchain reinstalled from scratch (rustup stable, minimal profile,
+  plus rustfmt/clippy — rustc 1.99.1);
+* the stale `target/` of the old snapshot invalidated by the
+  toolchain change, so every crate rebuilt from source;
+* the working tree synced to `origin/main` at `71fc805` (Milestone Z)
+  only after verifying the local diff was mode-only and that `HEAD`
+  was contained in the remote — nothing was discarded.
+
+The four gates were then run in CI's order, and the remote CI history
+was audited via the API (read-only).
+
+### 29.2 Results
+
+* **All four gates green**: `cargo fmt --check`; `cargo clippy
+  --all-targets --all-features -- -D warnings` (zero diagnostics);
+  `cargo test --release` — **119/119**, including the 1,301,783-step
+  boot-chain pin and the real-firmware pixel-reference extraction;
+  `cargo check --all-targets`.
+* **Determinism spans environment reconstruction**: the boot-chain
+  step count and the 79,872-byte reference window reproduce
+  byte-identically after the full rebuild. The `--post`/`--pre`
+  verdicts therefore compare a device capture against a reference
+  that is stable across reconstructed environments, not merely across
+  runs in one.
+* **CI audit**: 14/14 workflow runs green, from `23471b2` (Milestone
+  M, the first push after CI was added) through `71fc805` — the remote
+  gates have executed and passed on every push, not only locally.
+
+### 29.3 What this does not claim
+
+No new device data, no new refutations, no performance re-measurement
+(the §28 numbers were recorded on the earlier toolchain and are not
+revised). §26's and §28's verdicts stand unchanged. The single next
+step for the boot blocker remains the hardware session
+(`docs/hardware-session.md`): P2 cold-boot capture → `dram_compare
+--pre`, then P1 → `dram_compare --post`, one command per experiment.
