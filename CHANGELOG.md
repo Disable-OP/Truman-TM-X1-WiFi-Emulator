@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.16.0 — Milestone T: the Q8 runtime verdict (no checksum code path)
+
+### Added
+- Physical-range watchpoints: `AddressSpace::add_watch`/`clear_watches`/
+  `take_watch_hits` (+ kind filtering via `WatchKinds`, capped hit buffer
+  with an explicit overflow flag) and `Machine::run`/`run_until_pc`/
+  `run_traced` stamping the executing (step, PC) so every hit attributes
+  to the instruction that issued the access. 9 mechanics tests in
+  `tests/watch.rs`.
+- `examples/q8_watch.rs` — the §22 instrument: boots the real firmware
+  with watches over the descriptor words, driver payload, eCos container
+  (both flash windows) and the payload's DRAM destination, reports per-
+  range PC histograms with file-offset attribution and ordered traces,
+  then continues past the eCos entry with a pixel-buffer data-read
+  watch. 5 runtime-evidence tests in `tests/q8.rs` pin the verdicts.
+
+### Fixed
+- docs/firmware-analysis.md §15.2: the driver-payload checksum anchor is
+  `0x5DB06FB5` (bytes `b5 6f b0 5d` at 0x1224), not the byte-swapped
+  `0xB56FB05D`; `tools/fw_ck_sweep.py` now targets the corrected value
+  (its negative result stands — it always compared both orders). The
+  stage-1 descriptor field readings updated per §22.3 (0x121C = source
+  offset from base 0x1C10; 0x1218 never read).
+
+### Analysis (§22)
+- The stage-1 loader reads exactly three descriptor words (source offset
+  0x121C = 0x135C, dest 0x1214 = 0xA2000000, length 0x1220 = 0x3ADC) and
+  computes the source as hardcoded base 0x1C10 + offset → file 0x2F6C;
+  the checksum word 0x1224 is never read by any code.
+- The payload copy is a one-pass `lwl/lwr`+`sw` loop (no accumulator);
+  the 19 post-copy destination reads are the driver's config table; the
+  container streaming loop (`lbu; sb; bnez`) accumulates nothing and
+  returns zero unconditionally; neither anchor constant exists in the
+  image outside its descriptor word; no post-entry data-read pass over
+  the image occurs.
+- Verdict: no checksum validation exists anywhere in the observed boot
+  chain — the anchors are packaging metadata and the Q8 oracle does not
+  exist on-device; the engine LZ head paradox is bounded by hardware-only
+  residue (§22.5).
+
 ## 0.15.0 — Milestone S: rank classes and output transforms refuted
 
 ### Added

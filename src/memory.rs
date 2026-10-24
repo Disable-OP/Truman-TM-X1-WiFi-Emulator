@@ -100,6 +100,85 @@ impl std::fmt::Display for AccessFault {
 
 impl std::error::Error for AccessFault {}
 
+/// Which access kinds a watchpoint observes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WatchKind {
+    /// Data read (`load`).
+    Read,
+    /// Data write (`store`).
+    Write,
+    /// Instruction fetch (`fetch`).
+    Fetch,
+}
+
+/// Bit-set of access kinds a watchpoint fires on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WatchKinds(u8);
+
+impl WatchKinds {
+    /// Data reads only.
+    pub const READ: Self = Self(1);
+    /// Data writes only.
+    pub const WRITE: Self = Self(2);
+    /// Instruction fetches only.
+    pub const FETCH: Self = Self(4);
+    /// Reads and writes.
+    pub const READ_WRITE: Self = Self(3);
+    /// Reads, writes and fetches.
+    pub const ALL: Self = Self(7);
+
+    fn contains(self, kind: WatchKind) -> bool {
+        let bit = match kind {
+            WatchKind::Read => 1,
+            WatchKind::Write => 2,
+            WatchKind::Fetch => 4,
+        };
+        self.0 & bit != 0
+    }
+}
+
+/// One recorded watchpoint hit.
+#[derive(Debug, Clone)]
+pub struct WatchHit {
+    /// Step number (completed steps) of the executing instruction.
+    pub step: u64,
+    /// PC of the instruction that issued the access.
+    pub pc: u32,
+    /// Virtual address issued by the CPU.
+    pub vaddr: u32,
+    /// Physical address after translation.
+    pub phys: u32,
+    /// Access kind.
+    pub kind: WatchKind,
+    /// Access width.
+    pub size: AccessSize,
+    /// Value read (zero-extended) or written.
+    pub value: u32,
+    /// Name of the physical region backing the access.
+    pub region: String,
+}
+
+/// Per-step execution context the machine stamps onto the bus so
+/// watchpoint hits attribute to the issuing instruction (step, PC).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct WatchCtx {
+    /// Completed step count when the instruction begins.
+    pub step: u64,
+    /// PC of the instruction being executed.
+    pub pc: u32,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct WatchRange {
+    base: u32,
+    len: u32,
+    kinds: WatchKinds,
+}
+
+/// Default cap on recorded watchpoint hits (prevents unbounded growth on
+/// long runs over hot ranges). Further hits only raise the overflow flag.
+const WATCH_CAP_DEFAULT: usize = 1 << 20;
+
 /// Backing kind of a physical region.
 enum RegionKind {
     /// Read-write memory.
@@ -131,17 +210,109 @@ impl Region {
 ///
 /// All CPU-issued addresses are virtual (kseg0/kseg1); this struct performs
 /// translation and dispatches to RAM, ROM or device regions.
-#[derive(Default)]
 pub struct AddressSpace {
     regions: Vec<Region>,
     /// Indices of regions whose device implements time behavior.
     tickable: Vec<usize>,
+    /// Installed watchpoints (Q8 instrument, docs/firmware-analysis.md §22).
+    watches: Vec<WatchRange>,
+    /// Recorded hits, capped by `watch_cap`.
+    watch_hits: Vec<WatchHit>,
+    /// Set when hits were dropped because the cap was reached.
+    watch_overflow: bool,
+    watch_cap: usize,
+    /// (step, pc) of the currently executing instruction, stamped by the
+    /// machine's run loop before each `CpuBackend::step`.
+    pub(crate) watch_ctx: WatchCtx,
+}
+
+impl Default for AddressSpace {
+    fn default() -> Self {
+        Self {
+            regions: Vec::new(),
+            tickable: Vec::new(),
+            watches: Vec::new(),
+            watch_hits: Vec::new(),
+            watch_overflow: false,
+            watch_cap: WATCH_CAP_DEFAULT,
+            watch_ctx: WatchCtx::default(),
+        }
+    }
 }
 
 impl AddressSpace {
     /// Create an empty address space.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Install a watchpoint over the physical range `base..base+len`.
+    /// Recording is off until a watch exists; the per-hit cost is one
+    /// range scan plus a capped push.
+    pub fn add_watch(&mut self, base: u32, len: u32, kinds: WatchKinds) {
+        self.watches.push(WatchRange { base, len, kinds });
+    }
+
+    /// Remove all watchpoints (recorded hits are kept).
+    pub fn clear_watches(&mut self) {
+        self.watches.clear();
+    }
+
+    /// True while at least one watchpoint is installed.
+    pub fn has_watches(&self) -> bool {
+        !self.watches.is_empty()
+    }
+
+    /// Number of recorded hits currently buffered.
+    pub fn watch_hit_count(&self) -> usize {
+        self.watch_hits.len()
+    }
+
+    /// True if hits were dropped because the cap was reached.
+    pub fn watch_overflow(&self) -> bool {
+        self.watch_overflow
+    }
+
+    /// Change the hit cap (tests use small caps to exercise the overflow
+    /// path; long runs keep the default).
+    pub fn set_watch_cap(&mut self, cap: usize) {
+        self.watch_cap = cap;
+    }
+
+    /// Drain and return the recorded hits.
+    pub fn take_watch_hits(&mut self) -> Vec<WatchHit> {
+        std::mem::take(&mut self.watch_hits)
+    }
+
+    fn watch_armed(&self, kind: WatchKind, phys: u32) -> bool {
+        self.watches.iter().any(|w| {
+            w.kinds.contains(kind) && phys >= w.base && phys < w.base.saturating_add(w.len)
+        })
+    }
+
+    fn record_watch(
+        &mut self,
+        kind: WatchKind,
+        vaddr: u32,
+        phys: u32,
+        size: AccessSize,
+        value: u32,
+    ) {
+        if self.watch_hits.len() >= self.watch_cap {
+            self.watch_overflow = true;
+            return;
+        }
+        let region = self.region_name(phys).unwrap_or("?").to_string();
+        self.watch_hits.push(WatchHit {
+            step: self.watch_ctx.step,
+            pc: self.watch_ctx.pc,
+            vaddr,
+            phys,
+            kind,
+            size,
+            value,
+            region,
+        });
     }
 
     /// Declare a RAM region over `base..base+len`.
@@ -242,6 +413,7 @@ impl AddressSpace {
                 return Err(f);
             }
         };
+        let watch = self.watch_armed(WatchKind::Read, phys);
         let region = match self.find_region_mut(phys) {
             Some(r) => r,
             None => {
@@ -254,21 +426,25 @@ impl AddressSpace {
             }
         };
         let off = (phys - region.base) as usize;
-        match &mut region.kind {
+        let value = match &mut region.kind {
             RegionKind::Ram(bytes) | RegionKind::Rom(bytes) => {
                 let n = size.bytes() as usize;
                 let sl = &bytes[off..off + n];
-                Ok(match size {
+                match size {
                     AccessSize::Byte => u32::from(sl[0]),
                     AccessSize::Half => u32::from(u16::from_le_bytes([sl[0], sl[1]])),
                     AccessSize::Word => u32::from_le_bytes([sl[0], sl[1], sl[2], sl[3]]),
-                })
+                }
             }
             RegionKind::Device(dev) => {
                 let rel = phys - region.base;
-                Ok(dev.read(rel, size))
+                dev.read(rel, size)
             }
+        };
+        if watch {
+            self.record_watch(WatchKind::Read, vaddr, phys, size, value);
         }
+        Ok(value)
     }
 
     /// Write `size` bytes at virtual address `vaddr`.
@@ -289,6 +465,7 @@ impl AddressSpace {
                 return Err(f);
             }
         };
+        let watch = self.watch_armed(WatchKind::Write, phys);
         let region = match self.find_region_mut(phys) {
             Some(r) => r,
             None => {
@@ -301,7 +478,7 @@ impl AddressSpace {
             }
         };
         let off = (phys - region.base) as usize;
-        match &mut region.kind {
+        let outcome = match &mut region.kind {
             RegionKind::Ram(bytes) => {
                 let b = value.to_le_bytes();
                 let n = size.bytes() as usize;
@@ -319,7 +496,11 @@ impl AddressSpace {
                 dev.write(rel, size, value);
                 Ok(())
             }
+        };
+        if watch && outcome.is_ok() {
+            self.record_watch(WatchKind::Write, vaddr, phys, size, value);
         }
+        outcome
     }
 
     /// Fetch one little-endian instruction word at virtual address `vaddr`.
@@ -340,6 +521,7 @@ impl AddressSpace {
                 return Err(f);
             }
         };
+        let watch = self.watch_armed(WatchKind::Fetch, phys);
         let region = match self.find_region_mut(phys) {
             Some(r) => r,
             None => {
@@ -352,7 +534,7 @@ impl AddressSpace {
             }
         };
         let off = (phys - region.base) as usize;
-        match &mut region.kind {
+        let value = match &mut region.kind {
             RegionKind::Ram(bytes) | RegionKind::Rom(bytes) => {
                 let b: [u8; 4] = bytes[off..off + 4].try_into().map_err(|_| AccessFault {
                     vaddr,
@@ -360,21 +542,25 @@ impl AddressSpace {
                     kind: FaultKind::Fetch,
                     size: AccessSize::Word,
                 })?;
-                Ok(u32::from_le_bytes(b))
+                u32::from_le_bytes(b)
             }
             RegionKind::Device(dev) => {
                 if dev.fetchable() {
-                    Ok(dev.read(phys - region.base, AccessSize::Word))
+                    dev.read(phys - region.base, AccessSize::Word)
                 } else {
-                    Err(AccessFault {
+                    return Err(AccessFault {
                         vaddr,
                         phys: Some(phys),
                         kind: FaultKind::Fetch,
                         size: AccessSize::Word,
-                    })
+                    });
                 }
             }
+        };
+        if watch {
+            self.record_watch(WatchKind::Fetch, vaddr, phys, AccessSize::Word, value);
         }
+        Ok(value)
     }
 
     /// Direct read access to RAM/ROM/device contents at physical address

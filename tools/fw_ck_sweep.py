@@ -3,7 +3,11 @@
 
 Training pair:
   data = flash[0x2F6C : 0x2F6C+0x3ADC]   (driver payload, plaintext)
-  expected = 0xB56FB05D (descriptor word @ flash 0x1224)
+  expected = 0x5DB06FB5 (descriptor word @ flash 0x1224; bytes b5 6f b0 5d).
+  NOTE (Milestone T correction, docs/firmware-analysis.md §22): the value
+  was previously recorded as 0xB56FB05D — a byte-order error; the sweep
+  happened to cover both orders via its bswap target set, so its negative
+  result stands.
 Confirmation pair:
   data = flash[0x1002C : 0x1002C+0x868C] (SP container)
   expected = 0xB5EBF9FF (desc[6] @ 0x10028)  [coverage hypothesis]
@@ -16,7 +20,7 @@ import struct
 import sys
 
 P1_DATA = (0x2F6C, 0x3ADC)
-P1_EXP = 0xB56FB05D
+P1_EXP = 0x5DB06FB5
 P2_DATA = (0x1002C, 0x868C)
 P2_EXP = 0xB5EBF9FF
 

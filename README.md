@@ -105,7 +105,7 @@ Requires a stable Rust toolchain (https://rustup.rs). No other dependencies.
 
 ```sh
 cargo build --release
-cargo test --release          # 78 tests: boot chain, entry harness, interrupt delivery, key injection
+cargo test --release          # 92 tests: boot chain, entry harness, interrupt delivery, key injection, watchpoints, Q8 runtime evidence
 
 # Identify a firmware image
 ./target/release/truman-emulator inspect firmware/*.bin
@@ -121,6 +121,10 @@ cargo test --release          # 78 tests: boot chain, entry harness, interrupt d
 python3 tools/fw_syms_family.py firmware/*.bin
 ./target/release/examples/entry_oracle firmware/*.bin \
     --budget 65536 tools/out/syms_family/*.bin
+
+# Q8 instrument: boot with watchpoints over the descriptor/payload/container
+# ranges — who reads what, with (step, PC) attribution (§22)
+./target/release/examples/q8_watch firmware/*.bin
 ```
 
 Exit codes: `0` step-limit (clean), `1` usage/IO, `2` emulation stopped on a
@@ -131,12 +135,13 @@ fault/unknown instruction.
 | Path | Contents |
 |---|---|
 | `src/cpu/` | MIPS32r2 LE interpreter + COP0 model + interrupt delivery (behind a `CpuBackend` trait) |
-| `src/memory.rs` | Address space: kseg0/kseg1 translation, RAM/ROM/device regions |
+| `src/memory.rs` | Address space: kseg0/kseg1 translation, RAM/ROM/device regions, physical-range watchpoints |
 | `src/devices.rs` | Device models: UART, timer, SPI controller, DDR PHY/controller, interrupt controller, param RAM, mirror window |
 | `src/machine.rs` | Machine composition (memory map = documented hypotheses) + run loop + IRQ injection API |
 | `src/firmware.rs`, `src/boot.rs` | Image identification/validation, reset/diagnostics |
 | `src/bin/truman-emulator.rs` | CLI frontend (`inspect` / `run` / `trace`) |
 | `tests/boot.rs`, `tests/interrupt.rs` | Integration tests: real-firmware boot chain, interrupt injection |
+| `tests/watch.rs`, `tests/q8.rs` | Watchpoint mechanics; the §22 runtime-evidence pins (loader reads exactly three descriptor words, one-pass copy, no checksum pass) |
 | `docs/firmware-analysis.md` | The evidence base: CPU arch, flash map, register models |
 | `tools/`, `scripts/` | Analysis scripts (capstone-based recon, disassembly) |
 | `firmware/` | The original, unmodified flash dump (SHA-256 pinned in docs) |

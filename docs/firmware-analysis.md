@@ -826,10 +826,10 @@ The stage-1 data area (0x1210+) holds a table whose first entry reads:
 |---|---|---|
 | 0x1210 | 0x00000018 | entry/handle word (semantics open) |
 | 0x1214 | 0xA2000000 | load address (kseg1 DRAM) |
-| 0x1218 | 0x00010000 | source field (interpretation **open**, Q8) |
-| 0x121C | 0x0000135C | second source field (**open**, Q8) |
+| 0x1218 | 0x00010000 | never read by the loader (§22.3); semantics still open |
+| 0x121C | 0x0000135C | source **offset** from the hardcoded data-area base 0x1C10 (resolved §22.3: 0x1C10 + 0x135C = 0x2F6C) |
 | 0x1220 | 0x00003ADC | payload size — matches the plaintext payload |
-| 0x1224 | 0xB56FB05D | checksum word (**open**, Q8) |
+| 0x1224 | 0x5DB06FB5 | checksum word (**open**, Q8; bytes `b5 6f b0 5d` — the value was previously misread as 0xB56FB05D by byte order; corrected §22.2, runtime verdict §22.4) |
 | 0x1228 | 0x0000007F | flags/config (**open**) |
 
 Later entries reference 0xBFFE0000 (the sysreg window) and look like
@@ -839,7 +839,7 @@ validate:
 
 | coverage | expected checksum |
 |---|---|
-| driver payload (flash 0x2F6C..0x6948) | `0xB56FB05D` (desc word @0x1224) |
+| driver payload (flash 0x2F6C..0x6948) | `0x5DB06FB5` (desc word @0x1224; bytes `b5 6f b0 5d` — corrected from the byte-swapped reading, §22.2) |
 | eCos descriptor (§13.1) | `0xB5EBF9FF` (desc[6] @0x10028) |
 
 Neither simple sums (u8/u16/u32 LE/BE), XOR, CRC32, Adler-32 nor the BSD
@@ -1767,3 +1767,143 @@ decoding produces an executable entry. Milestone T candidates: Q8
 escalation, or freeze the paradox and return to device coverage
 (front-panel keycode labels, timer/interrupt completion) pending
 hardware access.
+
+## 22. Milestone T — the Q8 runtime verdict: the loader has no checksum
+### code path; one anchor corrected (session record)
+
+### 22.1 The instrument: physical-range watchpoints
+
+§21.6 left Q8's escalation as the top remaining item: "the loader's own
+checksum code path (if any) and per-descriptor accumulation schemes". The
+emulator is the ideal instrument for exactly that question, so Milestone T
+first built the missing capability — physical-range watchpoints — and
+then observed a full real boot through them.
+
+`AddressSpace::add_watch(base, len, kinds)` records every successful
+CPU-issued load/store/fetch inside a physical range with the issuing
+instruction's (step, PC), the virtual and physical address, the width and
+the value (`WatchHit`); the machine run loops stamp the per-step context
+so attribution is exact. Recording is inert while no watch is installed,
+hits are capped (overflow flagged, never truncated silently), and
+`Machine::run`/`run_until_pc`/`run_traced` all stamp. Covered by 9
+mechanics tests (`tests/watch.rs`) — value/kind/width/region attribution,
+half-open ranges, kind filtering, cap/overflow, drain, clear, the failed
+ROM store recording nothing.
+
+The consumer is `examples/q8_watch.rs`: it boots the real firmware to the
+eCos entry with READ watches over the stage-1 descriptor words (file
+0x1210..0x1280), the 0x10000-package descriptor entry (0x10010..0x1002C),
+the driver payload (0x2F6C..0x6948) and the eCos container
+(0x1002C..0x96B8) — installed separately on BOTH flash windows (XIP
+0x1FC00000 and the Q2 linear mirror 0x18000000, so the trace also shows
+which window the loader uses) — plus a READ_WRITE watch on the payload's
+DRAM destination (phys 0x02000000..0x02003ADC). A second phase continues
+past the entry with a data-read watch on the pixel buffer. 5 integration
+tests (`tests/q8.rs`) pin every runtime fact below.
+
+### 22.2 The anchor correction: desc word 0x1224 is 0x5DB06FB5
+
+Bytes at file 0x1224 are `b5 6f b0 5d`, i.e. the little-endian word is
+**0x5DB06FB5**. §15.2 recorded the anchor as `0xB56FB05D` — a byte-order
+error (the byte sequence read as if big-endian). The eCos anchor is
+unaffected: bytes `ff f9 eb b5` at 0x10028 are LE `0xB5EBF9FF` as
+documented, and the runtime trace (§22.3, last four desc bytes) confirms
+it. `tools/fw_ck_sweep.py` now targets 0x5DB06FB5; its negative result
+stands regardless, because it always compared against both byte orders
+(`targets1 = {P1_EXP, bswap(P1_EXP)}`), and re-running it with the
+corrected constant reconfirms: **no standard family reproduces either
+anchor** (§16.2 stands with the corrected value).
+
+### 22.3 What the boot actually does — instruction-level findings
+
+**The stage-1 loader reads exactly three descriptor words** (steps
+122447/122453/122456 of the observed boot, all through the mirror window
+0x98000000; the XIP window is never read — Q2's usage split confirmed
+again):
+
+| word | value | reader PC | role |
+|---|---|---|---|
+| 0x121C | 0x135C | 0x9800aa7c | source **offset** |
+| 0x1214 | 0xA2000000 | 0x9800aa94 | destination |
+| 0x1220 | 0x3ADC | 0x9800aaa0 | length |
+
+The disassembly resolves the open "source field" reading of §15.2 in the
+same stroke: the routine computes the source as a **hardcoded base plus
+the descriptor offset** —
+
+```
+9800aa74: lui    $v1, 0xb800
+9800aa78: ori    $v0, $v1, 0x121c
+9800aa7c: lw     $a2, ($v0)          # a2 = 0x135C   (source offset)
+9800aa84: ori    $a1, $v1, 0x1c10    # a1 = 0xB8001C10 (data-area base)
+9800aa98: addu   $s3, $a2, $a1       # source = 0xB8002F6C
+```
+
+so the driver payload lives at data-area base 0x1C10 + offset 0x135C =
+file 0x2F6C, exactly where §15.1 found it. Word 0x1218 (0x00010000) is
+never read; it is not part of the source computation.
+
+**The copy is pure data movement.** The executed path (the `jal
+0x9800cd60` check returning non-zero) is `lwl/lwr` from the mirror + `sw`
+to 0xA2000000 — one pass, no accumulator, no second read of any byte
+(the two reader PCs are the unaligned-load pair of the same word). The
+watched payload region sees exactly 2 × 15,068 = 30,136 byte reads and
+3,767 word stores; nothing else ever touches it. The driver desc
+checksum word 0x1224 is **never read** by anyone, and the constant
+0xB56FB05D appears **nowhere in the whole 4 MiB image** (as a word, or
+as a lui/ori / lui/addiu immediate pair).
+
+**The 19 post-copy destination reads are the driver's config table, not
+a digest.** After the copy, driver-payload code at 0xa20027ec/0xa200283c/
+0xa2002888 reads 19 words from DRAM 0x02001684..0x020016CF — an
+18-entry table with values 0x10,0x11,0x12,0,8,7,9,6,0xa,5,0xb,4,0xc,3,
+0xd,2,0xe,1,0xf inside the driver's own image. A checksum over 0x3ADC
+bytes would need ≥ 0x3ADC accesses; 19 word reads is a parameter fetch.
+
+**The container stream is a byte copy with no accumulator.** The driver
+loop at 0xa2001c08 (`lbu; addiu; sb; bnez` with the source OR'd with
+0x98000000) reads all 28 descriptor bytes and all 34,444 container bytes
+in one pass and stores them onward (the engine table FIFO uploads);
+its return value is the constant zero (`move $v0, $zero` at both exits).
+The desc[6] checksum bytes ARE read (ff f9 eb b5, part of the 28-byte
+parse) — but nothing computes against them: the loop body has no xor/
+add/rotate into any register.
+
+**Constant scan**: 0xB5EBF9FF appears exactly once in the image — as the
+desc word itself. Neither anchor is embedded in code, so no comparison
+against either value exists in the flash.
+
+**After the entry, no validation pass either.** Phase 2 continues past
+0xA1600000 with a data-read watch on the pixel buffer (79,872 bytes) and
+re-armed payload/container watches: the model head runs to its known
++0x50 fault (§19.2) with **zero** data-read hits — no bulk read of the
+copied payload, the container or the image itself occurs.
+
+### 22.4 The verdict on Q8
+
+Within the observed boot chain — stage-1 (zeroBoot + copy), the driver,
+and the eCos head under the engine model — **no code ever computes or
+validates either checksum anchor**. The escalation §21.6 named ("the
+loader's own checksum code path, if any") terminates with *none*: the
+checksum words are packaging metadata, written by the vendor's build
+tooling and consumed nowhere on-device. Consequently the algorithm is
+not recoverable from the firmware (there is no code to reverse), and the
+checksum oracle Q8 promised **does not exist in the device**. The
+"per-descriptor accumulation" alternative dies with it: the only
+per-descriptor code that touches the anchor bytes is a straight copy.
+Remaining theoretical validators are outside the observed evidence
+(engine-internal hardware behavior, post-boot eCos phases beyond the
+model's reach) — both require hardware, the same boundary §21.6
+recorded.
+
+### 22.5 Where this leaves the head paradox
+
+Q8 was the last *in-principle-available* offline oracle for the engine
+LZ head paradox (§21.6 item 1); with its runtime refutation the paradox
+space reduces to §21.6 item 2 (hardware-side residue: the real device's
+pre-decode DRAM at 0x01600000 and DDR training residue) — the
+two-tier-class-rules branch remains evidence-barred (§21.1). The
+emulator-side program is therefore complete for this question: every
+hypothesis class reachable without hardware has been tested and
+refuted, and the refutation tooling (static oracles, the entry harness,
+watchpoints) is in place for whatever a hardware session exposes next.

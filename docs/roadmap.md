@@ -3,6 +3,34 @@
 Milestones follow the original project plan (A → G). Status reflects what is
 actually demonstrated by code + tests in this repository.
 
+## Milestone T — the Q8 runtime verdict: no checksum code path exists ✅
+
+- **Physical-range watchpoints shipped** (§22.1): `AddressSpace::add_watch`
+  records every CPU load/store/fetch inside a physical range with the
+  issuing (step, PC), address, width, value and region; the machine run
+  loops stamp the per-step context. 9 mechanics tests
+  (`tests/watch.rs`); the consumer is `examples/q8_watch.rs`.
+- **One anchor corrected** (§22.2): desc word 0x1224 is `0x5DB06FB5`
+  (bytes `b5 6f b0 5d`); §15.2's `0xB56FB05D` was a byte-order error.
+  The sweep always covered both orders, so its negative result stands.
+- **The stage-1 source-field semantics resolved** (§22.3): the loader
+  reads exactly three descriptor words — source offset 0x121C, dest
+  0x1214, length 0x1220 — and computes the source as hardcoded base
+  0x1C10 + offset (0x1C10 + 0x135C = file 0x2F6C). Word 0x1218 and the
+  checksum word 0x1224 are never read.
+- **The copy and the stream are pure data movement** (§22.3, pinned by
+  `tests/q8.rs`): `lwl/lwr`+`sw` one-pass copy (30,136 byte reads,
+  3,767 word stores, nothing else); the 19 post-copy destination reads
+  are the driver's 18-entry config table; the driver's container loop
+  (`lbu; sb; bnez`) accumulates nothing and returns zero
+  unconditionally; neither anchor constant exists anywhere in the image
+  outside its descriptor word; after the entry no data-read pass over
+  the image occurs.
+- **Verdict (§22.4)**: the loader has no checksum code path — the
+  anchors are packaging metadata, the algorithm is unrecoverable from
+  the firmware, and the Q8 oracle does not exist on-device. The head
+  paradox is bounded by hardware-only residue (§22.5).
+
 ## Milestone S — rank classes and output transforms: both refuted ✅
 
 - **The class-rule input space is closed** (§21.1): the upload inventory

@@ -28,7 +28,7 @@ use crate::devices::{
     LoggingDevice, MirroredRam, ParamRam, SpiController, TimerCounter, Uart,
 };
 use crate::firmware::Image;
-use crate::memory::AddressSpace;
+use crate::memory::{AddressSpace, WatchCtx, WatchHit, WatchKinds};
 
 /// Shared access log entry: (offset, size, value, was_write).
 pub type AccessLog =
@@ -545,6 +545,30 @@ impl Machine {
         self.logs.iter().map(|(n, _)| n.clone()).collect()
     }
 
+    /// Install a physical-range watchpoint (Q8 instrument, §22): every
+    /// successful CPU access (load/store/fetch per `kinds`) inside
+    /// `base..base+len` is recorded with the issuing (step, PC), the
+    /// address, the width and the value. Machine run loops stamp the
+    /// context; hits are drained with [`Machine::take_watch_hits`].
+    pub fn add_watch(&mut self, base: u32, len: u32, kinds: WatchKinds) {
+        self.bus.add_watch(base, len, kinds);
+    }
+
+    /// Remove all watchpoints (recorded hits are kept until drained).
+    pub fn clear_watches(&mut self) {
+        self.bus.clear_watches();
+    }
+
+    /// Drain and return the recorded watchpoint hits.
+    pub fn take_watch_hits(&mut self) -> Vec<WatchHit> {
+        self.bus.take_watch_hits()
+    }
+
+    /// Number of watchpoint hits currently buffered.
+    pub fn watch_hit_count(&self) -> usize {
+        self.bus.watch_hit_count()
+    }
+
     /// Reset the machine to its boot state.
     /// Hypothesis A: the SoC boot ROM has mapped SPI flash at the MIPS boot
     /// window and jumps to offset 0 (kseg1 `0xBFC00000`); see
@@ -562,6 +586,14 @@ impl Machine {
         let stop = loop {
             if steps >= max_steps {
                 break StopReason::StepLimit;
+            }
+            // Attribute watchpoint hits to the instruction about to run
+            // (Q8 instrument, docs/firmware-analysis.md §22).
+            if self.bus.has_watches() {
+                self.bus.watch_ctx = WatchCtx {
+                    step: steps,
+                    pc: self.cpu.pc(),
+                };
             }
             // Wire the interrupt-controller output into the CPU inputs
             // (deterministic: uses only state set before this step).
@@ -610,6 +642,12 @@ impl Machine {
             if steps >= max_steps {
                 break StopReason::StepLimit;
             }
+            if self.bus.has_watches() {
+                self.bus.watch_ctx = WatchCtx {
+                    step: steps,
+                    pc: self.cpu.pc(),
+                };
+            }
             self.cpu.set_ext_irq_lines(self.intc_line.get());
             match self.cpu.step(&mut self.bus) {
                 Ok(_) => {
@@ -652,6 +690,12 @@ impl Machine {
         let stop = loop {
             if steps >= max_steps {
                 break StopReason::StepLimit;
+            }
+            if self.bus.has_watches() {
+                self.bus.watch_ctx = WatchCtx {
+                    step: steps,
+                    pc: self.cpu.pc(),
+                };
             }
             self.cpu.set_ext_irq_lines(self.intc_line.get());
             match self.cpu.step(&mut self.bus) {
