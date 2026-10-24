@@ -1645,3 +1645,125 @@ refutations do not transfer because the token stream changes; (2) the
 unmodeled-transform family (byte-lane permutations of the OUTPUT, then
 word-domain re-examination); (3) Q8 checksum as the decisive missing
 oracle.
+
+## 21. Milestone S — the rank-boundary class rule and the output-transform
+### family: both refuted by the register-aware oracle (session record)
+
+### 21.1 The upload inventory pins the class-rule input space
+
+§13.6's upload log is complete evidence of what the engine ever receives
+through the 0xBFFE3844/0xBFFE3848 table FIFO:
+
+* round A: 0xC000 + 285 litlen symbol BYTES in code order, 0xC180 + 15
+  first-code halfwords, 0xC190 + 15 cumulative halfwords;
+* round B: 0xC000 (again), 0xC1C0 + 28 distance symbols, 0xC1A0 + first,
+  0xC1B0 + cumulative; each round ends with a 0x0000 terminator.
+
+No per-symbol class metadata is uploaded anywhere. The class of a decoded
+litlen token is therefore a function of the canonical rank r, the uploaded
+byte T[r], the first[]/cum[] code machinery and the engine's own ladder
+ROM — nothing else. The natural single-boundary readings of that space:
+
+* **value boundary** (RFC: s<256 literal / 256 EOB / s>256 length) —
+  refuted in §20.3 (522 candidates, dynamic);
+* **rank boundary** (r<256 / 256 / 257+; the 286 coded symbols give
+  exactly 29 match ranks 257..285, indexing a 29-entry hardware ladder —
+  the natural simple-hardware reading) — this section;
+* **T-byte boundary** (T=0 EOB / 1..29 length / ≥30 literal; the length
+  symbols upload as s−256 ∈ 1..29 and symbol 256 uploads as 0x00) —
+  this section.
+
+External check (2026-10): no public PNG_DEC driver exists beyond the
+platform register header already used in §17.1 (Team-Proton/
+linux-sunplus-15xx contains no PNG_DEC code); the engine's LZ semantics
+are undocumented publicly, so the refutation work below is the evidence.
+
+### 21.2 The rank-boundary rule — refuted at word 0, ladder-independently
+
+Tool: `tools/fw_rank_transform.py` — a parameterised walker (class rule ×
+length ladder × extra-bit accounting × start bit) with three self-checks
+that gate every verdict: the sym-rule m1/m2/m4 walks reproduce §19.2/§20.3
+'s static verdicts byte-for-byte (FATAL +0x50 `0000ffff` / FATAL +0x18
+`6200003b` / branch +0x18), and the m1 identity output byte-matches
+`fw_syms_family.render` (independent renderer).
+
+Under the rank rule the head is `60 81 03 43 1a 6c 02 1c` — for the first
+time the head carries real byte diversity: tokens 3–4 are length symbols
+demoted to literals by the rule, emitting T = 03/43, and word 0
+(0x43038160) is NOT statically fatal (the static scanner's first
+branch-classified word is +0x4). **The head is ladder-independent**: no
+match occurs before word 0's bytes are emitted, so all ten ladder ×
+accounting variants (RFC/u0/u1/u3/u4/u8 × m1/m2, incl. m3) produce the
+identical head — one dynamic verdict covers the entire ladder space.
+
+Dynamic verdict: **dies at step 0** — `0x43038160` = COP0 rs=0x18 (BC0
+class), which the MIPS 24KEc raises as a reserved-instruction exception
+too; this is hardware-faithful, not an emulator artifact. The static
+classifier's COP0 class is coarser than the CPU's — the prefilter is
+advisory, the register-aware oracle is decisive. Secondary evidence: the
+rank walks end `eof@275488` with only 45.6–52.9 kB emitted — none fills
+the 79,872-byte image the completion accounting programs.
+
+### 21.3 Start-bit variants under the rank rule — refuted dynamically
+
+§19.2's start-bit sweep (1008..1216) was value-class only and does not
+transfer — the rank rule changes which tokens are literals. Swept 1008/
+1072/1088/1152/1216 × m1/m2 (`fw_rank_transform`): 1008/1072 die
+statically (+0xc/+0x0); 1088's head starts with `J` (b2 02 02 0a) and the
+oracle kills it at step 2 — fetch fault at 0xA8080AC8, unmapped; 1152's
+head starts with `JAL 0xA0000C08` and dies at step 1 — the delay slot
+word 0x00003001 is an unknown instruction. All refuted.
+
+### 21.4 The T-byte boundary — statically refuted
+
+T=0 → EOB, 1..29 → length selector (RFC ladder indexed T−1), ≥30 →
+literal: the m1/m2/u3 variants all fill the image (79,936 ≥ cap; the
+T=0/NUL collision turns 575–651 tokens into EOB markers) but the heads
+die statically at +0x74/+0x14/+0x74, before any branch — never executed.
+
+### 21.5 The output-transform family — refuted, zero survivors
+
+Byte-lane permutations of the OUTPUT over both the m1 and m2 bases (96
+candidates total with §21.2–§21.4): all 23 non-identity period-4 lane
+permutations, the 7 period-8 byte rotations, swap16, bitrev8, nibswap,
+the 1024-byte row mirror, and two image-shaped transposes (78×1024 and
+1024×78 column-major writes — a strided/planar output order is NOT
+excluded by the hardware evidence, since the byte order of the pixel
+buffer is model-implied; only the byte count is pinned by the completion
+accounting).
+
+The static prefilter passes 24 of them; the register-aware oracle kills
+every one within ≤ 14 steps (word-0 unknowns `0x00006081`/`0x00600081`,
+alignment/write faults at +0x30/+0x34, the transp78 trap at +0x30,
+bitrev8's COP0-unsupported word at +0x14). **Zero budget-survivors** —
+unlike §20.3's three NOP-sled artifacts. The transform family is dead in
+its entirety for periods 2..8 and for both image-shaped transposes.
+
+### 21.6 Where this leaves the head paradox
+
+The class rule is f(rank, T, first, cum, ladder-ROM); every single-
+boundary f is now dynamically refuted (value §20.3, rank §21.2, T-byte
+§21.4), across the m1..m4 accountings, RFC/uniform ladders, and the
+start-bit variants (§19.2 value-class, §21.3 rank-class). Boolean
+combinations of the boundaries (e.g. literal iff r<256 AND T≥30) have no
+natural reading — a selector byte ≥ 30 cannot index a 29-entry ladder —
+and are not pursued. The surviving hypothesis space:
+
+1. **Q8 checksum** — the decisive missing oracle: a verified
+   container/image checksum discriminates decodes without booting;
+   §16.2's ~250 standard families missed; the next escalation is the
+   loader's own checksum code path (if any) and per-descriptor
+   accumulation schemes.
+2. **Hardware-side residue** — the real device's pre-decode DRAM at
+   0x01600000 (bounded but unknown, §18.3) and DDR training residue;
+   needs hardware.
+3. **Two-tier class rules with side information we have not found** — no
+   upload evidence exists for any (§21.1); pursuit requires new evidence,
+   not new search.
+
+The head paradox is now *evidence-bounded*: within everything the
+uploads and the runtime access log prove about the engine, no natural
+decoding produces an executable entry. Milestone T candidates: Q8
+escalation, or freeze the paradox and return to device coverage
+(front-panel keycode labels, timer/interrupt completion) pending
+hardware access.

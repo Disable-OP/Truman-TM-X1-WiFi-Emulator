@@ -3,6 +3,35 @@
 Milestones follow the original project plan (A → G). Status reflects what is
 actually demonstrated by code + tests in this repository.
 
+## Milestone S — rank classes and output transforms: both refuted ✅
+
+- **The class-rule input space is closed** (§21.1): the upload inventory
+  (§13.6) shows the engine's table RAM receives only syms/first/cum for
+  litlen + dist — no class metadata exists. The class of a token is
+  f(rank, T[r], first[], cum[], ladder-ROM); external check confirms no
+  public PNG_DEC driver/documentation exists beyond the register header.
+- **The rank-boundary rule is refuted at word 0, ladder-independently**
+  (§21.2, `tools/fw_rank_transform.py`): the rank head `60 81 03 43 …` is
+  formed before any match, so all ten ladder × accounting variants share
+  one head; the register-aware oracle kills it at step 0 on
+  `0x43038160` = COP0 rs=0x18 (a reserved exception on the real 24KEc
+  too). All rank walks also under-fill the image (45.6–52.9 kB).
+- **Start-bit variants under the rank rule refuted dynamically** (§21.3):
+  1088 → `J` to unmapped 0xA8080AC8 (2 steps); 1152 → `JAL`, unknown
+  delay-slot word (1 step); 1008/1072 statically fatal.
+- **The T-byte boundary refuted statically** (§21.4): fills the image but
+  the head dies before any branch (+0x74/+0x14).
+- **The output-transform family is dead** (§21.5): 96 candidates total —
+  all 23 period-4 lane permutations, 7 period-8 rotations, swap16/
+  bitrev8/nibswap, row mirror, and both image-shaped transposes (78×1024,
+  1024×78 — the one output-order reading the hardware evidence had NOT
+  excluded) over the m1/m2 bases. 24 static survivors, all dynamically
+  killed ≤ 14 steps; zero budget-survivors.
+- **Consequence (§21.6)**: the head paradox is evidence-bounded — every
+  natural single-boundary class rule and small-period output transform is
+  dynamically refuted. Remaining: Q8 checksum escalation, hardware-side
+  residue (pre-decode DRAM), or two-tier rules (no upload evidence).
+
 ## Milestone R — the entry harness: the register-aware dynamic oracle ✅ (commit `R`)
 
 - **Instrument built** (§20.1): `Machine::run_until_pc` (watch-PC stop),

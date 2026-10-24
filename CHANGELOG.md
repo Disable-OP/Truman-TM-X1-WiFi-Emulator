@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.15.0 — Milestone S: rank classes and output transforms refuted
+
+### Added
+- `tools/fw_rank_transform.py` — the rank/T-byte class-rule and output-
+  transform family generator: a parameterised walker (class rule =
+  value/rank/T-byte, length ladder = RFC/uniform, extra-bit accounting =
+  m1..m4, start bit) with three self-checks gating every verdict (the
+  sym-rule m1/m2/m4 walks reproduce the §19.2/§20.3 static verdicts
+  byte-for-byte; the m1 identity output byte-matches the independent
+  `fw_syms_family.render`), plus the static head-oracle prefilter and
+  dynamic-oracle invocation list.
+- docs/firmware-analysis.md §21; docs/roadmap.md Milestone S.
+
+### Analysis (§21)
+- The upload inventory (§13.6) closes the class-rule input space: only
+  syms/first/cum are ever uploaded, so the token class is
+  f(rank, T[r], first[], cum[], ladder-ROM). No public PNG_DEC
+  documentation exists (Team-Proton/linux-sunplus-15xx has no PNG_DEC
+  code) — external check 2026-10.
+- The rank-boundary rule: head `60 81 03 43 1a 6c 02 1c` is ladder-
+  independent (formed before any match); the register-aware dynamic
+  oracle kills all ten variants at step 0 on `0x43038160` = COP0 rs=0x18
+  (reserved on the real 24KEc too); all rank walks under-fill the image
+  (45.6–52.9 kB vs 79,872).
+- Start-bit variants under the rank rule (1008..1216 × m1/m2): all
+  refuted (fetch fault at 0xA8080AC8; unknown delay-slot word; static
+  fatals).
+- The T-byte boundary rule: statically fatal before any branch.
+- The output-transform family: 96 candidates (23 period-4 lane perms ×
+  m1/m2, 7 period-8 rotations, swap16, bitrev8, nibswap, row mirror, and
+  both image-shaped transposes) — 24 static survivors, all dynamically
+  dead ≤ 14 steps, zero budget-survivors.
+- Consequence: the head paradox is evidence-bounded; remaining space =
+  Q8 checksum escalation, hardware residue, or unevidenced two-tier
+  rules (§21.6).
+
 ## 0.14.0 — Milestone R: the entry harness (register-aware dynamic oracle)
 
 ### Added
