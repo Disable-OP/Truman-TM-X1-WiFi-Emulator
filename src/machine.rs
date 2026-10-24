@@ -182,6 +182,14 @@ pub struct Machine {
     /// Decompression engine shared state (hypothesis H12). The run loop
     /// polls `take_request()` and services the decode with the bus.
     pub decomp: std::rc::Rc<std::cell::RefCell<EngineShared>>,
+    /// Borrow-free engine-request hint (Milestone Z, §28): shared with
+    /// [`EngineShared::pending`], checked instead of a per-step
+    /// `RefCell::borrow_mut`.
+    engine_pending: std::rc::Rc<std::cell::Cell<bool>>,
+    /// SoC timer counter cell, shared with the [`TimerCounter`] device
+    /// (Milestone Z, §28): the run loops increment it directly — one
+    /// count per executed instruction, as before.
+    timer_count: std::rc::Rc<std::cell::Cell<u32>>,
     /// Access logs of instrumented windows (name, handle).
     logs: Vec<(String, AccessLog)>,
 }
@@ -225,11 +233,18 @@ impl Machine {
 
         // Timer block at +0x600..+0x620 (delay() polls the counter at
         // +0x600; see devices::TimerCounter). Carved out of the low param
-        // RAM, which is therefore split in two.
+        // RAM, which is therefore split in two. The counter cell is
+        // shared with the run loops, which increment it directly (§28) —
+        // the device is registered non-tickable.
+        let timer_count = std::rc::Rc::new(std::cell::Cell::new(0u32));
         let timer_log = LoggingDevice::new("timer-log", 0).log_handle();
-        let timer = TimerCounter::new("timer", std::rc::Rc::clone(&timer_log));
+        let timer = TimerCounter::with_count(
+            "timer",
+            std::rc::Rc::clone(&timer_count),
+            std::rc::Rc::clone(&timer_log),
+        );
         logs.push(("timer".to_string(), timer_log));
-        bus.add_tickable_device("timer", cfg.sysreg_base + 0x600, 0x20, Box::new(timer));
+        bus.add_device("timer", cfg.sysreg_base + 0x600, 0x20, Box::new(timer));
         let param = ParamRam::new("sysreg-params", cfg.intc_offset, cfg.sysreg_fill);
         logs.push(("sysreg-params".to_string(), param.log_handle()));
         bus.add_device(
@@ -337,6 +352,7 @@ impl Machine {
             std::rc::Rc::clone(&decomp_shared),
             std::rc::Rc::clone(&decomp_log),
         );
+        let engine_pending = decomp_shared.borrow().pending.clone();
         logs.push(("decomp-engine".to_string(), decomp_log));
         bus.add_device(
             "decomp-engine",
@@ -420,6 +436,8 @@ impl Machine {
             key_pressed,
             key_events,
             decomp: decomp_shared,
+            engine_pending,
+            timer_count,
             logs,
         }
     }
@@ -436,6 +454,11 @@ impl Machine {
     /// driver's success path counts bit-5 events; its bit-6 path returns
     /// 0 and the boot prints "LD eCos fail").
     fn service_decomp_engine(&mut self) {
+        // Borrow-free fast path (§28): the pending hint lives outside the
+        // RefCell; take_request stays authoritative.
+        if !self.engine_pending.get() {
+            return;
+        }
         let Some((src, dst)) = self.decomp.borrow_mut().take_request() else {
             return;
         };
@@ -605,6 +628,7 @@ impl Machine {
                 Ok(_) => {
                     steps += 1;
                     self.bus.tick();
+                    self.timer_count.set(self.timer_count.get().wrapping_add(1));
                     self.service_decomp_engine();
                 }
                 Err(e) => break StopReason::Cpu(e),
@@ -657,6 +681,7 @@ impl Machine {
                 Ok(_) => {
                     steps += 1;
                     self.bus.tick();
+                    self.timer_count.set(self.timer_count.get().wrapping_add(1));
                     self.service_decomp_engine();
                 }
                 Err(e) => break StopReason::Cpu(e),
@@ -708,6 +733,7 @@ impl Machine {
                     tracer.push(report);
                     steps += 1;
                     self.bus.tick();
+                    self.timer_count.set(self.timer_count.get().wrapping_add(1));
                     self.service_decomp_engine();
                 }
                 Err(e) => break StopReason::Cpu(e),

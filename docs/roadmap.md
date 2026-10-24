@@ -3,6 +3,24 @@
 Milestones follow the original project plan (A → G). Status reflects what is
 actually demonstrated by code + tests in this repository.
 
+## Milestone Z — the per-step loop measured and closed ✅
+
+- **Measured first (§28)**: `examples/loop_probe.rs` attributes the
+  19.5-vs-63.8 M instr/s gap to the tick fan-out (15.5 ns — two
+  `BTreeMap` lookups in the intc tick, one trait dispatch for one timer
+  increment), the engine poll (2.2 ns `borrow_mut`), and ~1.5 ns of
+  already-fast checks.
+- **Three semantics-preserving fixes**: intc change-detection tick,
+  timer counter shared cell (run loops increment directly), engine
+  request hint outside the `RefCell` — each pinned by
+  `tests/looptune.rs`; one inversion defect caught by its own test
+  pre-measurement.
+- **Results**: boot chain 19.50 → 25.4 M instr/s (+30 %), same
+  1,301,783 steps; all 116 prior tests unchanged, 119 total.
+- **Verdicts**: tick decimation refuted for this repo (observable timer
+  counts; QEMU pays dedicated MMIO machinery for what we keep per-step
+  at ~3.6 ns); decode cache stays optional raw-core-only work (§24.5).
+
 ## Milestone Y — the hardware-session handoff ✅
 
 - **§22.5/§26.4's remainder made one-command**: pure comparison analysis

@@ -440,18 +440,33 @@ impl Device for SpiController {
 #[derive(Debug)]
 pub struct TimerCounter {
     name: String,
-    count: u32,
+    /// Shared counter (Milestone Z, §28): the machine run loop increments
+    /// it directly once per step, so the per-instruction cost is one Cell
+    /// add instead of the tickable-fan-out trait dispatch. Semantics
+    /// unchanged: one count per executed instruction.
+    count: std::rc::Rc<std::cell::Cell<u32>>,
     config: [u32; 7], // +0x04 .. +0x1C
     log: AccessLog,
     log_capacity: usize,
 }
 
 impl TimerCounter {
-    /// Create a timer block sharing `log`.
+    /// Create a timer block sharing `log` (own counter cell).
     pub fn new(name: &str, log: AccessLog) -> Self {
+        let count = std::rc::Rc::new(std::cell::Cell::new(0u32));
+        Self::with_count(name, count, log)
+    }
+
+    /// Create a timer block whose counter cell is shared with the machine
+    /// run loop (the machine increments it once per executed instruction).
+    pub fn with_count(
+        name: &str,
+        count: std::rc::Rc<std::cell::Cell<u32>>,
+        log: AccessLog,
+    ) -> Self {
         Self {
             name: name.to_string(),
-            count: 0,
+            count,
             config: [0; 7],
             log,
             log_capacity: 16_384,
@@ -473,12 +488,12 @@ impl Device for TimerCounter {
     }
 
     fn tick(&mut self) {
-        self.count = self.count.wrapping_add(1);
+        self.count.set(self.count.get().wrapping_add(1));
     }
 
     fn read(&mut self, offset: u32, size: crate::memory::AccessSize) -> u32 {
         let v = if offset == 0 {
-            self.count
+            self.count.get()
         } else if (4..0x20).contains(&offset) && (offset & 3) == 0 {
             self.config[(offset >> 2) as usize - 1]
         } else {
@@ -491,7 +506,7 @@ impl Device for TimerCounter {
     fn write(&mut self, offset: u32, size: crate::memory::AccessSize, value: u32) {
         self.record(offset, size, value, true);
         if offset == 0 {
-            self.count = value;
+            self.count.set(value);
         } else if (4..0x20).contains(&offset) && (offset & 3) == 0 {
             self.config[(offset >> 2) as usize - 1] = value;
         }
@@ -704,6 +719,12 @@ pub struct IntController {
     out: std::rc::Rc<std::cell::Cell<u8>>,
     log: AccessLog,
     log_capacity: usize,
+    /// Sources value seen by the last tick (Milestone Z, §28): the
+    /// per-step recompute becomes a one-compare change-detection — the
+    /// output is a pure function of (sources, enable registers), and
+    /// the registers already recompute on every write, so only a
+    /// sources change between steps needs a re-evaluation.
+    last_sources: u32,
 }
 
 impl IntController {
@@ -722,6 +743,9 @@ impl IntController {
             out,
             log,
             log_capacity: 16_384,
+            // u32::MAX forces the first tick to recompute (identical
+            // observable: out is already 0 and stays 0 for empty regs).
+            last_sources: u32::MAX,
         }
     }
 
@@ -763,10 +787,18 @@ impl Device for IntController {
         self.update_output();
     }
 
-    /// Re-evaluate the output line once per CPU step so externally raised
-    /// sources take effect deterministically.
+    /// Re-evaluate the output line when the external sources changed
+    /// since the last step (Milestone Z, §28). The line is a pure
+    /// function of (sources, enable registers); enable-register writes
+    /// recompute immediately in `write`, so a per-step check needs only
+    /// one sources read + compare — the boot never raises sources, so
+    /// its two BTreeMap lookups per instruction were pure overhead.
     fn tick(&mut self) {
-        self.update_output();
+        let s = self.sources.get();
+        if s != self.last_sources {
+            self.last_sources = s;
+            self.update_output();
+        }
     }
 }
 
@@ -854,6 +886,11 @@ pub struct EngineShared {
     pub last_result: Option<Result<usize, String>>,
     /// How many bytes of source to feed the decoder.
     pub input_len: u32,
+    /// Borrow-free request hint (Milestone Z, §28): set when a start
+    /// write posts a request, cleared by [`Self::take_request`]. Lives
+    /// outside the `RefCell` so the per-step machine poll is one
+    /// `Cell::get` instead of a `borrow_mut` on every instruction.
+    pub pending: std::rc::Rc<std::cell::Cell<bool>>,
 }
 
 impl EngineShared {
@@ -867,6 +904,7 @@ impl EngineShared {
             done,
             last_result: None,
             input_len: 0,
+            pending: std::rc::Rc::new(std::cell::Cell::new(false)),
         }))
     }
 
@@ -885,7 +923,11 @@ impl EngineShared {
     /// Machine-side hook: pop a pending (source, dest) request.
     pub fn take_request(&mut self) -> Option<(u32, u32)> {
         if self.busy {
-            self.request.take()
+            let r = self.request.take();
+            // The hint means "a request is waiting"; after the take the
+            // queue is empty either way.
+            self.pending.set(false);
+            r
         } else {
             None
         }
@@ -1037,6 +1079,7 @@ impl Device for DecompEngineLo {
             sh.input_len = ilen;
             sh.request = Some((src, dst));
             sh.busy = true;
+            sh.pending.set(true);
             sh.done.set(0);
         }
     }

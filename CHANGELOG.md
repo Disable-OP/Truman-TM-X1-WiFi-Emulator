@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.22.0 — Milestone Z: the per-step loop measured and closed (+30 % boot throughput)
+
+### Added
+- `examples/loop_probe.rs` — the §28.1 attribution probe: full-run
+  anchor plus isolated microbenches (tick fan-out whole/intc/timer,
+  engine poll, pending hint, watch check, raw-core ceiling).
+- `tests/looptune.rs` — three regression pins: the intc
+  change-detection tick (raised sources assert on the next step
+  boundary; enable writes immediately), the engine pending-hint
+  lifecycle (set on post, cleared by take_request, take stays
+  authoritative), the shared timer counter cell (shared increments,
+  Device::tick compat, software reset).
+- `TimerCounter::with_count` — shared-counter constructor (§28).
+
+### Changed
+- `IntController::tick` recomputes the output line only when the
+  external sources changed since the last step (enable-register writes
+  recompute immediately as before) — two `BTreeMap` lookups per
+  instruction become one compare.
+- The SoC timer counter lives in a `Rc<Cell<u32>>` the run loops
+  increment directly; the timer is registered non-tickable.
+  `Device::tick` semantics unchanged for standalone buses.
+- `EngineShared::pending` (`Rc<Cell<bool>>`): the per-step engine poll
+  checks a plain Cell instead of `RefCell::borrow_mut`;
+  `take_request` stays authoritative.
+
+### Results (docs/firmware-analysis.md §28)
+- Deterministic boot chain: 19.50 → 25.4 M instr/s (+30 %), identical
+  1,301,783 steps; all prior tests unchanged (119 total).
+- Tick decimation refuted for this repo (§28.5); the decode-cache
+  verdict (§24.5) stands with post-V data.
+
 ## 0.21.0 — Milestone Y: the hardware-session handoff (P1/P2 one-command ingestion)
 
 ### Added

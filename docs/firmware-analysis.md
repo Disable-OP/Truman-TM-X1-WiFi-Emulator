@@ -2375,3 +2375,92 @@ program remains hardware-blocked. What changes is the cost of the
 hardware session: the moment a capture exists, one command produces the
 verdict and its block map, and the decision tree says what each verdict
 means before anyone sees the data. That is the whole milestone.
+## 28. Milestone Z — the per-step loop, measured and closed (session record)
+
+§24.5 left two questions open: whether tick batching could help, and
+whether the decode cache was ever the right mechanism. Milestone Z
+answers both with the §24 method — probe first, fix only what the
+measurement convicts, pin equivalence by the suite — and closes the
+loop-overhead program.
+
+### 28.1 Method and probe
+
+`examples/loop_probe.rs` (committed, reproducible) anchors the full boot
+run and then measures every per-step loop component in isolation with
+public API only: `bus.tick()` fan-out (whole / intc-only / timer-only
+buses), the engine request poll, the pending-hint check, the watch
+check, and the raw-core ceiling on a synthetic self-loop. Two probe
+defects were found and fixed before any number was recorded: the
+raw-core microbench must call `set_describe(false)` (the `CpuBackend`
+contract defaults descriptions ON for direct steppers — a String per
+step, §24.3's own finding), and microbenches must defeat constant
+folding (`black_box`/counter sinks).
+
+### 28.2 Attribution (pre-Z, on the 1,301,783-step boot chain)
+
+| component | ns/instr | note |
+|---|---|---|
+| full machine.run | 51.3 (19.50 M/s) | the §24.4 anchor, reproduced |
+| raw core (self-loop) | 15.7 (63.8 M/s) | §24.1's ceiling, re-confirmed |
+| bus.tick fan-out | 15.5 | intc 8.7 + timer 7.1 |
+| engine poll | 2.2 | `borrow_mut` + take per step |
+| has_watches + IRQ wiring | ~1.5 | both already fast-pathed in V |
+
+The remaining gap (~16 ns) is data-access dispatch and the access-log
+evidence recording — the machine's own contract, not overhead.
+
+### 28.3 Three fixes, all semantics-preserving
+
+* **IntController change-detection tick (§28)**: the output line is a
+  pure function of (sources, enable registers); the registers already
+  recompute on every write, so the per-step recompute — two `BTreeMap`
+  lookups per instruction — collapses to one sources read + compare.
+  A raised source still asserts exactly on the next step boundary
+  (`raise_int_sources`'s contract), pinned by
+  `tests/looptune.rs::intc_change_detection_tick_matches_unconditional_recompute`.
+* **Timer counter shared cell (§28)**: the counter moves to a
+  `Rc<Cell<u32>>` the run loops increment directly — one count per
+  executed instruction, as before, but without the tickable-fan-out
+  trait dispatch. `Device::tick` still increments (standalone buses
+  unchanged); `tests/looptune.rs` pins the shared-cell semantics and
+  the software-reset path (§9).
+* **Engine request hint (§28)**: a `Rc<Cell<bool>>` beside the
+  `RefCell` makes the per-step poll a plain load; `take_request` stays
+  authoritative and clears the hint. One inversion defect in the first
+  implementation was caught by its own regression test before any
+  measurement was taken.
+
+### 28.4 Results
+
+| metric | pre-Z | post-Z |
+|---|---|---|
+| deterministic boot chain | 19.50 M instr/s | **25.4 M instr/s (+30 %)** |
+| bus.tick fan-out | 15.5 ns | 3.1 ns |
+| machine-path timer increment | 7.1 ns | ~0.5 ns |
+| engine poll | 2.2 ns | ~0.3 ns |
+| raw core | 63.8 M/s | 63.8 M/s (untouched) |
+| boot-chain steps | 1,301,783 | 1,301,783 (identical) |
+
+Equivalence: all 116 prior tests pass unchanged (including the boot
+chain step pin and the §23.4 timer-program pin), plus 3 new regression
+pins in `tests/looptune.rs`.
+
+### 28.5 Verdicts on the two open questions
+
+* **Tick batching/decimation: refuted for this emulator.** The boot's
+  `delay(10)` polls read the timer counter every iteration; deferring
+  ticks would change the observable count at read time. QEMU's icount
+  decimation reaches the same conclusion and pays for it with explicit
+  MMIO machinery (restore-the-budget / single-instruction re-blocks,
+  QEMU `docs/devel/tcg-icount.rst`); this repo pins determinism by
+  tests instead and keeps per-instruction ticks — now at ~3.6 ns total
+  for timer + intc.
+* **Decode cache (§24.5): verdict unchanged, now with post-V data.**
+  The raw core is 63.8 M/s and untouched by the loop fixes; the machine
+  gap remains device/dispatch-side. A decode cache would only raise the
+  raw-core ceiling, not the boot rate — it stays optional future work,
+  correctly de-prioritized.
+
+The per-step loop program is complete: every removable cost identified
+by measurement has been removed, and what remains is the evidence
+model's own cost.
