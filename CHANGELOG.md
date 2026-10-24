@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.25.1 — Milestone AF: CI parity — the debug blind spot closed (§31's lesson applied to the gate itself)
+
+### Added
+- CI now runs the full test suite in **debug** mode before the release
+  run (`.github/workflows/ci.yml`). The Milestone AB defect (§31) hid
+  from release-only CI because a `debug_assert!` is compiled out; the
+  repo applied the lesson locally (§31.3's first clean debug run) but
+  the CI gate itself never ran the debug suite — the same blind spot
+  was one push away from recurring. Debug is now a gate, not a habit.
+- `tests/map.rs` (+1, 127 total): the shared watch-hit cap flows
+  through the AE classifier correctly — with the cap at 1, the first
+  hit (the device write) is recorded and classified into the MMIO
+  record, the second hit (the DRAM store) is dropped *by the cap* —
+  not misrouted — `mmio_overflow` is set, the write map degrades to
+  empty rather than to a wrong partial count, and the console byte is
+  unaffected (watches observe accesses, they do not gate them).
+
+### Notes
+- No emulator-semantics change: the instrument, devices, CPU and boot
+  pins are untouched. 127 tests green in debug and release; fmt,
+  clippy (0 warnings, -D) and check all clean.
+- Fresh survey (this session): CN/EN/RU web + code-search angles again
+  find no PNG_DEC value-ROM evidence; the 59 constants stay
+  hardware-gated (§30.4).
+
 ## 0.25.0 — Milestone AE: the written-memory map (§33)
 
 ### Added

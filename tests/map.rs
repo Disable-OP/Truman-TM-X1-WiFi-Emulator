@@ -266,6 +266,43 @@ fn render_loop_write_map_counts_all_and_caps_the_sample() {
     assert!(map.console_after.is_empty());
 }
 
+/// The shared watch-hit cap flows through the AE classifier correctly
+/// (Milestone AF): with the cap at 1, the first post-handoff hit (the
+/// stage's device write, step 3) is recorded and classified into the MMIO
+/// record, the second hit (the DRAM marker store, step 5) is dropped *by
+/// the cap* — not misrouted — `mmio_overflow` is set, and the write map
+/// degrades to empty rather than to a wrong partial count. The classifier
+/// itself never loses a recorded hit; the cap can, and the overflow flag
+/// is the instrument's honesty about it. The console byte is unaffected:
+/// watches observe accesses, they do not gate them.
+#[test]
+fn map_watch_cap_overflow_is_flagged_through_the_classifier() {
+    let image = img(synthetic_image(&LAUNCHER));
+    let cfg = MachineConfig {
+        handoff_entry: STAGE_ENTRY,
+        ..MachineConfig::default()
+    };
+    let mut m = Machine::new(cfg, &image);
+    let bytes: Vec<u8> = STAGE.iter().flat_map(|w| w.to_le_bytes()).collect();
+    m.bus.copy_in(0x2000, &bytes);
+    m.bus.set_watch_cap(1);
+    m.reset();
+
+    let map = m.map_handoff(1_000, 200, 8);
+
+    assert_eq!(map.post_stop, Some(StopReason::StepLimit));
+    assert_eq!(map.mmio.len(), 1, "mmio: {:?}", map.mmio);
+    let (step, _pc, phys, kind, _size, _value) = map.mmio[0];
+    assert_eq!(step, 3, "the recorded hit is the device write");
+    assert_eq!(phys, 0x1FFE_0900);
+    assert_eq!(kind, WatchKind::Write);
+    assert_eq!(map.writes_total, 0, "the DRAM store hit the cap");
+    assert!(map.write_pages.is_empty());
+    assert!(map.write_sample.is_empty());
+    assert!(map.mmio_overflow, "the shared cap gates both records");
+    assert_eq!(map.console_after, "M", "watches observe, not gate");
+}
+
 fn real_firmware_path() -> Option<std::path::PathBuf> {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("firmware")

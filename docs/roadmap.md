@@ -1,5 +1,26 @@
 # Roadmap
 
+## Milestone AF — CI parity: the debug blind spot closed ✅ (v0.25.1)
+
+- **The lesson, applied to the gate itself (§31's own history)**: the
+  Milestone AB defect hid from CI because release builds compile out
+  `debug_assert!`; the fix verification ran both suites *locally*
+  (§31.3), but `.github/workflows/ci.yml` still gated only
+  `cargo test --release`. The same blind spot was one push away from
+  recurring. CI now runs the full suite in **debug** (debug_assert!
+  paths live) before the release run — the gate now matches what the
+  repo claims ("126/127 tests, debug and release").
+- **+1 instrument pin (127 total)**: the shared watch-hit cap flows
+  through the AE classifier correctly — cap=1 records and classifies
+  the first hit (device write → MMIO), drops the second (the DRAM
+  store) *by the cap* with `mmio_overflow` set, the write map degrades
+  to empty rather than to a wrong partial count, and the console byte
+  is unaffected (watches observe, not gate). The classifier never
+  loses a recorded hit; the cap can, and the flag is the honesty about
+  it.
+- 127 tests, debug and release, green; fmt/clippy/check clean; boot
+  pins unchanged. No emulator-semantics change.
+
 ## Milestone AE — the written-memory map: the framebuffer question ✅ (v0.25.0)
 
 - **The measured gap (§33.1)**: §32.3's post-capture map answers code
