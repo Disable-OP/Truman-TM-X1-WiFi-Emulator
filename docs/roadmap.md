@@ -1,5 +1,25 @@
 # Roadmap
 
+## Milestone AA — the vendor driver lineage; the offline program closed ✅
+
+- **The engine program is named by the vendor's own driver code**
+  (`tools/reference/`): MODE 0x90 = 128 B DMA + `zlib_mode=1` (raw
+  DEFLATE — no PNG filters, which is *why* every filter family was
+  dead), `IMG_TYPE` 0x68 = palette/8bpp passthrough, CHUNK_SIZE = len +
+  8 + (len % 2) + 6 verbatim, "SP" = the SDK's "ZLIB/Scrambler"
+  container, `PNG_REM_CHUNK_SIZE` = the scramble-key slot (§30.1).
+- **The SDK's own test container** (U-Boot test-pattern path, scramble
+  key 0xa6fc) parses canonically and violates RFC distances: vendor-side
+  proof that the value tables are hardware ROM (§30.2).
+- **Refuted/closed offline**: per-code delta value tables (45.4 %
+  plateau, `tools/fw_value_fit.py`); the m4 accounting is structurally
+  underdetermined without the true pattern (`tools/fw_m4_fit.py`); no
+  plaintext eCos copy in flash; Q8's algorithm not in any sweepable
+  family (`tools/fw_checksum_hunt.py`); `sp_gzip` not public (§30.3).
+- **Boot blocker unchanged in kind, narrowed to one ROM**: the hardware
+  session's P1 capture decides it in one command (§30.4).
+
+
 Milestones follow the original project plan (A → G). Status reflects what is
 actually demonstrated by code + tests in this repository.
 

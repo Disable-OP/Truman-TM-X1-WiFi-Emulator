@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.23.0 — Milestone AA: the vendor driver lineage (the engine program named; the offline program closed)
+
+### Added
+- `tools/reference/` — the Sunplus SPHE-family U-Boot PNG_DEC driver
+  (`sp_imgdec.c`/`.h`, `cmd_sp_png_dec.c`) and the platform `regfile.h`,
+  archived with attribution; they name every register constant the
+  Truman loader writes (docs/firmware-analysis.md §30).
+- `tools/fw_value_fit.py` — beam fitter for per-code length/distance
+  value-table deltas with the calibrated strict-validity oracle and
+  zero-preset collapse.
+- `tools/fw_m4_fit.py` — the m4 (no-extra-bits) accounting fitter,
+  demonstrating the structural underdeterminism on the SDK test vector.
+- `tools/fw_checksum_hunt.py` — the ~500-variant Q8 checksum sweep
+  against the known payload→0x5DB06FB5 pair.
+
+### Findings (docs/firmware-analysis.md §30)
+- MODE 0x90 = 128-byte DMA + **zlib_mode 1** (raw DEFLATE, no PNG
+  filters); IMG_TYPE 0x68 = palette/8bpp passthrough; CHUNK_SIZE = len +
+  8 + (len%2) + 6 verbatim (vendor `// ???` included); "SP" = the SDK's
+  "ZLIB/Scrambler" container; the scramble key slot is written but the
+  literals are clean (scrambling inactive for these streams).
+- The SDK's own test container (key 0xa6fc) parses canonically but
+  violates RFC distances — direct vendor-side proof the value semantics
+  are hardware ROM.
+- Per-code delta family refuted (45.4 % plateau, no structure); the m4
+  accounting is structurally underdetermined offline; no plaintext image
+  copy, no public sp_gzip, no recoverable checksum algorithm. The
+  hardware session is the single remaining unlock.
+
+
 ## 0.22.0 — Milestone Z: the per-step loop measured and closed (+30 % boot throughput)
 
 ### Added

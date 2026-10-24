@@ -2517,3 +2517,105 @@ revised). §26's and §28's verdicts stand unchanged. The single next
 step for the boot blocker remains the hardware session
 (`docs/hardware-session.md`): P2 cold-boot capture → `dram_compare
 --pre`, then P1 → `dram_compare --post`, one command per experiment.
+
+## 30. Milestone AA — the vendor driver lineage: the engine program named,
+### the test vector, and the offline program closed (session record)
+
+The engine's register block is no longer inferred: the Sunplus SPHE-family
+U-Boot image decoder (`sp_imgdec.c`, same SoC line, sibling device's GPL
+dump; archived under `tools/reference/` with attribution) programs the same
+0xBFFE3800 block with the same constants the Truman loader writes. Every
+previously-unexplained constant now has a vendor-named meaning.
+
+### 30.1 The register program, named by the vendor's own code
+
+* `PNG_DEC_MODE` = 1 (reset), then `((4&7)<<2)|(1<<7)` = **0x90**:
+  `bs_dma_size=4` (128-byte DMA) and **`zlib_mode=1`** — "0: decoding PNG
+  images, 1: decoding ZLIB streams".
+* `PNG_HUF_TB_ADDR=0x20`, `PNG_SCL_BUF_ADDR=0xC0`: internal SRAM
+  partitioning (32 + 160 words), identical constants.
+* `PNG_CHUNK_SIZE = stream_len + 8 + (len%2) + 6` — the Truman driver's
+  "+6 fudge" appears **verbatim in the vendor driver, with the same
+  `// ???` comment**.
+* `PNG_BS_OFFSET` = `(byte_offset<<3) − bit_offset`, rounded UP to a
+  32-bit boundary = the symbol start bit (1088 on this container).
+* `PNG_IMG_WIDTH=1024`, `PNG_IMG_HEIGHT=u16@2` — "Set decompressed data
+  size, unit: K-byte"; `PNG_PXL_LINE = height−1` (row countdown).
+* `PNG_IMG_TYPE = (color_type<<5)|bit_depth`; **0x68 = palette/8bpp** —
+  "Set color type and bit-depth as 8-bit palette **to avoid output
+  translation**": raw byte passthrough, no pixel conversion.
+* `PNG_REM_CHUNK_SIZE_M` = the **scramble key** ("2-bytes scramble
+  unit"); the container header check is `zlib_header == 0x5350` ("SP") —
+  the vendor's "**ZLIB/Scrambler header**".
+
+Consequences. First, `zlib_mode=1` means the engine decodes **raw
+DEFLATE** — there is no PNG row filtering in this mode, which is *why*
+the §17.3 filter-family refutations all failed to help: the families
+were dead because the mode never filters. Second, the Truman loader is
+this SDK's lineage: the "SP" container is the vendor's ZLIB/Scrambler
+format, and the whole engine program maps 1:1 onto `imgdec_png_decode_zlib()`.
+
+### 30.2 The SDK's own test container (new instrument)
+
+`cmd_sp_png_dec.c` embeds a test "SP" container (height 9, stream
+0xE98 bytes) compressed by the SDK's `sp_gzip` tool with scramble key
+0xa6fc (`SP_PNG_DEC_OP_MODE_TEST_PATTERN` path). Raw RFC inflate of that
+vector: the dynamic header parses canonically, the **literals decode to
+readable sparse hex-text in a zero sea**, and the walk dies with
+"invalid distance too far back". Three direct facts:
+
+1. the SDK compressor does **not** emit RFC-conformant distances — the
+   hardware value semantics differ, exactly as the Truman stream's
+   behavior indicated;
+2. the container's literal bytes are **not scrambled** (the key is
+   written, the literals are clean ASCII) — the scramble facility is
+   inactive for these streams, and the "2-byte scramble unit" is not an
+   output transform we are missing;
+3. zero-preset references are legitimate (the sparse test pattern's zero
+   sea) — §14.1's reading, now confirmed on vendor-authored data.
+
+### 30.3 Two new refutations, and one impossibility
+
+* **Per-code delta family refuted.** The most general "different silicon
+  ROM ladder" form — length and distance value tables as RFC±δ per code —
+  was beam-fitted on the full 25,027-symbol stream with the calibrated
+  strict-validity oracle and zero-preset collapse
+  (`tools/fw_value_fit.py`). It runs to stream end and **plateaus at
+  45.4 %** with no per-code structure (the fitted deltas are scattered
+  noise of the same magnitude §17.5's beam bought by oracle
+  exploitation). Together with §18.2 (ladder search), §17.5 (mini-grid),
+  and §26 (joint sweep), the value-table family is closed in every
+  parameterized form tried.
+* **The m4 accounting is underdetermined offline.** With no extra bits
+  consumed (59 ROM values), the decoded pattern *defines itself*: any
+  self-consistent sparse assignment satisfies the stream, the literals,
+  and the size anchor simultaneously. `tools/fw_m4_fit.py` demonstrates
+  the collapse on the test vector (the zero-fill attractor reaches the
+  image size with ~90 % of the stream unconsumed; ranking by validity,
+  size, or consumption each evicts the true state or keeps only
+  degenerate ones). No in-silico oracle — alphabet, size, validity, or
+  consumption — separates candidates without knowing the true pattern.
+* **No offline source of the answer remains.** Exhaustive scans find no
+  plaintext copy of the eCos image anywhere in the 4 MiB flash (entry
+  markers `0x3400xxxx`, "SP" containers, capstone-decodable code regions
+  — the only tail-region content is config/MAC records). The Q8 checksum
+  algorithm is not recoverable from the known pair (driver payload →
+  0x5DB06FB5) by a ~500-variant sweep across CRC-32 catalogs,
+  Fletcher/Adler, sums, hashes, and 2-byte-unit accumulations
+  (`tools/fw_checksum_hunt.py`) — it lives in the vendor's build
+  tooling. The `sp_gzip` compressor is not publicly available
+  (searched; only the U-Boot *consumer* side is public).
+
+### 30.4 What this changes
+
+The engine model's register program is now fully named and the SDK
+lineage proven; the blocker is exactly the hardware's length/distance
+value tables — one 32 KiB-window decoder whose ROM values the vendor
+never published. The offline program is closed with new evidence rather
+than assumption: §22.5's hardware boundary now holds not just
+family-by-family but structurally (§30.3). The hardware session
+(`docs/hardware-session.md`) remains the single unlock — a P1 capture
+(`dram_compare --post`) decides every candidate decode in one command —
+and this milestone makes that session trivial to prepare: the register
+program, the container format, and the engine's programming sequence are
+all documented from the vendor's own code.

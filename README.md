@@ -174,7 +174,8 @@ fault/unknown instruction.
 | `tests/watch.rs`, `tests/q8.rs` | Watchpoint mechanics; the §22 runtime-evidence pins (loader reads exactly three descriptor words, one-pass copy, no checksum pass) |
 | `tests/timer.rs` | SoC timer model semantics + the real boot's timer register program (§23.4) |
 | `docs/firmware-analysis.md` | The evidence base: CPU arch, flash map, register models |
-| `tools/`, `scripts/` | Analysis scripts (capstone-based recon, disassembly) |
+| `tools/`, `scripts/` | Analysis scripts (capstone-based recon, disassembly, value-table fitters) |
+| `tools/reference/` | Attributed vendor sources naming the PNG_DEC program (§30; GPL, not built here) |
 | `firmware/` | The original, unmodified flash dump (SHA-256 pinned in docs) |
 
 ## Documentation
