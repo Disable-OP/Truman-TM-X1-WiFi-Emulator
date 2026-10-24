@@ -1,5 +1,46 @@
 # Changelog
 
+## 0.14.0 — Milestone R: the entry harness (register-aware dynamic oracle)
+
+### Added
+- `Machine::run_until_pc(max_steps, watch)` — run loop stops before
+  executing the instruction at the watch PC (`StopReason::EntryReached`).
+- `CpuBackend::restore` + `Machine::restore_cpu_state` — full GPR/hi/lo/PC
+  snapshot restore (entry-harness support).
+- `AddressSpace::copy_out`/`copy_in` — bulk diagnostic snapshot/restore of
+  RAM/ROM regions, with unit tests.
+- `examples/entry_oracle.rs` — the decisive instrument §19.4 asked for:
+  boots the real firmware with a watch at 0xA1600000, captures the loader's
+  post-jump register state (v1 = 0x13800) and full DRAM, then evaluates
+  candidate decodes as real MIPS code from the pixel buffer; budget-
+  survivors are automatically screened for NOP-sled artifacts (distinct
+  PCs, zero-word fetch share, UART emission).
+- `tests/entry.rs` — 5 integration tests: entry register state, baseline
+  dynamic fault at the static oracle's word, complete state restoration
+  (bit-identical replays), step-limit path.
+- `tools/fw_syms_probe.py` — pins the litlen table structure: all 286
+  symbols coded, canonical rank(s) != s, length symbols 276/285 at ranks
+  256/257 as bytes 20/29.
+- `tools/fw_syms_family.py` — the symbol-mapping family generator
+  (class-preserving literal-value maps + structure representatives), with
+  an independent rank-walk cross-checked byte-identical against the event
+  renderer.
+- docs/firmware-analysis.md §20; docs/roadmap.md Milestone R.
+
+### Analysis (§20)
+- The class-preserving literal-value family is refuted by the dynamic
+  oracle: 522 candidates (xor/add sweeps, bitrev8/nibswap, lut-by-value,
+  rank-shifts, per-length reversal, m2/m4 re-walks) — 519 fault in the
+  head, the 3 budget-survivors are NOP-sled artifacts (99% zero-word
+  fetches, no UART).
+- §19.2's static m1/m2 verdicts confirmed dynamically (m1 +0x50
+  `0000ffff`; m2 +0x18 `6200003b`); the m4 verdict is corrected: the
+  head's `blez $v1` falls through (v1 = 0x13800 > 0) and the head dies at
+  +0x38, not +0x6c/+0x74.
+- Remaining head-paradox space narrowed to: (1) a rank-driven class rule
+  (the byte table cannot carry the literal/length split), (2) an unmodeled
+  output transform, (3) a pre-transformed container plaintext.
+
 ## 0.13.0 — Milestone Q: the executable-head oracle; accounting/convention families refuted
 
 ### Added

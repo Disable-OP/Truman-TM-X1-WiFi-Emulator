@@ -399,6 +399,46 @@ impl AddressSpace {
         }
     }
 
+    /// Bulk diagnostic read of a physically backed region into `buf`.
+    /// Entry-harness support (docs/firmware-analysis.md §20): snapshot the
+    /// post-boot DRAM once, then restore it between candidate evaluations.
+    /// Copies stop at the first region boundary or device region; returns
+    /// the number of bytes actually copied.
+    pub fn copy_out(&mut self, phys: u32, buf: &mut [u8]) -> usize {
+        let Some(region) = self.find_region_mut(phys) else {
+            return 0;
+        };
+        let off = (phys - region.base) as usize;
+        match &mut region.kind {
+            RegionKind::Ram(bytes) | RegionKind::Rom(bytes) => {
+                let n = buf.len().min(bytes.len().saturating_sub(off));
+                buf[..n].copy_from_slice(&bytes[off..off + n]);
+                n
+            }
+            RegionKind::Device(_) => 0,
+        }
+    }
+
+    /// Bulk diagnostic write into a physically backed region (mirror of
+    /// [`Self::copy_out`]). Like [`Self::poke_phys`], this is a
+    /// diagnostics path: ROM is writable only here, and CPU-facing stores
+    /// still fault on ROM. Stops at the first region boundary or device
+    /// region; returns the number of bytes actually written.
+    pub fn copy_in(&mut self, phys: u32, bytes: &[u8]) -> usize {
+        let Some(region) = self.find_region_mut(phys) else {
+            return 0;
+        };
+        let off = (phys - region.base) as usize;
+        match &mut region.kind {
+            RegionKind::Ram(backing) | RegionKind::Rom(backing) => {
+                let n = bytes.len().min(backing.len().saturating_sub(off));
+                backing[off..off + n].copy_from_slice(&bytes[..n]);
+                n
+            }
+            RegionKind::Device(_) => 0,
+        }
+    }
+
     /// Diagnostic write to physical memory (mirror of [`Self::peek_phys`]).
     /// Used by analysis examples to seed DRAM with canary patterns before a
     /// run (e.g. bounding the pre-decode content around the PNG pixel
@@ -553,6 +593,31 @@ mod tests {
         asp.store(0x8000_0010, AccessSize::Word, 0x1234_5678)
             .unwrap();
         assert_eq!(asp.peek_phys(0x10, AccessSize::Word), Some(0x1234_5678));
+    }
+
+    #[test]
+    fn bulk_copy_roundtrips_and_clamps() {
+        let mut asp = AddressSpace::new();
+        asp.add_ram("dram", 0, 0x100);
+        asp.add_rom("flash", 0x1000_0000, vec![0x55; 0x40]);
+        // Roundtrip through RAM.
+        let src: Vec<u8> = (0u8..=63).collect();
+        assert_eq!(asp.copy_in(0x20, &src), 64);
+        let mut dst = [0u8; 64];
+        assert_eq!(asp.copy_out(0x20, &mut dst), 64);
+        assert_eq!(&dst[..], &src[..]);
+        // Clamped at the region end.
+        let mut tail = [0u8; 0x100];
+        assert_eq!(asp.copy_out(0xE0, &mut tail), 0x20);
+        // Unmapped base copies nothing.
+        assert_eq!(asp.copy_out(0x9000_0000, &mut tail), 0);
+        // ROM reads back through the bulk path too.
+        let mut rom = [0u8; 8];
+        assert_eq!(asp.copy_out(0x1000_0000, &mut rom), 8);
+        assert!(rom.iter().all(|&b| b == 0x55));
+        // ...and copy_in writes ROM only through this diagnostics path.
+        assert_eq!(asp.copy_in(0x1000_0004, &[0x77, 0x88]), 2);
+        assert_eq!(asp.peek_phys(0x1000_0004, AccessSize::Half), Some(0x8877));
     }
 
     #[test]

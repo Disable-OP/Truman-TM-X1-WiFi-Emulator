@@ -213,6 +213,7 @@ fn real_firmware_stage1_executes_past_prologue() {
             // real progress; require at least 1000 instructions executed.
             assert!(result.steps >= 1_000, "stopped too early ({e})");
         }
+        StopReason::EntryReached { .. } => { /* unreachable for this watch-free run */ }
     }
     let s = machine.snapshot();
     // The loader re-programs sp during init; assert it stays inside the

@@ -61,6 +61,20 @@ programmed row; `tests/png.rs` pins the whole register program); the
 remaining blocker is the engine's LZ *value* semantics — which bytes a
 match copies (`docs/firmware-analysis.md` §17).
 
+**Milestone R adds the decisive instrument** (`docs/firmware-analysis.md`
+§20): the **entry harness** (`examples/entry_oracle.rs`) boots the real
+firmware with a watch at 0xA1600000 (the loader's `jr v0` target), captures
+the exact post-jump register state (v1 = 0x13800) and the full DRAM, then
+executes candidate decodes as real MIPS code from the pixel buffer — a
+register-aware dynamic oracle with NOP-sled discrimination (distinct-PC /
+zero-fetch / UART metrics). The first family run through it — all
+class-preserving literal-value maps (xor/add sweeps, bitrev8, nibswap,
+lut-by-value, rank-shifts) plus per-length reversal and the m2/m4
+accountings — is **refuted**: 522 candidates, 519 fault in the head, the 3
+budget-survivors are NOP-sled artifacts. The register-aware oracle also
+corrected Milestone Q's static m4 verdict: the head's `blez $v1` falls
+through (v1 = 0x13800 > 0) and the head dies at +0x38, not +0x6c.
+
 Milestone J: the driver's engine interface is now fully reverse-engineered
 (start-bit computation, table-upload protocol = engine table-RAM addresses,
 completion accounting formula), and a **decode defect was found and fixed**:
@@ -91,7 +105,7 @@ Requires a stable Rust toolchain (https://rustup.rs). No other dependencies.
 
 ```sh
 cargo build --release
-cargo test --release          # 68 tests: boot chain, interrupt delivery, key injection
+cargo test --release          # 78 tests: boot chain, entry harness, interrupt delivery, key injection
 
 # Identify a firmware image
 ./target/release/truman-emulator inspect firmware/*.bin
@@ -101,6 +115,12 @@ cargo test --release          # 68 tests: boot chain, interrupt delivery, key in
 
 # Per-instruction trace of a window (PC, instruction, memory accesses)
 ./target/release/truman-emulator trace firmware/*.bin --max-steps 2000 --limit 120
+
+# Entry harness: execute candidate decodes as real code from the eCos entry
+# (see docs/firmware-analysis.md §20; tools/fw_syms_family.py generates them)
+python3 tools/fw_syms_family.py firmware/*.bin
+./target/release/examples/entry_oracle firmware/*.bin \
+    --budget 65536 tools/out/syms_family/*.bin
 ```
 
 Exit codes: `0` step-limit (clean), `1` usage/IO, `2` emulation stopped on a

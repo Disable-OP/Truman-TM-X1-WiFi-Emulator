@@ -1509,3 +1509,139 @@ or to the decisive instrument: an entry harness that boots the emulator
 from 0xA1600000 with the loader's register state and counts executed
 instructions per candidate decode — the register-aware oracle the DFS
 lacks.
+
+## 20. Milestone R — the entry harness: the register-aware dynamic oracle
+### (session record)
+
+Milestone Q ended by naming two instruments: the symbol-mapping family and
+"an entry harness that boots the emulator from 0xA1600000 with the loader's
+register state and counts executed instructions per candidate decode — the
+register-aware oracle the DFS lacks" (§19.4). Milestone R builds that
+harness, hardens it against its own failure mode, and runs the first
+candidate family through it.
+
+### 20.1 The harness (Rust, tested)
+
+* `Machine::run_until_pc(max_steps, watch)` — the boot run loop stops
+  *before executing* the instruction at `watch`, returning the exact
+  post-jump machine state (`StopReason::EntryReached`).
+* `CpuBackend::restore(snapshot)` + `Machine::restore_cpu_state` — full
+  GPR/hi/lo/PC restore (never in a delay slot after restore).
+* `AddressSpace::copy_out`/`copy_in` — bulk diagnostic snapshot/restore of
+  RAM-backed regions (the full 64 MiB DRAM is snapshotted once after boot
+  and restored before every candidate, so evaluations are bit-independent).
+* `examples/entry_oracle.rs` — boots the real firmware with the watch at
+  0xA1600000, captures the entry state, then per candidate: restore DRAM +
+  registers, zero-pad the candidate to the programmed image size (the
+  §17.2 band-buffer padding semantics), write it into the PNG pixel buffer
+  (phys 0x01600000), and execute from 0xA1600000 with a bounded budget.
+* Covered by `tests/entry.rs` (5 tests): the entry register state (v0 =
+  0xA1600000, v1 = 0x13800, §19.1's register dump), the baseline faulting
+  dynamically at the static oracle's predicted word, full state restoration
+  between candidates (store-then-fault candidate, bit-identical replays),
+  and the step-limit path (self-loop candidate runs clean to budget).
+
+### 20.2 The litlen table structure the harness must respect
+
+`tools/fw_syms_probe.py` pins the uploaded table's shape (the driver builds
+a canonical counting sort, §13.6, and uploads BYTE entries — 285 entries
+fit the 0xC000..0xC180 table-RAM window, words would not):
+
+* all 286 litlen symbols of this stream are coded (zero-length: none);
+* **canonical rank(s) != s**: the two most frequent symbols are 1 and 2
+  (ranks 0/1), symbol 0 sits at rank 2, and the length symbols 276/285
+  occupy ranks 256/257 — as bytes `(s - 256)` (20/29), with literals
+  continuing at ranks 258+ (93, 94, 121, ...).
+
+Consequences: a byte-valued table cannot represent symbols >= 256, so any
+engine that classifies tokens from the table ALONE must use the rank
+boundary — which misclassifies 60+ symbols here (literals at ranks >= 258
+would be length selectors, length symbols at ranks < 256 would be
+literals). Either the engine has class side-information we have not
+modeled, or the class assignment is rank-driven and the parse's token
+STREAM (not its bit positions) differs from RFC — both stay open.
+
+### 20.3 The first family: class-preserving literal-value maps — REFUTED
+
+`tools/fw_syms_family.py` generates candidates whose bit-level parse is
+bit-identical to the verified RFC m1 walk (same ranks, same classes, same
+lengths/distances/extra-bit consumption) and changes ONLY the byte each
+literal rank emits (`render(events, f)`; matches copy the live window, the
+band is the zero preset, output is zero-padded to 79,872 = 1024 x 78):
+
+* V1 (class-preserving, one shared parse): identity; `xor k` / `add k` for
+  k = 1..255 (table-RAM scramble sweeps, 510 candidates); bitrev8;
+  nibble-swap; `lut-by-value` (the engine misreads the rank-ordered table
+  as a symbol-value-indexed LUT); `rank-shift +-1/+-2` (table-RAM base
+  misalignment — literal byte = table[rank(s) +- d]).
+* V2 (structure representatives, dedicated walks): per-length-group symbol
+  reversal (§19.4's permutation family name-sake — permutes literal ranks
+  with length ranks, so the token classes change); the m2/m4 accountings
+  (§17.5) re-walked for dynamic confirmation of §19.2.
+
+Self-check: two independent walkers (event-record render vs rank-walk)
+produce byte-identical identity outputs, and the static head oracle
+(`fw_first_corruption.word_class`, §19.2's classifier) reproduces the
+recorded m1/m2/m4 verdicts exactly (m1 FATAL +0x50 `0000ffff`; m2 FATAL
++0x18 `6200003b`; m4 branch at +0x18).
+
+**Dynamic verdict (522 candidates, budget 65,536 steps each): 519 fault in
+the head; the 3 "survivors" (`add +6`, `add +10`, `xor 0x0A`) are NOP-sled
+artifacts, not eCos survival** — they branch once into the zero-filled
+DRAM below the pixel buffer and then execute 0x00000000 words to the
+budget (65,534/65,536 fetched words zero, 65,536 distinct linear PCs, zero
+UART bytes). The harness now measures every budget-survivor for exactly
+this: distinct-PC count, zero-word fetch share, and UART emission — a real
+eCos entry executes diverse code and talks; a sled does neither.
+
+The refutation record (dynamic, loader register state live):
+
+| family | survived | first fault |
+|---|---|---|
+| identity (= engine model, m1) | 20 steps | +0x50 `0000ffff` reserved (§19.2 confirmed) |
+| xor k (255) | <= 32 steps | head reserved/unimplemented words (deepest: `xor70` +0x74); survivor `xor0a` = sled |
+| add k (255) | <= 21 steps | head reserved words (incl. one trap at +0x50); survivors `add06/add0a` = sleds |
+| bitrev8 / nibswap | 5 / 20 steps | +0x14 COP0-rs unsupported / +0x50 reserved |
+| lut-by-value | 0 steps | word 0 `00001154` reserved |
+| rank-shift +-1/+-2 | 0..24 steps | word 0 / +0x34 reserved; +1 variant branches to +0xb058 then load-faults |
+| per-length reversal | 2 steps | +0x08 `0000007c` reserved |
+| m2 accounting | 6 steps | +0x18 `6200003b` reserved (§19.2 confirmed) |
+| m4 accounting | 14 steps | +0x38 `c5380018` (COP1-class, unimplemented) |
+
+**Dynamic correction of §19.2/§19.4 for m4**: the static straight-line scan
+predicted death at +0x6c/+0x74; the register-aware oracle shows the head's
+`blez $v1` at +0x18 FALLS THROUGH (v1 = 0x13800 > 0, the driver's live
+return value), and the head dies at +0x38 instead. The static word-scan
+cannot follow control flow; the harness can — this is the instrument's
+point.
+
+### 20.4 What this forces
+
+* The value-side family with parse-preserving literal maps is dead in its
+  entirety: no byte bijection of the "literal symbol = byte value" reading
+  produces an executable head. Combined with §19.3 (ladder values cannot
+  fix the head) and §19.4 (the transform is not ladder-shaped), the
+  surviving hypotheses for the head paradox are now sharply:
+  1. the class assignment is rank-driven (§20.2) and the token STREAM
+     differs from RFC — i.e. the engine's litlen table semantics encode
+     the literal/length split differently (the driver's byte upload cannot
+     carry it; a rank-boundary rule with an engine-side length-ladder is
+     the natural hardware reading);
+  2. an unmodeled output transform between the LZ output and the pixel
+     buffer (§14.4 item 2, still not excluded by any §19/§20 test);
+  3. the container plaintext is pre-transformed by the SDK tool (the
+     engine decodes correctly and the boot executes the transformed image
+     — §14.4 item 2's link-time byte-lane permutation reading).
+* The harness is now the project's decisive instrument: any future
+  candidate decode (new accounting, new class rule, new transform inverse)
+  is one file + one run away from a register-aware verdict with
+  sled-discrimination built in.
+
+Next (Milestone S candidates): (1) implement the rank-boundary class rule
+as an engine-semantics variant (rank < 256 = literal byte T[rank]; rank =
+256 = EOB; rank > 256 = length selector T[rank] into a hardware length
+ladder) and run the family through the harness — the m4/m2-style static
+refutations do not transfer because the token stream changes; (2) the
+unmodeled-transform family (byte-lane permutations of the OUTPUT, then
+word-domain re-examination); (3) Q8 checksum as the decisive missing
+oracle.

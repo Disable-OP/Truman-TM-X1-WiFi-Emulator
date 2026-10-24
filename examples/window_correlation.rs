@@ -122,6 +122,9 @@ fn main() {
                         truman_emulator::machine::StopReason::Cpu(e) => {
                             format!("{e}")
                         }
+                        truman_emulator::machine::StopReason::EntryReached { pc } => {
+                            format!("entry watch at 0x{pc:08x}")
+                        }
                     }
                 );
                 break;

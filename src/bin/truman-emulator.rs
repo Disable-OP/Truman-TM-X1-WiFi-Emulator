@@ -332,6 +332,7 @@ fn cmd_run(args: &[String]) -> Result<ExitCode, ArgsError> {
     match result.stop {
         truman_emulator::machine::StopReason::StepLimit => Ok(ExitCode::from(0)),
         truman_emulator::machine::StopReason::Cpu(_) => Ok(ExitCode::from(2)),
+        truman_emulator::machine::StopReason::EntryReached { .. } => Ok(ExitCode::from(0)),
     }
 }
 
@@ -397,5 +398,6 @@ fn cmd_trace(args: &[String]) -> Result<ExitCode, ArgsError> {
     match result.stop {
         truman_emulator::machine::StopReason::StepLimit => Ok(ExitCode::from(0)),
         truman_emulator::machine::StopReason::Cpu(_) => Ok(ExitCode::from(2)),
+        truman_emulator::machine::StopReason::EntryReached { .. } => Ok(ExitCode::from(0)),
     }
 }

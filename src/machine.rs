@@ -132,6 +132,9 @@ pub enum StopReason {
     StepLimit,
     /// The CPU backend stopped with an error.
     Cpu(CpuError),
+    /// The watch PC passed to [`Machine::run_until_pc`] was reached before
+    /// executing the instruction there (entry-harness support, §20).
+    EntryReached { pc: u32 },
 }
 
 impl std::fmt::Display for StopReason {
@@ -139,6 +142,9 @@ impl std::fmt::Display for StopReason {
         match self {
             StopReason::StepLimit => write!(f, "step limit reached"),
             StopReason::Cpu(e) => write!(f, "{e}"),
+            StopReason::EntryReached { pc } => {
+                write!(f, "entry watch reached at pc=0x{pc:08x}")
+            }
         }
     }
 }
@@ -584,6 +590,59 @@ impl Machine {
             pc: self.cpu.pc(),
             touchmap,
         }
+    }
+
+    /// Run up to `max_steps` instructions, stopping early — before
+    /// executing the instruction there — when the PC reaches `watch`.
+    ///
+    /// Entry-harness support (docs/firmware-analysis.md §20): boot the real
+    /// firmware with `watch = 0xA1600000` (the loader's `jr v0` target, the
+    /// decompressed eCos entry) and the machine stops with the loader's
+    /// exact post-jump register state live (v1 = 0x13800, §19.1), giving
+    /// candidate decodes a register-aware dynamic oracle instead of static
+    /// word classification.
+    pub fn run_until_pc(&mut self, max_steps: u64, watch: u32) -> RunResult {
+        let mut steps: u64 = 0;
+        let stop = loop {
+            if self.cpu.pc() == watch {
+                break StopReason::EntryReached { pc: watch };
+            }
+            if steps >= max_steps {
+                break StopReason::StepLimit;
+            }
+            self.cpu.set_ext_irq_lines(self.intc_line.get());
+            match self.cpu.step(&mut self.bus) {
+                Ok(_) => {
+                    steps += 1;
+                    self.bus.tick();
+                    self.service_decomp_engine();
+                }
+                Err(e) => break StopReason::Cpu(e),
+            }
+        };
+        let touchmap = self
+            .logs
+            .iter()
+            .map(|(name, log)| {
+                let offsets: std::collections::BTreeSet<u32> =
+                    log.borrow().iter().map(|e| e.0).collect();
+                (name.clone(), offsets.into_iter().collect())
+            })
+            .collect();
+        RunResult {
+            steps,
+            stop,
+            pc: self.cpu.pc(),
+            touchmap,
+        }
+    }
+
+    /// Restore a CPU register snapshot (entry-harness support, §20):
+    /// re-enter a candidate image from the exact post-boot register state
+    /// captured by [`Machine::snapshot`]. Memory state is the harness's
+    /// responsibility (see `AddressSpace::copy_in`/`copy_out`).
+    pub fn restore_cpu_state(&mut self, snap: &crate::cpu::CpuSnapshot) {
+        self.cpu.restore(snap);
     }
 
     /// Execute up to `max_steps` instructions while capturing every step

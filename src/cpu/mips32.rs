@@ -802,6 +802,15 @@ impl CpuBackend for Mips32 {
         }
     }
 
+    fn restore(&mut self, snap: &CpuSnapshot) {
+        self.regs = snap.regs;
+        self.hi = snap.hi;
+        self.lo = snap.lo;
+        self.pc = snap.pc;
+        self.next_pc = snap.next_pc;
+        self.in_delay_slot = false;
+    }
+
     fn name(&self) -> &'static str {
         "mips32r2-le-interpreter"
     }

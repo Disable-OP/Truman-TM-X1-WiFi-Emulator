@@ -3,6 +3,36 @@
 Milestones follow the original project plan (A → G). Status reflects what is
 actually demonstrated by code + tests in this repository.
 
+## Milestone R — the entry harness: the register-aware dynamic oracle ✅ (commit `R`)
+
+- **Instrument built** (§20.1): `Machine::run_until_pc` (watch-PC stop),
+  `CpuBackend::restore` + `Machine::restore_cpu_state` (full register
+  restore), `AddressSpace::copy_out`/`copy_in` (bulk DRAM snapshot/restore),
+  and `examples/entry_oracle.rs` — boot the real firmware to 0xA1600000,
+  capture the loader's post-jump register state (v1 = 0x13800, §19.1),
+  then execute each candidate decode from the pixel buffer with a bounded
+  budget. Covered by 5 integration tests (`tests/entry.rs`).
+- **Sled discrimination**: budget-survivors are automatically checked for
+  NOP-sled artifacts (distinct-PC count, zero-word fetch share, UART
+  emission) — the zero-filled DRAM below the pixel buffer would otherwise
+  fake "survival".
+- **Litlen table structure pinned** (§20.2, `tools/fw_syms_probe.py`):
+  all 286 litlen symbols coded; canonical rank(s) != s (length symbols
+  276/285 at ranks 256/257 as bytes 20/29, literals continue at 258+); a
+  byte-valued table cannot carry the literal/length split — a rank-boundary
+  class rule is the natural hardware reading and stays open.
+- **The class-preserving literal-value family is REFUTED** (§20.3,
+  `tools/fw_syms_family.py`, 522 candidates through the dynamic oracle):
+  xor/add sweeps (510), bitrev8/nibswap, lut-by-value, rank-shifts,
+  per-length reversal, m2/m4 re-walks — 519 fault in the head; the 3
+  budget-survivors are NOP-sled artifacts. §19.2's static m1/m2 verdicts
+  confirmed dynamically; **m4 corrected** (the `blez $v1` at +0x18 falls
+  through with v1 = 0x13800 > 0; death moves +0x6c/+0x74 → +0x38).
+- **Next (Milestone S)**: (1) the rank-boundary class rule as an engine
+  variant (rank < 256 = literal, = 256 = EOB, > 256 = length-ladder
+  selector) — the token stream changes, so static refutations do not
+  transfer; (2) the output-transform family; (3) Q8 checksum.
+
 ## Milestone A — Repository & firmware audit ✅ (commit `b30337b`)
 
 - Reproducible analysis of `/firmware` (SHA-256 pinned, layout mapped).

@@ -105,6 +105,11 @@ pub trait CpuBackend {
     /// Full state snapshot.
     fn snapshot(&self) -> CpuSnapshot;
 
+    /// Restore a full register snapshot (entry-harness support, §20:
+    /// evaluate candidate images from an identical post-boot register
+    /// state). The restored core is never in a branch delay slot.
+    fn restore(&mut self, snap: &CpuSnapshot);
+
     /// Backend name (for diagnostics).
     fn name(&self) -> &'static str;
 
