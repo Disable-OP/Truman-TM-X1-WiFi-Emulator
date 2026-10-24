@@ -25,6 +25,8 @@
 //!   --out <map.txt>   write the 1024-byte block map to a file
 //!   --offset <phys>   post mode: pixel base override (default 0x01600000)
 //!   --len <bytes>     post mode: reference length override (default W*H)
+//!   --value-tables <f> post mode: engine value ladder from a file (§35,
+//!                     the post-capture swap as data, no recompile)
 //!
 //! Exit codes: 0 = identical / zero residue; 1 = divergent / non-zero
 //! residue (actionable data); 2 = usage, IO or empty-overlap error.
@@ -48,7 +50,8 @@ fn usage() -> ! {
          options:\n  \
          --out <map.txt>   write the 1024-byte block map\n  \
          --offset <phys>   post mode: pixel base override (default 0x01600000)\n  \
-         --len <bytes>     post mode: reference length override (default W*H)\n\
+         --len <bytes>     post mode: reference length override (default W*H)\n  \
+         --value-tables <f> post mode: engine value ladder from a file (§35)\n\
          exit codes: 0 identical/zero residue, 1 divergent/non-zero, 2 error"
     );
     std::process::exit(2);
@@ -62,6 +65,10 @@ struct Args {
     out: Option<PathBuf>,
     offset: u32,
     len_override: Option<usize>,
+    /// The `--value-tables` file, when given (§35). Post mode only: Pre
+    /// and Ref do not run the engine decode, so a value there is a usage
+    /// error (rejected in parse_args).
+    value_tables: Option<PathBuf>,
 }
 
 enum Mode {
@@ -76,6 +83,7 @@ fn parse_args() -> Args {
     let mut out = None;
     let mut offset = DEFAULT_PIXEL_BASE;
     let mut len_override = None;
+    let mut value_tables: Option<PathBuf> = None;
     let a: Vec<String> = std::env::args().collect();
     let mut i = 1;
     while i < a.len() {
@@ -103,6 +111,13 @@ fn parse_args() -> Args {
                         .parse::<usize>()
                         .unwrap_or_else(|_| usage()),
                 );
+            }
+            "--value-tables" => {
+                i += 1;
+                value_tables = a.get(i).map(PathBuf::from);
+                if value_tables.is_none() {
+                    usage();
+                }
             }
             other => positional.push(other.to_string()),
         }
@@ -137,6 +152,10 @@ fn parse_args() -> Args {
         }
         None => usage(),
     };
+    if value_tables.is_some() && !matches!(mode, Some(Mode::Post)) {
+        eprintln!("error: --value-tables applies to --post only (pre/ref modes do not decode)");
+        usage();
+    }
     Args {
         mode: mode.unwrap(),
         flash,
@@ -145,6 +164,7 @@ fn parse_args() -> Args {
         out,
         offset,
         len_override,
+        value_tables,
     }
 }
 
@@ -213,7 +233,24 @@ fn main() {
                         eprintln!("error: cannot load firmware: {e}");
                         std::process::exit(2);
                     });
-                    let mut m = Machine::new(MachineConfig::default(), &img);
+                    let mut config = MachineConfig::default();
+                    if let Some(vt_path) = &args.value_tables {
+                        let raw = std::fs::read(vt_path).unwrap_or_else(|e| {
+                            eprintln!("error: cannot read value tables {}: {e}", vt_path.display());
+                            std::process::exit(2);
+                        });
+                        let tables = truman_emulator::inflate::ValueTables::from_bytes(&raw)
+                            .unwrap_or_else(|e| {
+                                eprintln!("error: value tables {}: {e}", vt_path.display());
+                                std::process::exit(2);
+                            });
+                        println!(
+                            "value tables: {} (non-default engine ladder, §35)",
+                            vt_path.display()
+                        );
+                        config.value_tables = tables;
+                    }
+                    let mut m = Machine::new(config, &img);
                     m.reset();
                     let res = m.run(2_000_000);
                     println!(

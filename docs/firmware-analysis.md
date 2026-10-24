@@ -2997,3 +2997,77 @@ behaviorally-decoded registers into vendor-named ones, explains a
 closed verdict (§23.3) structurally, and adds a second, much cheaper
 capture option (P3, docs/hardware-session.md) to the session protocol.
 128 tests, debug and release, all green; boot pins unchanged.
+
+## 35. Milestone AH — the value-table file seam: the post-capture swap as
+### data, and the P3 elimination oracle as a loop (v0.27.0)
+
+### 35.1 What was added
+
+Milestones AC (§31.4) and AG (§34.4) left the value-table swap one
+recompile away: the recovered ladder would be a Rust constant edit, then
+`cargo test`, then the instruments. This milestone makes the ladder a
+**data file** and the elimination row a **loop body**, so that the
+hardware session's post-capture work is commands only:
+
+* `ValueTables::to_bytes` / `from_bytes` (src/inflate.rs) — a
+  deterministic 191-byte container (`SPHEVTBL`, version 1, LE u16
+  bases, u8 extra widths, exact 29/30 code counts). The container is a
+  *carrier*, not a hypothesis: it admits every family the offline
+  analyses bounded (§18.2 ladder search, §19.2 uniform extra widths
+  0..=8, §26 joint sweep, RFC±per-code deltas) plus the m4 direct-value
+  accounting (any base constant; all extras zero). Validation rejects
+  exactly what the decoder cannot execute or no analyzed family
+  occupies: wrong magic/version/length, wrong counts, extra widths
+  above 13 (the widest the RFC distance ladder itself defines, codes
+  28–29). Rejections are typed (`ValueTablesError`) and name what
+  failed.
+* `MachineConfig::value_tables` (src/machine.rs) — the engine decode
+  path now takes the active ladder from the machine config instead of
+  the `ENGINE_VALUE_TABLES` static. The default is field-identical to
+  the static (both the RFC ladder; pinned by `tests/valtables.rs`), so
+  every boot pin is unchanged by construction.
+* `--value-tables <file>` on `dram_compare --post` (post mode only —
+  pre/ref do not decode), on the CLI `map` command, and a new
+  `examples/ladder_eval.rs` — the P3 elimination-row executor: boot the
+  real firmware with a candidate ladder, print the §19.1 head bytes and
+  the window's Adler-32, and with `--fingerprint 0xCAPTURED` exit
+  ELIMINATED (1) or SURVIVES (0). Without the flag it is report-only;
+  the shell loop is the pre-registered "re-run the swept families under
+  the fingerprint oracle" (docs/hardware-session.md).
+
+### 35.2 Verification without hardware
+
+7 new tests (`tests/valtables.rs`): round-trips (RFC and an m4-style
+candidate), the RFC container encoding pinned byte-for-byte via its own
+Adler-32 (`0x01c80db5`) plus structural offsets, all six rejection
+variants with exact typed errors, the config-default-equals-pinned-static
+invariant, and two gated real-firmware tests: the **file-loaded RFC
+ladder reproduces the pinned reference decode** (`0xcd8d03bf` — the
+config path is byte-equivalent to the static path), and a **file-loaded
+candidate ladder changes the decode output** deterministically — the
+§31.4 parametricity, now end-to-end through `MachineConfig`. 135 tests,
+debug and release, green; fmt/clippy clean; boot pins unchanged
+(handoff at step 1,301,763, death at +0x50, head `60 81 00 00…`,
+fingerprint `0xcd8d03bf`).
+
+A fresh survey for new public evidence (sp_gzip, SPHE15xx SDK/PNG_DEC
+sources, Truman dumps) found nothing beyond the §34.5 re-derivation:
+the vendor compressor remains unpublished, no new source uploads the
+value ladder, and the boot blocker remains exactly the 59 value-ROM
+constants (§30.4). The milestone deliberately claims no boot progress:
+the blocker is data-gated, and this work shortens the distance between
+the capture and the verdict, not the capture itself.
+
+### 35.3 The post-capture procedure, restated
+
+```sh
+# P1 with a recovered/real ladder (the §32.3 edit, as data):
+dram_compare --post firmware/*.bin p1_pixel.bin --value-tables recovered.spvt
+# the P3 elimination row, as a loop over candidate ladders:
+for f in candidates/*.spvt; do
+  ladder_eval firmware/*.bin --value-tables "$f" --fingerprint 0xCAPTURED \
+    || echo "eliminated: $f"
+done
+# the menu-path map under the surviving ladder:
+truman-emulator map firmware/*.bin --value-tables recovered.spvt
+```

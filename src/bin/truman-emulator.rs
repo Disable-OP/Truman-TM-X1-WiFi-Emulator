@@ -5,11 +5,13 @@
 //! - `run <firmware> [--max-steps N] [--trace-tail N] [-v]` — boot and execute
 //! - `trace <firmware> [--max-steps N] [--limit N] [-v]` — boot and print a
 //!   per-instruction trace of the first N steps
-//! - `map <firmware> [--pre-steps N] [--post-steps N] [--head N]` — boot to
-//!   the loader's `jr v0` handoff and map the post-handoff horizon:
-//!   executed pages, MMIO over modeled device windows, DRAM data writes
-//!   (the framebuffer question, Milestone AE §33), console delta, head
-//!   trace (Milestone AD, §32)
+//! - `map <firmware> [--pre-steps N] [--post-steps N] [--head N]
+//!   [--value-tables FILE]` — boot to the loader's `jr v0` handoff and map
+//!   the post-handoff horizon: executed pages, MMIO over modeled device
+//!   windows, DRAM data writes (the framebuffer question, Milestone AE
+//!   §33), console delta, head trace (Milestone AD, §32). `--value-tables`
+//!   swaps the engine's LZ value ladder from a data file (§35) — the
+//!   post-capture procedure, no recompile.
 //!
 //! Exit codes: 0 = success, 1 = usage/IO error, 2 = emulation stopped on a
 //! condition (fault/unknown instruction/step limit).
@@ -29,7 +31,7 @@ fn usage() -> String {
          \x20 truman-emulator inspect <firmware-path>\n\
          \x20 truman-emulator run <firmware-path> [--max-steps N] [--trace-tail N] [-v]\n\
          \x20 truman-emulator trace <firmware-path> [--max-steps N] [--limit N] [-v]\n\
-         \x20 truman-emulator map <firmware-path> [--pre-steps N] [--post-steps N] [--head N]\n\
+         \x20 truman-emulator map <firmware-path> [--pre-steps N] [--post-steps N] [--head N] [--value-tables FILE]\n\
          \n\
          OPTIONS:\n\
          \x20 --max-steps N   instruction budget (default: run = 1_000_000, trace = 1_000)\n\
@@ -38,6 +40,7 @@ fn usage() -> String {
          \x20 --pre-steps N   map: budget for booting to the handoff (default 2_000_000)\n\
          \x20 --post-steps N  map: post-handoff execution budget (default 1_000_000)\n\
          \x20 --head N        map: trace the first N post-handoff instructions (default 64)\n\
+         \x20 --value-tables F  map: engine value ladder from a file (§35; default RFC)\n\
          \x20 -v              verbose diagnostics"
     )
 }
@@ -417,6 +420,9 @@ struct MapOptions {
     post_steps: u64,
     head: usize,
     verbose: bool,
+    /// The `--value-tables` file, when given (§35): loads a non-default
+    /// engine value ladder into [`MachineConfig::value_tables`].
+    value_tables: Option<PathBuf>,
 }
 
 fn parse_map_options(args: &[String]) -> Result<(MapOptions, Vec<String>), ArgsError> {
@@ -425,6 +431,7 @@ fn parse_map_options(args: &[String]) -> Result<(MapOptions, Vec<String>), ArgsE
         post_steps: 1_000_000,
         head: 64,
         verbose: false,
+        value_tables: None,
     };
     let mut rest = Vec::new();
     let mut i = 0;
@@ -456,6 +463,13 @@ fn parse_map_options(args: &[String]) -> Result<(MapOptions, Vec<String>), ArgsE
                     .map_err(|_| ArgsError::BadOption("--head".into()))?;
                 i += 2;
             }
+            "--value-tables" => {
+                let v = args
+                    .get(i + 1)
+                    .ok_or_else(|| ArgsError::MissingValue("--value-tables".into()))?;
+                opts.value_tables = Some(PathBuf::from(v));
+                i += 2;
+            }
             "-v" | "--verbose" => {
                 opts.verbose = true;
                 i += 1;
@@ -481,7 +495,23 @@ fn cmd_map(args: &[String]) -> Result<ExitCode, ArgsError> {
         Ok(v) => v,
         Err(c) => return Ok(c),
     };
-    let mut machine = Machine::new(MachineConfig::default(), &img);
+    let mut config = MachineConfig::default();
+    if let Some(vt_path) = &opts.value_tables {
+        let raw = std::fs::read(vt_path).map_err(|e| {
+            eprintln!("error: cannot read value tables {}: {e}", vt_path.display());
+            ArgsError::MissingValue("--value-tables".into())
+        })?;
+        let tables = truman_emulator::inflate::ValueTables::from_bytes(&raw).map_err(|e| {
+            eprintln!("error: value tables {}: {e}", vt_path.display());
+            ArgsError::MissingValue("--value-tables".into())
+        })?;
+        println!(
+            "map: value ladder loaded from {} (non-default engine semantics, §35)",
+            vt_path.display()
+        );
+        config.value_tables = tables;
+    }
+    let mut machine = Machine::new(config, &img);
     for line in boot::reset_with_diagnostics(&mut machine, opts.verbose) {
         println!("{line}");
     }

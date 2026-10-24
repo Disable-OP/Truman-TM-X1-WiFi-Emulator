@@ -142,6 +142,19 @@ cargo run --release --example dram_compare -- \
     --ref saved_pixel_dump.bin p1_pixel.bin        # offline re-analysis
 ```
 
+The post-capture value swap (§35, Milestone AH) is a data file, not a
+recompile: `dram_compare --post` (and the CLI `map`) accept
+`--value-tables <file>` — a 191-byte `SPHEVTBL` container written with
+`ValueTables::to_bytes` once the ROM constants are recovered. The P3
+elimination row is executable directly (`examples/ladder_eval.rs`):
+
+```
+cargo run --release --example ladder_eval -- firmware/<flashfile>.bin \
+    --value-tables candidates/foo.spvt --fingerprint 0xCAPTURED
+# exit 0 = SURVIVES, exit 1 = ELIMINATED (the pre-registered row below);
+# loop it over every candidate family §15.6/§18.2/§26 bounded.
+```
+
 Exit codes: `0` identical / zero residue · `1` divergent / residue
 present (actionable data — this is a *good* outcome for the solve) ·
 `2` usage, IO or empty-overlap error.
@@ -165,7 +178,7 @@ out explicitly in the session record.
 | P2 ZERO | residue ruled out in the captured window | widen the P2 window (the 1 MiB below the base), repeat once; then the paradox residue is elsewhere in DRAM |
 | P2 RESIDUE PRESENT | the §21.6 item-2 answer: the engine starts from non-zero state | load the residue via `AddressSpace::copy_in` before the engine start in a fresh emulator boot and re-run the decode compare — the emulator supports this today |
 | P3 MATCHES `0xcd8d03bf` | the device's decode equals the emulator's reference output (a 2^-32 coincidence for any other decode) | first re-verify the capture point per the P1 IDENTICAL row (a match this strong must survive the same suspicion); then the blocker reframes: the engine decode is known — re-run the §18.4 algebra with the *true* output and re-pin `ENGINE_VALUE_TABLES` from the solved semantics |
-| P3 PRESENT, ≠ reference | the true decode has a 32-bit fingerprint; every candidate decode whose output mismatches it is eliminated offline | re-run the §15.6/§18.2/§26 swept families under the fingerprint oracle (`adler32(decode) == captured`); a family whose best candidate matches is the answer; none matching = the true ladder is outside every swept family — record and close that space too |
+| P3 PRESENT, ≠ reference | the true decode has a 32-bit fingerprint; every candidate decode whose output mismatches it is eliminated offline | re-run the §15.6/§18.2/§26 swept families under the fingerprint oracle (`adler32(decode) == captured`) — executable today as a `ladder_eval` loop over `SPHEVTBL` candidate files (§35); a family whose best candidate matches is the answer; none matching = the true ladder is outside every swept family — record and close that space too |
 | P3 ZERO / STUCK / implausible | the engine does not accumulate Adler-32 over raw decodes (the registered caveat outcome) | no information lost — proceed with P1/P2 as planned; record the probe values verbatim in the session log regardless |
 
 ## Where the outputs go

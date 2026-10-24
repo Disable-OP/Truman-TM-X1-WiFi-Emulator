@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.27.0 — Milestone AH: the value-table file seam; the post-capture swap as data (§35)
+
+### Added
+- `ValueTables::to_bytes` / `from_bytes` (src/inflate.rs): a
+  deterministic 191-byte `SPHEVTBL` container (version 1, LE u16 bases,
+  u8 extra widths, fixed 29/30 counts) — every offline-bounded ladder
+  family (RFC, per-code deltas, uniform extra widths 0..=8, m4 direct
+  values) is representable; validation rejects exactly what no analyzed
+  family occupies (extra widths > 13 = the RFC distance maximum) with
+  typed, named errors (`ValueTablesError`).
+- `MachineConfig::value_tables` (src/machine.rs): the engine decode
+  path takes the active ladder from the machine config. Default is
+  field-identical to the pinned `ENGINE_VALUE_TABLES` static — all
+  boot pins unchanged by construction. The hardware-session edit
+  (§32.3) is now data, not a recompile.
+- `--value-tables <file>` on `dram_compare --post` (post mode only)
+  and on the CLI `map` command: load a candidate/recovered ladder from
+  file (§35).
+- `examples/ladder_eval.rs` — the P3 elimination-row executor: boots a
+  candidate file, prints the §19.1 head bytes and the window's
+  Adler-32, and with `--fingerprint 0xCAPTURED` exits ELIMINATED (1) /
+  SURVIVES (0); report-only (0) without the flag.
+- `tests/valtables.rs` (+7 = 135 total): round-trips, the RFC
+  container encoding pinned via its own Adler-32 (`0x01c80db5`), six
+  typed rejection variants, the config-default-equals-pinned-static
+  invariant, and two real-firmware gates: the file-loaded RFC ladder
+  reproduces `0xcd8d03bf`, a file-loaded candidate changes the decode
+  deterministically (the §31.4 parametricity, end-to-end through
+  `MachineConfig`).
+- `docs/firmware-analysis.md` §35 (method/verification/restated
+  post-capture procedure), roadmap Milestone AH,
+  docs/hardware-session.md (ingestion commands + the P3 row now
+  executable as a `ladder_eval` loop).
+- Fresh public-evidence survey (sp_gzip, SPHE15xx SDK/PNG_DEC, Truman
+  dumps): nothing beyond §34.5 — recorded in §35.2.
+
+
 ## 0.26.0 — Milestone AG: the vendor completion protocol named; the probe-window fingerprint (§34)
 
 ### Added

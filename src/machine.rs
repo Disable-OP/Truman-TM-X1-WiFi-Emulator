@@ -107,6 +107,15 @@ pub struct MachineConfig {
     /// [`Machine::map_handoff`] stops here before executing the stage's
     /// first instruction, leaving the loader's register state live.
     pub handoff_entry: u32,
+    /// The engine's LZ value ladder (§31.4): the active length/distance
+    /// semantics of the decompression-engine decode. The default is the
+    /// RFC 1951 ladder — field-identical to `inflate::ENGINE_VALUE_TABLES`
+    /// (pinned by `tests/valtables.rs`), so every boot pin holds. This is
+    /// the data-level seam for the hardware session (§35): a recovered
+    /// ROM ladder is a [`ValueTables`] value here — loaded from file by
+    /// `dram_compare --post --value-tables`, `map --value-tables` and
+    /// `ladder_eval` — not a recompile.
+    pub value_tables: crate::inflate::ValueTables,
 }
 
 impl Default for MachineConfig {
@@ -140,6 +149,7 @@ impl Default for MachineConfig {
             win_300_base: 0x3000_0000,
             win_300_size: 0x0010_0000,
             handoff_entry: DEFAULT_HANDOFF_ENTRY,
+            value_tables: crate::inflate::ValueTables::rfc1951(),
         }
     }
 }
@@ -505,16 +515,18 @@ impl Machine {
         }
         let mut out = Vec::new();
         // The value ladder is the named seam for the hardware session
-        // (src/inflate.rs `ENGINE_VALUE_TABLES`, docs/firmware-analysis.md
-        // §31.4): replacing that constant with the recovered ROM values is
-        // the whole post-capture edit.
+        // (docs/firmware-analysis.md §31.4/§35): the active ladder comes
+        // from [`MachineConfig::value_tables`] — RFC by default, a loaded
+        // file's ladder after the `--value-tables` swap — so the
+        // post-capture decode is a one-command operation, not a recompile.
+        let tables = self.config.value_tables.clone();
         let res = crate::inflate::inflate_engine_with(
             &src_bytes,
             start_bit.min(src_bytes.len() * 8),
             0x8000,
             &mut out,
             0x4_0000,
-            &crate::inflate::ENGINE_VALUE_TABLES,
+            &tables,
         );
         match res {
             Ok(n) => {

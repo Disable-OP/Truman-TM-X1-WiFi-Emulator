@@ -132,10 +132,11 @@ Requires a stable Rust toolchain (https://rustup.rs). No other dependencies.
 
 ```sh
 cargo build --release
-cargo test --release          # 128 tests: boot chain, entry harness, interrupt + COP0 timer delivery, key injection,
+cargo test --release          # 135 tests: boot chain, entry harness, interrupt + COP0 timer delivery, key injection,
                               # watchpoints, Q8 runtime evidence, timer program, keycode-consumer pin,
                               # perf-model regressions (lazy describe, hot-region memo),
-                              # post-handoff map (exec pages, MMIO, DRAM write map)
+                              # post-handoff map (exec pages, MMIO, DRAM write map),
+                              # value-table file seam (round-trip, rejections, file-loaded decode pins)
 cargo build --release --example bench
 ./target/release/examples/bench firmware/*.bin   # throughput harness (Milestones V+Z): ~25.4 M instr/s
                                                   # on the deterministic boot chain (17.5x over 0.17.0)
@@ -175,6 +176,14 @@ python3 tools/fw_keycode_consumer.py firmware/*.bin
 # pre-registered in docs/hardware-session.md
 ./target/release/examples/dram_compare --post firmware/*.bin p1_pixel.bin
 ./target/release/examples/dram_compare --pre p2_predecode.bin
+
+# Value-ladder seam (Milestone AH / §35): the engine's LZ ladder as a data
+# file — the post-capture swap is a flag, not a recompile
+./target/release/examples/dram_compare --post firmware/*.bin p1_pixel.bin \
+    --value-tables recovered.spvt
+./target/release/truman-emulator map firmware/*.bin --value-tables recovered.spvt
+./target/release/examples/ladder_eval firmware/*.bin \
+    --value-tables candidates/foo.spvt --fingerprint 0xCAPTURED   # P3 elimination loop
 ```
 
 Exit codes: `0` step-limit (clean), `1` usage/IO, `2` emulation stopped on a

@@ -1,5 +1,28 @@
 # Roadmap
 
+## Milestone AH — the value-table file seam: the post-capture swap as data ✅ (v0.27.0)
+
+- **The ladder is now a data file (§35)**: `ValueTables::to_bytes` /
+  `from_bytes` — a deterministic 191-byte `SPHEVTBL` container admitting
+  every offline-bounded family (RFC, per-code deltas, uniform widths,
+  m4 direct values); validation rejects exactly what no analyzed family
+  occupies (typed `ValueTablesError`).
+- **The decode path is config-carried**: `MachineConfig::value_tables`
+  (default field-identical to the pinned `ENGINE_VALUE_TABLES` static —
+  boot pins unchanged by construction). The post-capture edit (§32.3)
+  is now `--value-tables <file>` on `dram_compare --post` and the CLI
+  `map`, not a recompile.
+- **The P3 elimination row is a loop**: new `examples/ladder_eval.rs`
+  boots a candidate file, prints the §19.1 head + the window's
+  Adler-32, and with `--fingerprint` exits ELIMINATED/SURVIVES — the
+  pre-registered "re-run the swept families under the fingerprint
+  oracle" (docs/hardware-session.md) is executable as a shell loop.
+- **No semantics change**: 135 tests, debug and release, green (7 new:
+  round-trips, pinned container encoding, six typed rejections,
+  config-default invariant, file-seam reference reproduction
+  `0xcd8d03bf`, candidate differential); fmt/clippy clean; boot pins
+  unchanged. Fresh evidence survey: nothing new beyond §34.5.
+
 ## Milestone AG — the vendor completion protocol; the probe-window
 ### fingerprint ✅ (v0.26.0)
 

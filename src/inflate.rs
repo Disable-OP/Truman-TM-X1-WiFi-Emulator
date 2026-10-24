@@ -106,13 +106,216 @@ impl ValueTables {
             dextra: DEXTRA,
         }
     }
+
+    /// Canonical byte encoding (little-endian, fixed layout):
+    ///
+    /// ```text
+    /// off  0   8B  magic "SPHEVTBL"
+    /// off  8   1B  format version (1)
+    /// off  9   1B  reserved (0)
+    /// off 10   2B  length-code count (29, LE u16)
+    /// off 12   2B  distance-code count (30, LE u16)
+    /// off 14  58B  lbase  — 29 × LE u16
+    /// off 72  29B  lextra — 29 × u8
+    /// off101  60B  dbase  — 30 × LE u16
+    /// off161  30B  dextra — 30 × u8
+    /// total  191 bytes
+    /// ```
+    ///
+    /// A deterministic container so the hardware-session value swap is a
+    /// data file, not a recompile (§35): the post-capture procedure is
+    /// `dram_compare --post --value-tables <file>` and the P3 elimination
+    /// row is a loop of `ladder_eval` runs over candidate files.
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut v = Vec::with_capacity(VALUE_TABLES_ENCODED_LEN);
+        v.extend_from_slice(&VALUE_TABLES_MAGIC);
+        v.push(VALUE_TABLES_VERSION);
+        v.push(0); // reserved
+        v.extend_from_slice(&(self.lbase.len() as u16).to_le_bytes());
+        v.extend_from_slice(&(self.dbase.len() as u16).to_le_bytes());
+        for &b in &self.lbase {
+            v.extend_from_slice(&b.to_le_bytes());
+        }
+        v.extend_from_slice(&self.lextra);
+        for &b in &self.dbase {
+            v.extend_from_slice(&b.to_le_bytes());
+        }
+        v.extend_from_slice(&self.dextra);
+        debug_assert_eq!(v.len(), VALUE_TABLES_ENCODED_LEN);
+        v
+    }
+
+    /// Parse and validate a [`Self::to_bytes`] encoding. Validation is
+    /// exactly what the decoder cannot execute plus what no analyzed
+    /// family occupies: wrong magic/version, wrong length, a code count
+    /// other than the RFC 1951 §3.2.5 fixed 29/30, or an extra-bit width
+    /// above [`VALUE_TABLES_MAX_EXTRA`] (13 — the widest extra field the
+    /// RFC ladder itself defines, distance codes 28–29; §18.2/§19.2/§26
+    /// swept widths are all inside this bound). Base values are
+    /// intentionally unconstrained (u16 range): the m4 direct-value
+    /// accounting admits any constant.
+    pub fn from_bytes(data: &[u8]) -> Result<Self, ValueTablesError> {
+        if data.len() < VALUE_TABLES_ENCODED_LEN {
+            return Err(ValueTablesError::Truncated {
+                needed: VALUE_TABLES_ENCODED_LEN,
+                got: data.len(),
+            });
+        }
+        if data.len() > VALUE_TABLES_ENCODED_LEN {
+            return Err(ValueTablesError::Overflow {
+                expected: VALUE_TABLES_ENCODED_LEN,
+                got: data.len(),
+            });
+        }
+        if data[..8] != VALUE_TABLES_MAGIC {
+            return Err(ValueTablesError::BadMagic);
+        }
+        if data[8] != VALUE_TABLES_VERSION {
+            return Err(ValueTablesError::UnsupportedVersion { found: data[8] });
+        }
+        let n_len = u16::from_le_bytes([data[10], data[11]]);
+        let n_dist = u16::from_le_bytes([data[12], data[13]]);
+        if n_len as usize != 29 || n_dist as usize != 30 {
+            return Err(ValueTablesError::BadCounts {
+                found_len: n_len,
+                found_dist: n_dist,
+            });
+        }
+        let mut t = Self {
+            lbase: [0; 29],
+            lextra: [0; 29],
+            dbase: [0; 30],
+            dextra: [0; 30],
+        };
+        let mut o = 14;
+        for slot in t.lbase.iter_mut() {
+            *slot = u16::from_le_bytes([data[o], data[o + 1]]);
+            o += 2;
+        }
+        t.lextra.copy_from_slice(&data[o..o + 29]);
+        o += 29;
+        for slot in t.dbase.iter_mut() {
+            *slot = u16::from_le_bytes([data[o], data[o + 1]]);
+            o += 2;
+        }
+        t.dextra.copy_from_slice(&data[o..o + 30]);
+        for (i, &w) in t.lextra.iter().enumerate() {
+            if w > VALUE_TABLES_MAX_EXTRA {
+                return Err(ValueTablesError::ExtraTooWide {
+                    table: "length",
+                    index: i,
+                    width: w,
+                });
+            }
+        }
+        for (i, &w) in t.dextra.iter().enumerate() {
+            if w > VALUE_TABLES_MAX_EXTRA {
+                return Err(ValueTablesError::ExtraTooWide {
+                    table: "distance",
+                    index: i,
+                    width: w,
+                });
+            }
+        }
+        Ok(t)
+    }
 }
+
+/// Magic bytes of the [`ValueTables`] container (["SPHEVTBL" — SPHE value
+/// tables]).
+const VALUE_TABLES_MAGIC: [u8; 8] = *b"SPHEVTBL";
+/// Container format version (the only one [`ValueTables::from_bytes`] accepts).
+pub const VALUE_TABLES_VERSION: u8 = 1;
+/// Exact encoded size ([`ValueTables::to_bytes`] always emits this many bytes).
+pub const VALUE_TABLES_ENCODED_LEN: usize = 191;
+/// Maximum extra-bit width the container admits: 13, the widest extra
+/// field the RFC 1951 distance ladder defines (codes 28–29). Every
+/// accounting the offline analyses swept (§18.2 ladder search, §19.2
+/// uniform widths 0..=8, §26 joint sweep) is inside this bound.
+pub const VALUE_TABLES_MAX_EXTRA: u8 = 13;
+
+/// [`ValueTables::from_bytes`] rejection reasons (each names what failed).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ValueTablesError {
+    /// First 8 bytes are not the `SPHEVTBL` magic.
+    BadMagic,
+    /// The format version byte is not [`VALUE_TABLES_VERSION`].
+    UnsupportedVersion {
+        /// The version byte actually found.
+        found: u8,
+    },
+    /// Fewer than [`VALUE_TABLES_ENCODED_LEN`] bytes.
+    Truncated {
+        /// Bytes the format requires.
+        needed: usize,
+        /// Bytes provided.
+        got: usize,
+    },
+    /// More than [`VALUE_TABLES_ENCODED_LEN`] bytes.
+    Overflow {
+        /// Bytes the format requires.
+        expected: usize,
+        /// Bytes provided.
+        got: usize,
+    },
+    /// The code counts are not the RFC 1951 fixed 29/30.
+    BadCounts {
+        /// Length-code count found in the file.
+        found_len: u16,
+        /// Distance-code count found in the file.
+        found_dist: u16,
+    },
+    /// An extra-bit width exceeds [`VALUE_TABLES_MAX_EXTRA`].
+    ExtraTooWide {
+        /// Which ladder ("length" or "distance").
+        table: &'static str,
+        /// Code index within that ladder.
+        index: usize,
+        /// The offending width.
+        width: u8,
+    },
+}
+
+impl std::fmt::Display for ValueTablesError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ValueTablesError::BadMagic => write!(f, "not a value-tables file (bad magic)"),
+            ValueTablesError::UnsupportedVersion { found } => {
+                write!(f, "unsupported value-tables version {found}")
+            }
+            ValueTablesError::Truncated { needed, got } => {
+                write!(f, "value-tables file truncated ({got}/{needed} bytes)")
+            }
+            ValueTablesError::Overflow { expected, got } => {
+                write!(
+                    f,
+                    "value-tables file too long ({got} bytes; format is exactly {expected})"
+                )
+            }
+            ValueTablesError::BadCounts {
+                found_len,
+                found_dist,
+            } => write!(
+                f,
+                "bad code counts {found_len}/{found_dist} (format is 29/30, RFC 1951 §3.2.5)"
+            ),
+            ValueTablesError::ExtraTooWide { table, index, width } => write!(
+                f,
+                "{table} code {index} extra width {width} exceeds the {VALUE_TABLES_MAX_EXTRA}-bit bound"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for ValueTablesError {}
 
 /// The engine value table the machine's decode path uses today: the RFC
 /// ladder, which §30 proved is NOT the hardware's. The hardware-session
-/// edit is replacing this one constant with the recovered ROM values
-/// (docs/hardware-session.md — `dram_compare --post` then decides the
-/// decode in one command).
+/// edit no longer requires touching this constant: [`MachineConfig`]
+/// carries the active ladder (`value_tables` field, default = this one),
+/// so a recovered ROM table is a data file loaded by
+/// `dram_compare --post --value-tables` / `map --value-tables` /
+/// `ladder_eval` (§35). This static remains the pinned default model.
 pub static ENGINE_VALUE_TABLES: ValueTables = ValueTables {
     lbase: LBASE,
     lextra: LEXTRA,

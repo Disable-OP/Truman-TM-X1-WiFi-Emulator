@@ -1,6 +1,6 @@
 [package]
 name = "truman-emulator"
-version = "0.26.0"
+version = "0.27.0"
 edition = "2021"
 description = "Rust-based emulator for the Truman TM X1 WiFi satellite receiver (Sunplus SPHE15xx platform)"
 license = "MIT"
