@@ -2232,3 +2232,100 @@ bounded: **combined length+distance value semantics with position shift**
 (§16.3's surviving class) or hardware-side residue that needs a real
 device. The head paradox and the size gap (−4,474 under the ±2-per-match
 predicates) stand as recorded; nothing in this sweep moves either.
+
+## 26. Milestone X — the combined length+distance class: tested jointly
+### and refuted (session record)
+
+§25.5 left exactly one in-silico hypothesis class standing. Every prior
+length search had run with RFC distances (§15.6's 64 exact-size ladders
+and §18.2's 477-seed descent — all ~50 % strict validity), and every prior
+distance probe had run with RFC lengths at fixed accounting (global
+offsets ±16, §17.3; ring aliases, word-aligned sources, snapshot copy,
+§15.6). The joint class — length semantics × distance semantics with the
+position shift both imply — had never been swept as such. This milestone
+closes it (`tools/fw_combined_semantics.py`, committed and reproducible).
+
+### 26.1 Method
+
+The bit-stream parse is evidence-pinned (§14.1: same Huffman codes, same
+extra-bit counts; "any hypothesis that changes what bits are read is
+dead"), so a value-semantics variant is fully described by two tables —
+`len = f(ls) + eb`, `dist = g(ds) + deb` — plus, for the §16.3 predicate
+families, a fixed extra-emission predicate over the RFC populations.
+The sweep crosses:
+
+* **Length families (72)** — L0 RFC control; L1 the three §16.3
+  exact-count predicates (`dist<96`, `dist≥3485`, `len≥5&dist<3073`,
+  each +2 on its 2,237 RFC-population matches ⇒ size exactly 79,872);
+  L2 the group-uniform ladder family with the exact size equation
+  `Σ count[li]·g_group(li) = 4,474`, g ∈ 0..12 — **64 solutions**,
+  reproducing §15.6's count exactly; L3 code-shifted ladders
+  `f(ls) = LBASE[clamp(ls+d)]`, d ∈ {−2,−1,+1,+2} (a miswired ladder
+  ROM row, keeping each code's extra-bit count).
+* **Distance families (35)** — D0 RFC control; D1 global offsets
+  k ∈ {±1..±8192} (16 magnitudes, both signs — extends §17.3's ±16
+  search by three octaves); D2 code-shifted `g(ds) = DBASE[clamp(ds+d)]`,
+  d ∈ {−2,−1,+1,+2}. Extra-bit counts stay pinned in every family.
+
+2,520 combinations decoded on the continuous walk (mid-stream EOBs as
+no-ops, §25.3 baseline) with the 32 KiB zero preset (§13.1/§18.3), each
+scored by three pre-registered oracles: **size** within one row of
+79,872, **head** (first 16 words strictly decodable, no COP0-reserved-rs,
+no BREAK), **content** (strict capstone validity ≥ 90 % — real code
+measures 91–95 %, §14.2 — plus ASCII runs and eCos markers reported).
+
+### 26.2 Baselines reproduce
+
+| row | out | strict |
+|---|---|---|
+| L0 × D0 (RFC control) | **75,398** | 48.3 % |
+| L2 (64 exact-size ladders) × D0 | 79,872 | best 49.2 % |
+| L1 predicates × D0 | 79,872 | ≤ 50.5 % |
+
+The control reproduces §25.3's anchor (75,398) byte-for-byte and the
+§15.6 ladder-solution count (64, all ~50 %), validating the tool against
+both prior experiments. (Implementation note: the tool's copy loop was
+cross-checked byte-identical against `fw_ring_sweep.rfc_decode` — a
+self-overlap guard bug found during this cross-check was fixed before
+any measurement was taken; all numbers above are post-fix.)
+
+### 26.3 Sweep verdict — zero survivors
+
+| metric | range over all 2,520 combinations | required |
+|---|---|---|
+| output bytes (size-qualified rows) | 78,848 – 79,872 | 79,872 ± 1,024 |
+| strict validity | median 47.8 %, **best 55.0 %** | ≥ 90 % |
+| head oracle (size-qualified) | 2,381 pass the static filter | — |
+| ASCII runs ≥ 6 | 19 – 42 | the image's strings |
+| eCos markers (`eCos`/`RedBoot`/`SPHE`/`1506`/…) | **0 combinations** | present |
+
+The best size-qualified content score anywhere (L2 ladder × D1 k=+8192:
+55.0 %) is garbage-plateau territory — the calibrated data band is
+91–98 % for real code (§14.2) vs 23–48 % for data/garbage — and the
++8192 offset that tops the table is itself a bias artifact (it pushes
+most copies into the zero preset, trading corruption for uniformity).
+The three §16.3 predicate families peak at 54.2 % (× k=+8192); with RFC
+distances they stay ≤ 50.5 % — the exact Δ = 4,474 size match does not
+buy content. No combination produces one eCos marker.
+
+### 26.4 What this closes — and the honest remainder
+
+With §26, the §16.3/§25.5 surviving class is refuted within its natural
+family space: length ladders (exact-size, predicate, shifted) × distance
+maps (offsets to ±8192, code-shifted), position-shifting in every length
+family, on the evidence-pinned parse, under all three oracles. Combined
+with the prior closures — §16.1 (no new headers), §17.5 (no filter
+geometry), §19.2/§21.2/§21.4 (start-bit, rank-class, T-byte), §20.3
+(literal-value maps), §21.5 (output transforms), §22.4 (no on-device
+checksum oracle), §25 (framing/resync) — **every hypothesis class
+reachable without hardware is now refuted with data**. The formal
+remainder is exactly: (a) §18.4's m2/m4-style extra-bit-*accounting*
+joint solve (59 unknowns), which §19.3's head-DFS already showed cannot
+fix the head (escapes only via degenerate self-copy floods) and whose
+start-bit × m1/m2/m4 variants §19.2 refuted dynamically; and (b)
+hardware-side residue (§22.5). The emulator-side program on the SP
+stream is complete: the engine's LZ value semantics are not recoverable
+from the firmware and the tools, and any further progress requires a
+real device's post-decode DRAM dump (the §22.5 instrument set is ready
+for it).
+

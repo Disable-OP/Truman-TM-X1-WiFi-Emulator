@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.20.0 — Milestone X: the combined length+distance class refuted jointly
+
+### Added
+- `tools/fw_combined_semantics.py` — the §16.3/§25.5 surviving class
+  tested as such for the first time: 72 length families (RFC control,
+  the three §16.3 exact-count predicates, the 64 §15.6-style exact-size
+  group-uniform ladders, code-shifted ladders) × 35 distance families
+  (RFC control, global offsets to ±8192, code-shifted tables) on the
+  evidence-pinned exact parse, scored by three pre-registered oracles
+  (size within one row of 79,872, static head filter, strict capstone
+  validity ≥ 90 %, plus ASCII-run and eCos-marker reporting).
+
+### Findings (docs/firmware-analysis.md §26)
+- Baselines reproduce exactly: the RFC control decodes to 75,398 bytes
+  (§25.3's anchor) and the exact-size ladder family yields exactly the
+  64 solutions §15.6 recorded (all ~50 % strict with RFC distances).
+- **Zero survivors in 2,520 combinations**: best strict validity 55.0 %
+  (size-qualified) vs the 91–95 % code band; the §16.3 predicate
+  families peak at 54.2 %; zero eCos markers anywhere.
+- Consequence: every hypothesis class reachable without hardware on the
+  SP stream is now refuted with data; the remainder is hardware-side
+  residue (§22.5) or the §18.4 m2/m4 accounting solve that §19.3's
+  head-DFS already structurally de-prioritized.
+
 ## 0.19.0 — Milestone W: the chunk-resync dialect refuted (§16.5's three open probes closed)
 
 ### Added

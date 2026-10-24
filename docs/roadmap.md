@@ -3,6 +3,26 @@
 Milestones follow the original project plan (A → G). Status reflects what is
 actually demonstrated by code + tests in this repository.
 
+## Milestone X — the combined length+distance class: refuted ✅
+
+- **The last in-silico class swept jointly** (§26): every prior length
+  search ran with RFC distances (§15.6/§18.2) and every distance probe
+  with RFC lengths (§15.6/§17.3); the joint "combined length+distance
+  value semantics with position shift" class §25.5 left standing had
+  never been tested as such.
+- **2,520 exact-parse combinations** (72 length families × 35 distance
+  families) through three pre-registered oracles (size ± 1 row, static
+  head filter, strict capstone validity ≥ 90 %): baselines reproduce
+  byte-for-byte (75,398 control; §15.6's 64 exact-size ladders), and
+  **zero survivors** — best strict validity 55.0 % vs the 91–95 % code
+  band, zero eCos markers.
+- The three §16.3 exact-count predicates (+2 × 2,237 = the exact Δ
+  4,474) reach only 54.2 % even with the best distance offset — the
+  size match buys no content.
+- **Consequence**: every hypothesis class reachable without hardware is
+  now refuted with data; the SP-stream program is complete pending a
+  real device's post-decode DRAM dump (§22.5 instruments ready).
+
 ## Milestone V — performance: device-log ring defect fixed, 13.4× boot
 ### throughput ✅
 
@@ -338,10 +358,12 @@ Track by evidence-first value, in rough order:
 6. ✅ **CI**: GitHub Actions running fmt/clippy/test on push (Milestone M).
 7. **SP tail structure + LZ value semantics** (§16.1/§16.3/§16.5): the
    primary boot blocker — decode the 169,229 bits after SP block 1.
-   Framing is now closed: §25 refutes the chunk-resync dialect family
-   (all three §16.5 probes) and §16.1 already excluded new block headers;
-   what remains is the §16.3 combined length+distance value semantics
-   class or hardware-side residue.
+   Framing is closed (§25 refutes the chunk-resync dialect family, all
+   three §16.5 probes; §16.1 already excluded new block headers) and the
+   combined length+distance value-semantics class is refuted jointly
+   (§26: 2,520 combinations, zero survivors). What remains is
+   hardware-side residue (§22.5) or the §18.4 m2/m4 accounting solve
+   that §19.3's head-DFS structurally de-prioritized.
 
 ## Milestone P — size anchor + ladder verdict + pre-decode DRAM bound ✅ (commit pending)
 
