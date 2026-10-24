@@ -319,3 +319,204 @@ fn real_firmware_reacts_to_injected_key_press() {
         "released key must stop producing events"
     );
 }
+
+// ---- Milestone U: Count/Compare timer interrupt, end to end (§23.2) ----
+
+// Program at 0xBFC00200: arm Status = IE | IM7 (BEV/ERL cleared), arm the
+// Count/Compare timer with a small Compare, then idle. The match fires
+// ~10 instructions into the idle loop, entirely by CPU-internal state —
+// no platform source, no injection.
+//
+//   mfc0  t0, Status
+//   ori   t0, t0, 0x8001        ; IE | IM7
+//   andi  t0, t0, 0xFFFB        ; zero upper half: BEV/ERL out
+//   mtc0  t0, Status
+//   addiu t1, zero, 0x20        ; Compare target (Count ticks 2/instr)
+//   mtc0  t1, Compare           ; arm (write also clears any pending)
+//   lui   t2, 0x8000            ; marker base (kseg0 DRAM)
+//   addiu t3, zero, 0x55        ; marker value
+//   j self ; nop
+fn timer_irq_program() -> Vec<u32> {
+    let mfc0_t0_status: u32 = (0x10 << 26) | (8 << 16) | (12 << 11);
+    let mtc0_t0_status: u32 = (0x10 << 26) | (0x04 << 21) | (8 << 16) | (12 << 11);
+    let mtc0_t1_compare: u32 = (0x10 << 26) | (0x04 << 21) | (9 << 16) | (11 << 11);
+    let mut p = vec![
+        mfc0_t0_status,
+        0x3508_8001, // ori t0, t0, 0x8001
+        0x3108_FFFB, // andi t0, t0, 0xFFFB
+        mtc0_t0_status,
+        0x2409_0020, // addiu t1, zero, 0x20
+        mtc0_t1_compare,
+        0x3C0A_8000, // lui t2, 0x8000
+        0x240B_0055, // addiu t3, zero, 0x55
+    ];
+    let self_pc = 0xBFC0_0200 + (p.len() as u32) * 4;
+    let idx = (self_pc & 0x0FFF_FFFF) >> 2;
+    p.push((0x02 << 26) | idx); // j self
+    p.push(0); // delay slot
+    p
+}
+
+// Handler at the BEV=0 interrupt vector 0x80000180: ack the timer by
+// writing Compare far into the future (the architecture's clear), store
+// the marker, eret.
+//
+//   lui   t4, 0xFFFF
+//   mtc0  t4, Compare
+//   sw    t3, 0x1000(t2)
+//   eret
+const TIMER_HANDLER: [u32; 4] = [
+    0x3C0C_FFFF,                                           // lui t4, 0xFFFF
+    (0x10 << 26) | (0x04 << 21) | (12 << 16) | (11 << 11), // mtc0 t4, Compare
+    0xAD4B_1000,                                           // sw t3, 0x1000(t2)
+    0x4200_0018,                                           // eret
+];
+
+const TIMER_LOOP_PC: u32 = 0xBFC0_0200 + 8 * 4;
+
+#[test]
+fn count_compare_timer_interrupt_delivers_via_ip7_and_acks() {
+    let image = img(synthetic_image(&timer_irq_program()));
+    let mut m = Machine::new(MachineConfig::default(), &image);
+    m.reset();
+    for (i, w) in TIMER_HANDLER.iter().enumerate() {
+        m.bus
+            .store(0x8000_0180 + (i as u32) * 4, AccessSize::Word, *w)
+            .expect("write timer handler into DRAM");
+    }
+
+    // Before the match: no marker, and the CPU's timer must not have
+    // latched (Compare = 0x20 armed only a few instructions ago).
+    let r = m.run(12);
+    assert!(matches!(r.stop, StopReason::StepLimit));
+    assert_eq!(
+        m.bus.peek_phys(0x1000, AccessSize::Word),
+        Some(0),
+        "handler must not have run before the match"
+    );
+
+    // Run past the match (Count hits 0x20 ~16 instructions after reset).
+    let r = m.run(256);
+    assert!(
+        matches!(r.stop, StopReason::StepLimit),
+        "must be back in the idle loop: {r:?}"
+    );
+    assert!(
+        m.cpu.pc() == TIMER_LOOP_PC || m.cpu.pc() == TIMER_LOOP_PC + 4,
+        "eret must return into the idle loop, pc=0x{:08x}",
+        m.cpu.pc()
+    );
+
+    // The handler ran: marker stored by the firmware-side handler code.
+    assert_eq!(
+        m.bus.peek_phys(0x1000, AccessSize::Word),
+        Some(0x55),
+        "timer handler must have executed"
+    );
+
+    // Cause reads after the ack: ExcCode 0 (interrupt), TI clear (the
+    // handler's Compare write cleared the interrupt), IP7 deasserted,
+    // EXL cleared by eret.
+    let cop0 = m
+        .cpu
+        .as_any()
+        .downcast_ref::<truman_emulator::cpu::mips32::Mips32>()
+        .expect("mips32 backend")
+        .cop0();
+    let cause = cop0.read(13, 0);
+    assert_eq!(cause & 0x7C, 0, "ExcCode = interrupt");
+    assert_eq!(cause & (1 << 30), 0, "TI cleared by the Compare write");
+    assert_eq!(cause & (1 << 15), 0, "IP7 deasserted after ack");
+    assert_eq!(cop0.status() & 0b100, 0, "eret must have cleared EXL");
+    assert!(
+        cop0.read(14, 0) & 0xFFFF_FFFC == TIMER_LOOP_PC & 0xFFFF_FFFC,
+        "EPC must point into the idle loop, got {:#x}",
+        cop0.read(14, 0)
+    );
+}
+
+/// Milestone U (§23.3): the keycode written by the dispatcher into the key
+/// port is NEVER read back by any code in the observed horizon — every
+/// port access comes from the dispatcher itself (setup read, loop read,
+/// keycode writes). This pins the keycode-consumer verdict: the consumer
+/// lives beyond the horizon (eCos stage or hardware), so physical button
+/// labels are not derivable from the payload.
+#[test]
+fn keycode_port_traffic_comes_only_from_the_dispatcher() {
+    let Some(path) = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("firmware")
+        .read_dir()
+        .ok()
+        .and_then(|d| {
+            d.filter_map(|e| e.ok())
+                .map(|e| e.path())
+                .find(|p| p.extension().map(|x| x == "bin").unwrap_or(false))
+        })
+    else {
+        eprintln!("skipping: real firmware not present in firmware/");
+        return;
+    };
+    let image = firmware::load(&path).expect("load real firmware");
+    let mut m = Machine::new(MachineConfig::default(), &image);
+    // Watch the key port (phys) and hold key-line bit 2 from reset — the
+    // same injection as real_firmware_reacts_to_injected_key_press.
+    m.add_watch(
+        0x1FFE_384C,
+        4,
+        truman_emulator::memory::WatchKinds::READ_WRITE,
+    );
+    m.press_key(0b0100);
+    m.reset();
+    let r = m.run(30_000_000);
+    assert!(
+        r.steps >= 1_300_000,
+        "boot must reach the eCos horizon, stopped at {}",
+        r.steps
+    );
+
+    let hits = m.take_watch_hits();
+    assert!(
+        !hits.is_empty(),
+        "the dispatcher must touch the watched port"
+    );
+    // Every access must originate inside the dispatcher's code range
+    // (payload phys 0x02002500..0x02002640; kseg0/kseg1 aliases collapse
+    // by masking the segment bits).
+    let in_range = |pc: u32| {
+        let phys = pc & 0x1FFF_FFFF;
+        (0x0200_2500..0x0200_2640).contains(&phys)
+    };
+    let outsiders: Vec<u32> = hits
+        .iter()
+        .map(|h| h.pc)
+        .filter(|pc| !in_range(*pc))
+        .collect();
+    assert!(
+        outsiders.is_empty(),
+        "no keycode consumer exists in the horizon; outsider PCs: {outsiders:#x?}"
+    );
+
+    // The writes are the dispatcher's keycode emissions for bit 2
+    // (0x400, auto-repeat while held); reads show the raw lines with the
+    // engine event bit 5 live on the same port (§13.3 shared port).
+    let write_vals: std::collections::BTreeSet<u32> = hits
+        .iter()
+        .filter(|h| h.kind == truman_emulator::memory::WatchKind::Write)
+        .map(|h| h.value)
+        .collect();
+    assert_eq!(
+        write_vals,
+        std::collections::BTreeSet::from([0x400]),
+        "bit-2 writes must all be keycode 0x400: {write_vals:?}"
+    );
+    let read_vals: std::collections::BTreeSet<u32> = hits
+        .iter()
+        .filter(|h| h.kind == truman_emulator::memory::WatchKind::Read)
+        .map(|h| h.value)
+        .collect();
+    assert_eq!(
+        read_vals,
+        std::collections::BTreeSet::from([0x24]),
+        "reads = key line 2 (0x04) + engine event bit 5 (0x20): {read_vals:?}"
+    );
+}

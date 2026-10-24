@@ -3,6 +3,30 @@
 Milestones follow the original project plan (A → G). Status reflects what is
 actually demonstrated by code + tests in this repository.
 
+## Milestone U — device coverage: Cause fixes, COP0 timer, keycode verdict ✅
+
+- **Cause-register corrections (§23.2)**: BD = bit 31, IV = bit 23, TI =
+  bit 30 (read-only) — the old IV (bit 30) sat on TI and the old BD (bit
+  22) on WP; pinned against Linux `mipsregs.h` by a regression test. The
+  real boot is unaffected (IE = 0 forever; boot tests untouched).
+- **COP0 Count/Compare timer completed to spec (§23.2)**: match-edge
+  latch, ack-by-Compare-write, IP7 input + Cause.TI readout, DC gating,
+  IM7/IE delivery. 7 unit tests + an end-to-end synthetic delivery test
+  (`tests/interrupt.rs`); `Cause.TI` and the write mask match the
+  architecture.
+- **Keycode consumer closed negative (§23.3)**: static constant-propagation
+  scan over the whole payload (`tools/fw_keycode_consumer.py`, 99.0%
+  coverage) + dynamic watchpoint attribution on the real boot
+  (`examples/keycode_consumer.rs`, pinned by a test) — all six port
+  accesses belong to the dispatcher; no code reads the keycode back in
+  the horizon. Button labels stay evidence-bounded (consumer is in the
+  unreachable eCos stage or hardware). Runtime proof that the engine
+  event line (bit 5) shares the key-port read.
+- **SoC timer register program pinned (§23.4)**: writes +0x00=0 (once),
+  +0x0C=0x8095, +0x1C=0; 226 counter reads (one delay(10) poll, max 901);
+  no IRQ semantics claimed. Unit tests + real-firmware pin
+  (`tests/timer.rs`, `examples/timer_probe.rs`).
+
 ## Milestone T — the Q8 runtime verdict: no checksum code path exists ✅
 
 - **Physical-range watchpoints shipped** (§22.1): `AddressSpace::add_watch`

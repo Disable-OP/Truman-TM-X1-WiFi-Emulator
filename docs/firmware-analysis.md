@@ -1907,3 +1907,145 @@ emulator-side program is therefore complete for this question: every
 hypothesis class reachable without hardware has been tested and
 refuted, and the refutation tooling (static oracles, the entry harness,
 watchpoints) is in place for whatever a hardware session exposes next.
+
+## 23. Milestone U — device coverage: the Cause-register corrections, the
+### COP0 timer interrupt, and the keycode-consumer verdict
+
+Per §21.6/§22.5 the emulator-side program on the engine LZ head paradox is
+complete pending hardware; this milestone returns to device coverage (the
+§21.6 candidate list "front-panel keycode labels, timer/interrupt
+completion"). Three workstreams shipped: two architecture corrections with
+an architecture-completion (the COP0 Cause layout and the Count/Compare
+timer interrupt), the keycode-consumer hunt (static + dynamic, closed
+negative), and the SoC timer register program pinned as evidence.
+
+### 23.1 Scope and method
+
+Everything below is either (a) architecture-defined behavior completed to
+spec in the CPU model (covered by unit/integration tests; the real boot is
+unaffected and remains pinned), or (b) runtime evidence extracted from the
+real firmware with the existing instruments (access logs, watchpoints,
+key injection). No peripheral behavior is invented: the timer block keeps
+its verified counter-only semantics, and the keycode verdict is a closed
+negative, not a guess.
+
+### 23.2 The COP0 Cause-register corrections and the Count/Compare timer
+
+**Corrections (externally cross-checked).** The Cause bit assignments in
+`src/cpu/cop0.rs` were wrong in two places and are now pinned to the
+architecture by a regression test (`cause_bit_layout_matches_architecture`)
+whose constants are the Linux `arch/mips/include/asm/mipsregs.h` `CAUSEF_*`
+definitions (checked 2026-10, torvalds/linux master):
+
+| field | was | is | authority |
+|---|---|---|---|
+| BD (branch delay) | `1 << 22` | `1 << 31` | `CAUSEF_BD` (bit 31) |
+| IV (interrupt vector) | `1 << 30` | `1 << 23` | `CAUSEF_IV` (bit 23) |
+| TI (timer pending) | absent | `1 << 30`, read-only | `CAUSEF_TI` |
+
+The old IV sat on TI's bit (bit 30 is TI, not IV) and the old BD sat on
+WP's bit; a Cause write with `0x4000_0000` selected the special interrupt
+vector for the wrong reason. The firmware never reads IV/BD and never
+takes an interrupt (IE = 0, §11), so the real boot is unaffected — pinned
+by the untouched boot tests.
+
+**Timer completion (architecture, not invention).** The CPU model had
+Count ticking (+2/instruction) but no Compare interrupt. Milestone U adds
+the MIPS32r2 Count/Compare timer as the architecture defines it:
+
+* a pending latch (internal state) set when Count **transitions onto**
+  the Compare value — reset equality (Count = Compare = 0) is not a match;
+  the first wrap-around match is 2^31 instructions away;
+* a write to Compare **clears** the interrupt (the architecture's ack);
+* the interrupt is input **IP7** (Cause bit 15, composed into reads
+  alongside the platform-driven IP[7:2]), reported by the read-only
+  **Cause.TI** bit, gated by **Cause.DC** (documented falsifiable reading:
+  DC blocks delivery and TI while the latch persists), and delivered
+  through the standard IM7/IE/EXL path;
+* one deliberate model choice: the match is an edge on the +2/instruction
+  Count model, so an odd Compare value never matches (documented; the
+  firmware never writes Compare at all — §11.2).
+
+Tests: 7 COP0 unit tests (layout pins, latch/clear/DC/wrap semantics) and
+`tests/interrupt.rs::count_compare_timer_interrupt_delivers_via_ip7_and_acks`
+— a synthetic program arms `Status = IE|IM7` and `Compare = 0x20`, idles,
+takes the timer interrupt at EBase+0x180 (BEV=0), the handler acks with a
+far Compare write, stores a marker and `eret`s back into the idle loop;
+the test pins the marker, ExcCode = 0, TI/IP7 cleared after the ack, EXL
+cleared by eret and EPC in the loop.
+
+### 23.3 The keycode consumer: closed negative (static + dynamic)
+
+§12.2's open item was the keycode consumer: the dispatcher writes
+keycodes 0x100/0x400/0x1000/0x2000 into 0xBFFE384C — who reads them back?
+Two independent hunts, both negative:
+
+**Static** (`tools/fw_keycode_consumer.py`): chunked linear disassembly of
+the whole 0x3ADC payload (99.0% coverage) with a conservative
+constant-propagation pass ($s6 = 0xBFFE8000 seeded; lui/ori/addiu/li/move
+tracking; registers invalidated on calls and loads). Exactly **six**
+effective-address resolves to 0xBFFE384C exist in the payload: the
+dispatcher's setup read (0x82002518 — `addiu $a1, $s6, -0x47b4` then
+`lw ($a1)`, just before §12's documented loop range) and five accesses
+inside the steady-state loop (four keycode stores + the loop re-read at
+0x82002564). No other code in the payload touches the port, in either
+segment alias. The keycode-constant scan finds only the dispatcher's four
+`addiu $t*, $zero, keycode` pairs plus three unrelated constants (the
+driver's IMG_WIDTH 0x400 at 0x82002134/0x820030cc, a config 0x1000 at
+0x82000c30).
+
+**Dynamic** (`examples/keycode_consumer.rs`,
+`tests/interrupt.rs::keycode_port_traffic_comes_only_from_the_dispatcher`):
+boot the real firmware ~30M steps with a READ|WRITE watchpoint on the port
+(phys 0x1FFE384C) and key-line bit 2 held from reset. Every port access
+issues from the dispatcher's PCs (0xA2002518/0xA2002564/0xA20025B0);
+**no other PC ever reads or writes the port**. The write stream is pure
+keycode 0x400 (auto-repeat while held, §12.1); the read stream is
+constant `0x24` — key-line bit 2 **plus bit 5, the engine event line**,
+live on the same port read (runtime confirmation of §13.3's shared-port
+design; the model's engine completes synchronously, so bit 5 is already
+set at the first poll). Counts hit the watch cap (2^20 hits) — the
+attribution is on distinct PCs and value sets, unaffected by the cap.
+
+**Verdict**: the keycode written by the dispatcher is consumed beyond the
+observed horizon — by the eCos stage (still unreachable: §22.5) or by
+hardware. Physical button labels per key line remain unknown, and §12.2's
+"keycode→UI mapping" item is closed as evidence-bounded rather than
+pursued by guesswork. The bit-6 = standby/failure reading (§12/§13.3) and
+the per-line keycodes stand as the complete known mapping.
+
+### 23.4 The SoC timer block: register program pinned
+
+The timer (+0x600..0x620, §5) was modeled as a verified counter; the
+complete register program of the real boot is now pinned by
+`tests/timer.rs::real_firmware_timer_program_is_pinned` (extracted with
+the new `examples/timer_probe.rs`):
+
+* writes: `+0x00 = 0` exactly once (the delay() software reset),
+  `+0x0C = 0x8095` exactly once, `+0x1C = 0` exactly once — **no other
+  register in the block is ever written**;
+* reads: the counter at +0x00 exactly 226 times (one `delay(10)`-style
+  poll; the maximum value observed through reads is 0x385 = 901 =
+  90×10 + 1 — the poll loop's one-tick overshoot past the 90×N target);
+* no IRQ line of this block is observed or claimed — the block is used
+  polled-only, and the model keeps that semantics (unit tests for the
+  count/reset/config-store behavior included; unmodeled-register reads
+  stay logged and visible).
+
+### 23.5 Where this leaves device coverage
+
+The §21.6 device-coverage candidates are both closed:
+
+1. **front-panel keycode labels** — evidence-bounded closed negative
+   (§23.3); the known mapping is key line → keycode (0/2/4/5 →
+   0x100/0x400/0x1000/0x2000, bit 6 = standby/failure path), with the
+   consumer beyond the horizon;
+2. **timer/interrupt completion** — the CPU-side interrupt architecture
+   is now complete *including* the Count/Compare timer (§23.2), the SoC
+   timer block's program is pinned (§23.4), and the platform interrupt
+   controller keeps its verified init-program semantics (the firmware
+   never enables Status.IE, §11 — delivery remains injection-only, as
+   tested).
+
+Remaining emulator-side work is capability, not evidence: performance
+(roadmap item 5), and whatever a hardware session exposes (§22.5).

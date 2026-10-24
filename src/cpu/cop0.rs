@@ -10,15 +10,27 @@
 //! SoC values are unknown and are logged at reset.
 
 /// COP0 register file with per-selector storage.
+///
+/// Milestone U added the architecture Count/Compare timer-interrupt state
+/// (docs/firmware-analysis.md §23.2): a pending latch set when Count
+/// transitions onto Compare, cleared by a Compare write, delivered as IP7
+/// when not disabled (Cause.DC) and reported through the read-only Cause.TI
+/// bit. The observed firmware never writes Compare and keeps IE=0, so the
+/// real boot is unaffected (pinned by tests).
 #[derive(Debug, Clone)]
 pub struct Cop0 {
     /// Indexed by [selector][register].
     regs: [[u32; 32]; 8],
+    /// Count/Compare timer interrupt pending latch (internal state; not a
+    /// register). Set on the Count -> Compare match event, cleared only by
+    /// a Compare write. Reset leaves it clear (no match event has run).
+    timer_pending: bool,
 }
 
 /// COP0 register numbers used by the boot code.
 pub mod regs {
     pub const COUNT: u8 = 9;
+    pub const COMPARE: u8 = 11;
     pub const STATUS: u8 = 12;
     pub const CAUSE: u8 = 13;
     pub const EPC: u8 = 14;
@@ -48,20 +60,39 @@ pub mod status_bits {
 }
 
 /// Cause register field masks (MIPS32r2).
+///
+/// Bit assignments cross-checked against the architecture (MIPS32
+/// Architecture for Programmers Vol. III, Cause register figure) and Linux's
+/// `arch/mips/include/asm/mipsregs.h` (`CAUSEF_*`): BD=31, TI=30, CE=29:28,
+/// DC=27, PCI=26, IV=23, WP=22, IP[7:2]=15:10, IP[1:0]=9:8, ExcCode=6:2.
+/// Milestone U corrected the earlier `IV = 1 << 30` (that bit is TI; IV is
+/// bit 23) — docs/firmware-analysis.md §23.2.
 pub mod cause_bits {
     /// Exception code (bits 6:2); 0 = interrupt.
     pub const EXCCODE: u32 = 0x1F << 2;
-    /// Branch-delay-slot flag (bit 22): EPC points at the branch.
-    pub const BD: u32 = 1 << 22;
+    /// Branch-delay-slot flag (bit 31): EPC points at the branch.
+    ///
+    /// NOTE: this was previously (incorrectly) bit 22, which collided with
+    /// the WP/watch-pending bit and shifted every exception taken in a
+    /// delay slot. The architecture puts BD at bit 31; corrected in
+    /// Milestone U (§23.2) alongside the IV fix.
+    pub const BD: u32 = 1 << 31;
     /// Hardware interrupt inputs IP[7:2] (bits 15:10); read-only.
     pub const IP_HW: u32 = 0x3F << 10;
     /// Software interrupt inputs IP[1:0] (bits 9:8); writable.
     pub const IP_SW: u32 = 0x3 << 8;
-    /// IV (bit 30): interrupts use the special vector (base + 0x200).
-    pub const IV: u32 = 1 << 30;
+    /// IV (bit 23): interrupts use the special vector (base + 0x200).
+    /// Corrected from bit 30 in Milestone U (§23.2); bit 30 is TI.
+    pub const IV: u32 = 1 << 23;
     /// DC (bit 27, r2): Count/Compare timer interrupt disable.
     pub const DC: u32 = 1 << 27;
-    /// WP (bit 22... overlaps BD on r2 — watch-pending, unused here).
+    /// TI (bit 30, r2): timer-interrupt-pending indicator (read-only;
+    /// composed on Cause reads from the internal pending latch, §23.2).
+    pub const TI: u32 = 1 << 30;
+    /// WP (bit 22): watch-pending (never set by this model).
+    pub const WP: u32 = 1 << 22;
+    /// Fields writable through a Cause `mtc0` (r2 write mask): IV, DC and
+    /// the software interrupt inputs IP[1:0]. TI is read-only.
     pub const WRITABLE: u32 = IV | DC | IP_SW;
 }
 
@@ -91,7 +122,10 @@ impl Cop0 {
     ///   writes it, so with BEV=0 vectors land at 0x8000_0180 — see
     ///   docs/firmware-analysis.md §11).
     pub fn new() -> Self {
-        let mut c = Self { regs: [[0; 32]; 8] };
+        let mut c = Self {
+            regs: [[0; 32]; 8],
+            timer_pending: false,
+        };
         c.regs[0][regs::STATUS as usize] = 0x0040_0004;
         // Config: M(31)=1 | AR(21:20)=1 | MT(15:13)=1 | K0(2:0)=2
         c.regs[0][regs::CONFIG as usize] = 0x8000_0000 | 0x0010_0000 | 0x0000_8000 | 0x2;
@@ -110,6 +144,20 @@ impl Cop0 {
         match (rd, sel) {
             (regs::CONFIG, 1) => self.regs[s][r], // Config1
             (15, 1) => self.regs[1][15],          // EBase (sel 1)
+            (regs::CAUSE, 0) => {
+                // Two read-only fields are composed on every Cause read:
+                // - TI (bit 30): the timer-pending indicator, gated by DC
+                //   (documented falsifiable reading, §23.2);
+                // - IP7 (bit 15): the Count/Compare timer drives the IP7
+                //   hardware input on real cores, so it shows in IP[7:2]
+                //   alongside the platform lines driven by set_ip_hw.
+                let mut v = self.regs[s][r];
+                v &= !(cause_bits::TI | 1 << 15);
+                if self.timer_interrupt_active() {
+                    v |= cause_bits::TI | 1 << 15;
+                }
+                v
+            }
             _ => self.regs[s][r],
         }
     }
@@ -132,6 +180,11 @@ impl Cop0 {
             self.regs[s][r] = (old & !cause_bits::WRITABLE) | (value & cause_bits::WRITABLE);
             return;
         }
+        if rd == regs::COMPARE && sel == 0 {
+            // Architecture: writing the Compare register clears the
+            // Count/Compare timer interrupt.
+            self.timer_pending = false;
+        }
         self.regs[s][r] = value;
     }
 
@@ -144,10 +197,34 @@ impl Cop0 {
     }
 
     /// Whether an interrupt is pending and not masked:
-    /// `(Cause.IP | hw_lines) & Status.IM != 0`.
+    /// `((Cause.IP | hw_lines) | timer) & Status.IM != 0`.
+    ///
+    /// The Count/Compare timer is input IP7 (bits 15:10 bit 7): pending
+    /// when the internal latch is set and the timer is not disabled
+    /// (Cause.DC = 0), and subject to the same IM7/IE gating as every
+    /// other input (MIPS32r2 architecture; §23.2).
     pub fn irq_pending(&self) -> bool {
-        let ip = self.regs[0][regs::CAUSE as usize] & (cause_bits::IP_HW | cause_bits::IP_SW);
+        let mut ip = self.regs[0][regs::CAUSE as usize] & (cause_bits::IP_HW | cause_bits::IP_SW);
+        if self.timer_interrupt_active() {
+            // The Count/Compare timer drives input IP7 (Cause bit 15;
+            // IP[7:2] live at bits 15:10 with IP2 at 10).
+            ip |= 1 << 15;
+        }
         ip & (self.regs[0][regs::STATUS as usize] & status_bits::IM) != 0
+    }
+
+    /// Timer-interrupt activity as seen by Cause.TI and IP7: the pending
+    /// latch set and not disabled by Cause.DC. (DC gating the readout and
+    /// delivery while the latch persists is the model's documented reading;
+    /// falsifiable, §23.2.)
+    fn timer_interrupt_active(&self) -> bool {
+        self.timer_pending && self.regs[0][regs::CAUSE as usize] & cause_bits::DC == 0
+    }
+
+    /// True when the Count/Compare match event has latched (regardless of
+    /// DC). Diagnostic accessor for tests and the tracer.
+    pub fn timer_latched(&self) -> bool {
+        self.timer_pending
     }
 
     /// Exception vector for an interrupt, per MIPS32r2 vector setup:
@@ -183,8 +260,18 @@ impl Cop0 {
     }
 
     /// Advance the Count register (called once per executed instruction).
+    ///
+    /// Count/Compare timer (MIPS32r2): when Count *transitions onto* the
+    /// Compare value the timer interrupt latches (Cause.TI / IP7 until a
+    /// Compare write clears it). The match is an edge, not continuous
+    /// equality — reset state (Count = Compare = 0) does not latch, and the
+    /// first wrap-around match is 2^31 instructions away (§23.2).
     pub fn tick(&mut self) {
-        self.regs[0][regs::COUNT as usize] = self.regs[0][regs::COUNT as usize].wrapping_add(2);
+        let new_count = self.regs[0][regs::COUNT as usize].wrapping_add(2);
+        self.regs[0][regs::COUNT as usize] = new_count;
+        if !self.timer_pending && new_count == self.regs[0][regs::COMPARE as usize] {
+            self.timer_pending = true;
+        }
     }
 
     /// Status register (read helper for tracing/diagnostics).
@@ -321,5 +408,122 @@ mod tests {
         let _ = c.enter_exception(0, 0x8000_1238, true);
         assert_eq!(c.read(regs::CAUSE, 0) & cause_bits::BD, cause_bits::BD);
         assert_eq!(c.read(regs::EPC, 0), 0x8000_1238);
+    }
+
+    // ---- Milestone U: Cause layout correction + Count/Compare timer ----
+
+    /// Regression pin for the §23.2 corrections: the Cause register bit
+    /// assignments must match the architecture (Linux `mipsregs.h`
+    /// `CAUSEF_*`): BD=31, TI=30, DC=27, IV=23, WP=22.
+    #[test]
+    fn cause_bit_layout_matches_architecture() {
+        assert_eq!(cause_bits::BD, 1 << 31, "BD is bit 31 (was wrongly 22)");
+        assert_eq!(cause_bits::TI, 1 << 30, "TI is bit 30");
+        assert_eq!(cause_bits::DC, 1 << 27, "DC is bit 27");
+        assert_eq!(cause_bits::IV, 1 << 23, "IV is bit 23 (was wrongly 30)");
+        assert_eq!(cause_bits::WP, 1 << 22, "WP is bit 22");
+    }
+
+    /// Bit 30 of a Cause write is TI (read-only), not IV: writing it must
+    /// neither latch the writable storage nor select the special vector.
+    #[test]
+    fn cause_bit_30_is_ti_and_not_selectable_as_iv() {
+        let mut c = Cop0::new();
+        c.write(regs::STATUS, 0, status_bits::IE); // BEV=0 -> EBase vectors
+        c.write(regs::CAUSE, 0, 1 << 30); // what the old code called IV
+        assert_eq!(c.read(regs::CAUSE, 0) & (1 << 30), 0, "TI is read-only");
+        assert_eq!(
+            c.read(regs::CAUSE, 0) & cause_bits::IV,
+            0,
+            "bit 30 does not set IV"
+        );
+        assert_eq!(c.interrupt_vector(), 0x8000_0180, "general vector");
+        // The real IV (bit 23) selects the special interrupt vector.
+        c.write(regs::CAUSE, 0, cause_bits::IV);
+        assert_eq!(c.interrupt_vector(), 0x8000_0200);
+    }
+
+    /// The Count -> Compare match event latches the timer interrupt:
+    /// Cause.TI reads 1, IP7 shows asserted, and the pending check fires
+    /// once IM7 + IE are armed.
+    #[test]
+    fn timer_interrupt_latches_on_count_compare_match() {
+        let mut c = Cop0::new();
+        c.write(regs::COMPARE, 0, 10);
+        // Count ticks 2 per instruction: 2,4,6,8,10 -> match at 10.
+        for _ in 0..5 {
+            assert!(!c.timer_latched(), "no latch before the match");
+            c.tick();
+        }
+        assert_eq!(c.read(regs::COUNT, 0), 10);
+        assert!(c.timer_latched(), "match event latches the interrupt");
+        let cause = c.read(regs::CAUSE, 0);
+        assert_eq!(cause & cause_bits::TI, cause_bits::TI, "Cause.TI set");
+        assert_eq!(cause & (1 << 15), 1 << 15, "IP7 input asserted");
+        // Delivery requires IM7 + IE (IM7 = Status bit 15).
+        assert!(!c.irq_pending(), "IE/IM7 not armed yet");
+        c.write(regs::STATUS, 0, status_bits::IE | (0xFF << 8));
+        assert!(c.irq_pending(), "timer delivers with IE+IM7 armed");
+    }
+
+    /// Architecture: writing the Compare register clears the timer
+    /// interrupt (the standard on-device ack pattern).
+    #[test]
+    fn compare_write_clears_the_timer_interrupt() {
+        let mut c = Cop0::new();
+        c.write(regs::COMPARE, 0, 10);
+        for _ in 0..5 {
+            c.tick();
+        }
+        assert!(c.timer_latched());
+        c.write(regs::COMPARE, 0, 0xFFFF_0000); // ack + re-arm far away
+        assert!(!c.timer_latched(), "Compare write clears the interrupt");
+        assert_eq!(c.read(regs::CAUSE, 0) & cause_bits::TI, 0);
+        assert_eq!(c.read(regs::CAUSE, 0) & (1 << 15), 0, "IP7 deasserted");
+        c.write(regs::STATUS, 0, status_bits::IE | (0xFF << 8));
+        assert!(!c.irq_pending());
+    }
+
+    /// Cause.DC disables the timer interrupt: no delivery and TI reads 0,
+    /// while the latch itself persists (documented falsifiable reading,
+    /// §23.2); clearing DC re-activates the latched interrupt.
+    #[test]
+    fn dc_disables_timer_delivery_and_ti_readout() {
+        let mut c = Cop0::new();
+        c.write(regs::COMPARE, 0, 10);
+        for _ in 0..5 {
+            c.tick();
+        }
+        assert!(c.timer_latched());
+        c.write(regs::CAUSE, 0, cause_bits::DC);
+        assert_eq!(c.read(regs::CAUSE, 0) & cause_bits::TI, 0, "TI gated by DC");
+        c.write(regs::STATUS, 0, status_bits::IE | (0xFF << 8));
+        assert!(!c.irq_pending(), "DC blocks delivery");
+        c.write(regs::CAUSE, 0, 0); // DC off
+        assert!(c.irq_pending(), "latch persisted; delivering again");
+    }
+
+    /// Reset state (Count = Compare = 0) is not a match event: the first
+    /// tick moves Count away from equality and nothing latches.
+    #[test]
+    fn reset_state_does_not_latch_timer() {
+        let mut c = Cop0::new();
+        assert_eq!(c.read(regs::COUNT, 0), 0);
+        c.tick();
+        assert_eq!(c.read(regs::COUNT, 0), 2);
+        assert!(!c.timer_latched(), "reset equality is not a match");
+        assert_eq!(c.read(regs::CAUSE, 0) & cause_bits::TI, 0);
+    }
+
+    /// A match on the wrapped Count still latches (equality is checked on
+    /// every tick, 2^31 instructions apart in the default +2 model).
+    #[test]
+    fn timer_latches_on_wrapped_count_match() {
+        let mut c = Cop0::new();
+        c.write(regs::COUNT, 0, 0xFFFF_FFFE);
+        c.write(regs::COMPARE, 0, 0); // next tick wraps onto Compare
+        c.tick();
+        assert_eq!(c.read(regs::COUNT, 0), 0);
+        assert!(c.timer_latched(), "wrap-around match latches");
     }
 }

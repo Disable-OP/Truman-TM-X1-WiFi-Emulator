@@ -75,6 +75,18 @@ budget-survivors are NOP-sled artifacts. The register-aware oracle also
 corrected Milestone Q's static m4 verdict: the head's `blez $v1` falls
 through (v1 = 0x13800 > 0) and the head dies at +0x38, not +0x6c.
 
+Milestone U (device coverage, §23): the COP0 Cause layout was corrected
+against the architecture (BD=31, IV=23, TI=30 read-only) and the
+Count/Compare timer interrupt completed to spec (match-edge latch, ack by
+a Compare write, IP7 + Cause.TI, DC gating, IM7/IE delivery — proven by a
+synthetic end-to-end test; the real boot never enables interrupts and is
+unaffected). The keycode-consumer hunt closed negative: static
+constant-propagation scan + dynamic watchpoint attribution show every
+0xBFFE384C access comes from the dispatcher itself, so physical button
+labels stay evidence-bounded (the consumer lives in the unreachable eCos
+stage or hardware). The SoC timer block's full register program is pinned
+(one delay(10) poll, two config writes, no IRQ semantics claimed).
+
 Milestone J: the driver's engine interface is now fully reverse-engineered
 (start-bit computation, table-upload protocol = engine table-RAM addresses,
 completion accounting formula), and a **decode defect was found and fixed**:
@@ -105,7 +117,8 @@ Requires a stable Rust toolchain (https://rustup.rs). No other dependencies.
 
 ```sh
 cargo build --release
-cargo test --release          # 92 tests: boot chain, entry harness, interrupt delivery, key injection, watchpoints, Q8 runtime evidence
+cargo test --release          # 104 tests: boot chain, entry harness, interrupt + COP0 timer delivery, key injection,
+                              # watchpoints, Q8 runtime evidence, timer program, keycode-consumer pin
 
 # Identify a firmware image
 ./target/release/truman-emulator inspect firmware/*.bin
@@ -125,6 +138,12 @@ python3 tools/fw_syms_family.py firmware/*.bin
 # Q8 instrument: boot with watchpoints over the descriptor/payload/container
 # ranges — who reads what, with (step, PC) attribution (§22)
 ./target/release/examples/q8_watch firmware/*.bin
+
+# Device-coverage instruments (Milestone U, §23): the SoC timer register
+# program, and keycode-port access attribution under virtual key presses
+./target/release/examples/timer_probe firmware/*.bin
+./target/release/examples/keycode_consumer firmware/*.bin
+python3 tools/fw_keycode_consumer.py firmware/*.bin
 ```
 
 Exit codes: `0` step-limit (clean), `1` usage/IO, `2` emulation stopped on a
@@ -142,6 +161,7 @@ fault/unknown instruction.
 | `src/bin/truman-emulator.rs` | CLI frontend (`inspect` / `run` / `trace`) |
 | `tests/boot.rs`, `tests/interrupt.rs` | Integration tests: real-firmware boot chain, interrupt injection |
 | `tests/watch.rs`, `tests/q8.rs` | Watchpoint mechanics; the §22 runtime-evidence pins (loader reads exactly three descriptor words, one-pass copy, no checksum pass) |
+| `tests/timer.rs` | SoC timer model semantics + the real boot's timer register program (§23.4) |
 | `docs/firmware-analysis.md` | The evidence base: CPU arch, flash map, register models |
 | `tools/`, `scripts/` | Analysis scripts (capstone-based recon, disassembly) |
 | `firmware/` | The original, unmodified flash dump (SHA-256 pinned in docs) |

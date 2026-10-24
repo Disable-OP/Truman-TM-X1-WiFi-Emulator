@@ -1,5 +1,49 @@
 # Changelog
 
+## 0.17.0 — Milestone U: device coverage (Cause fixes, COP0 timer, keycode verdict)
+
+### Added
+- COP0 Count/Compare timer interrupt (MIPS32r2 architecture completion):
+  match-edge pending latch, ack-by-Compare-write, IP7 input composed into
+  Cause reads, read-only Cause.TI, DC gating of delivery/readout, and
+  IM7/IE delivery through the existing exception path. 7 COP0 unit tests
+  plus the end-to-end synthetic delivery test
+  `tests/interrupt.rs::count_compare_timer_interrupt_delivers_via_ip7_and_acks`
+  (arm Status = IE|IM7 and Compare, idle, handler acks with a far Compare
+  write, marker + eret pinned).
+- SoC timer block tests (`tests/timer.rs`): counter tick / software-reset /
+  config-store semantics with logged unmodeled-register reads, and the
+  real firmware's complete timer register program pinned (writes +0x00=0
+  once, +0x0C=0x8095, +0x1C=0; 226 counter reads, max count 0x385).
+- Keycode-consumer instruments: `tools/fw_keycode_consumer.py` (chunked
+  linear disassembly with constant propagation over the whole payload,
+  99.0% coverage) and `examples/keycode_consumer.rs` (watchpoint
+  attribution of every key-port access on the real boot), plus the pin
+  test
+  `tests/interrupt.rs::keycode_port_traffic_comes_only_from_the_dispatcher`.
+- `examples/timer_probe.rs` — extracts the SoC timer register program
+  from a real boot.
+
+### Fixed
+- **COP0 Cause bit layout** (`src/cpu/cop0.rs`): BD is bit 31 (was
+  wrongly bit 22 = WP), IV is bit 23 (was wrongly bit 30 = TI), TI added
+  as read-only bit 30. Cross-checked against Linux
+  `arch/mips/include/asm/mipsregs.h` (`CAUSEF_*`); pinned by regression
+  tests. The real boot never reads these fields (IE=0, §11) and is
+  unaffected — all boot tests pass unchanged.
+
+### Analysis (§23)
+- The keycode consumer is a closed negative: exactly six payload accesses
+  resolve to 0xBFFE384C, all inside the dispatcher (setup read 0x82002518,
+  four keycode stores, loop re-read); dynamically, every port access in a
+  30M-step boot with keys held issues from dispatcher PCs. The keycode is
+  consumed beyond the horizon (eCos stage/hardware); button labels remain
+  unknown. Runtime confirmation that the engine event (bit 5) shares the
+  key-port read (reads show 0x24 = key line 2 + event).
+- The SoC timer block is used polled-only: one delay(10)-style poll
+  (90×10 + 1 overshoot = 901 max), two one-shot config writes; no IRQ
+  line observed or claimed.
+
 ## 0.16.0 — Milestone T: the Q8 runtime verdict (no checksum code path)
 
 ### Added

@@ -1611,9 +1611,10 @@ mod tests {
         assert_eq!(pre & c0_cause::BD, c0_cause::BD);
         assert_eq!((pre & c0_cause::EXCCODE) >> 2, 7);
         assert_eq!(pre & c0_cause::IP_HW, 1 << 10);
-        cop.write(13, 0, 0x4000_0101); // IV=1, IP1:0=01
+        cop.write(13, 0, 0x0080_0101); // IV=1 (bit 23, §23.2), IP1:0=01
         let post = cop.read(13, 0);
-        assert_eq!(post & c0_cause::IV, c0_cause::IV, "IV writable");
+        assert_eq!(post & c0_cause::IV, c0_cause::IV, "IV writable (bit 23)");
+        assert_eq!(post & (1 << 30), 0, "bit 30 is TI, not writable as IV");
         assert_eq!(post & c0_cause::IP_SW, 0x100, "IP1:0 writable");
         assert_eq!(post & c0_cause::BD, c0_cause::BD, "BD preserved");
         assert_eq!((post & c0_cause::EXCCODE) >> 2, 7, "ExcCode preserved");
