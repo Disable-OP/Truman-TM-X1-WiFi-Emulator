@@ -73,6 +73,13 @@
   changing a hypothesis is editing a `Default` impl.
 - **Determinism**: no wall-clock, no RNG; same image + same budget ⇒
   identical run (asserted by tests).
+- **Performance model** (Milestone V, §24): the run loop never pays for
+  what it does not read — untraced loops disable per-step trace formatting
+  (`CpuBackend::set_describe`), device access logs are O(1) `VecDeque`
+  rings, watch recording is inert while no watch is installed, and region
+  lookups go through a hashed hot-region memo. Measured effect: 1.45 →
+  ~19.5 M instr/s on the deterministic boot chain (13.4×), semantics pinned
+  unchanged by the full suite.
 - **Errors are values**: every fault carries vaddr/phys/kind; the CLI
   distinguishes clean stops (exit 0) from CPU faults (exit 2).
 

@@ -5,9 +5,13 @@
 //! stubs log their accesses instead of silently pretending to work
 //! (project rule: never fake a functioning peripheral).
 
-/// Shared device access log: (offset, size, value, was_write).
-pub type AccessLog =
-    std::rc::Rc<std::cell::RefCell<Vec<(u32, crate::memory::AccessSize, u32, bool)>>>;
+/// Shared device access log: (offset, size, value, was_write). A capped
+/// ring (oldest entries dropped at capacity) — Milestone V switched the
+/// backing store from `Vec` to `VecDeque` so the per-access record is O(1)
+/// instead of an O(n) shift at capacity (§24).
+pub type AccessLog = std::rc::Rc<
+    std::cell::RefCell<std::collections::VecDeque<(u32, crate::memory::AccessSize, u32, bool)>>,
+>;
 
 /// A memory-mapped device model.
 pub trait Device: std::fmt::Debug {
@@ -54,7 +58,7 @@ impl LoggingDevice {
         Self {
             name: name.to_string(),
             default_read,
-            log: std::rc::Rc::new(std::cell::RefCell::new(Vec::new())),
+            log: std::rc::Rc::new(std::cell::RefCell::new(std::collections::VecDeque::new())),
             log_capacity: 8192,
         }
     }
@@ -73,9 +77,9 @@ impl LoggingDevice {
     fn record(&self, offset: u32, size: crate::memory::AccessSize, value: u32, write: bool) {
         let mut log = self.log.borrow_mut();
         if log.len() >= self.log_capacity {
-            log.remove(0);
+            log.pop_front();
         }
-        log.push((offset, size, value, write));
+        log.push_back((offset, size, value, write));
     }
 }
 
@@ -115,7 +119,7 @@ impl ParamRam {
         Self {
             name: name.to_string(),
             data: vec![fill; len as usize],
-            log: std::rc::Rc::new(std::cell::RefCell::new(Vec::new())),
+            log: std::rc::Rc::new(std::cell::RefCell::new(std::collections::VecDeque::new())),
             log_capacity: 4096,
         }
     }
@@ -128,9 +132,9 @@ impl ParamRam {
     fn record(&self, offset: u32, size: crate::memory::AccessSize, value: u32, write: bool) {
         let mut log = self.log.borrow_mut();
         if log.len() >= self.log_capacity {
-            log.remove(0);
+            log.pop_front();
         }
-        log.push((offset, size, value, write));
+        log.push_back((offset, size, value, write));
     }
 }
 
@@ -201,9 +205,9 @@ impl MirroredRam {
     fn record(&self, offset: u32, size: crate::memory::AccessSize, value: u32, write: bool) {
         let mut log = self.log.borrow_mut();
         if log.len() >= self.log_capacity {
-            log.remove(0);
+            log.pop_front();
         }
-        log.push((offset, size, value, write));
+        log.push_back((offset, size, value, write));
     }
 }
 
@@ -278,9 +282,9 @@ impl Uart {
     fn record(&self, offset: u32, size: crate::memory::AccessSize, value: u32, write: bool) {
         let mut log = self.log.borrow_mut();
         if log.len() >= self.log_capacity {
-            log.remove(0);
+            log.pop_front();
         }
-        log.push((offset, size, value, write));
+        log.push_back((offset, size, value, write));
     }
 }
 
@@ -361,9 +365,9 @@ impl SpiController {
     fn record(&self, offset: u32, size: crate::memory::AccessSize, value: u32, write: bool) {
         let mut log = self.log.borrow_mut();
         if log.len() >= self.log_capacity {
-            log.remove(0);
+            log.pop_front();
         }
-        log.push((offset, size, value, write));
+        log.push_back((offset, size, value, write));
     }
 }
 
@@ -457,9 +461,9 @@ impl TimerCounter {
     fn record(&self, offset: u32, size: crate::memory::AccessSize, value: u32, write: bool) {
         let mut log = self.log.borrow_mut();
         if log.len() >= self.log_capacity {
-            log.remove(0);
+            log.pop_front();
         }
-        log.push((offset, size, value, write));
+        log.push_back((offset, size, value, write));
     }
 }
 
@@ -535,9 +539,9 @@ impl DdrPhy {
     fn record(&self, offset: u32, size: crate::memory::AccessSize, value: u32, write: bool) {
         let mut log = self.log.borrow_mut();
         if log.len() >= self.log_capacity {
-            log.remove(0);
+            log.pop_front();
         }
-        log.push((offset, size, value, write));
+        log.push_back((offset, size, value, write));
     }
 }
 
@@ -619,9 +623,9 @@ impl DdrCtrl {
     fn record(&self, offset: u32, size: crate::memory::AccessSize, value: u32, write: bool) {
         let mut log = self.log.borrow_mut();
         if log.len() >= self.log_capacity {
-            log.remove(0);
+            log.pop_front();
         }
-        log.push((offset, size, value, write));
+        log.push_back((offset, size, value, write));
     }
 }
 
@@ -770,9 +774,9 @@ impl IntController {
     fn record(&self, offset: u32, size: crate::memory::AccessSize, value: u32, write: bool) {
         let mut log = self.log.borrow_mut();
         if log.len() >= self.log_capacity {
-            log.remove(0);
+            log.pop_front();
         }
-        log.push((offset, size, value, write));
+        log.push_back((offset, size, value, write));
     }
 }
 
@@ -974,9 +978,9 @@ impl DecompEngineLo {
     fn record(&self, offset: u32, size: crate::memory::AccessSize, value: u32, write: bool) {
         let mut log = self.log.borrow_mut();
         if log.len() >= self.log_capacity {
-            log.remove(0);
+            log.pop_front();
         }
-        log.push((offset, size, value, write));
+        log.push_back((offset, size, value, write));
     }
 }
 
@@ -998,9 +1002,9 @@ impl DecompEngineHi {
     fn record(&self, offset: u32, size: crate::memory::AccessSize, value: u32, write: bool) {
         let mut log = self.log.borrow_mut();
         if log.len() >= self.log_capacity {
-            log.remove(0);
+            log.pop_front();
         }
-        log.push((offset, size, value, write));
+        log.push_back((offset, size, value, write));
     }
 }
 
@@ -1185,9 +1189,9 @@ impl KeyPort {
     fn record(&self, offset: u32, size: crate::memory::AccessSize, value: u32, write: bool) {
         let mut log = self.log.borrow_mut();
         if log.len() >= self.log_capacity {
-            log.remove(0);
+            log.pop_front();
         }
-        log.push((offset, size, value, write));
+        log.push_back((offset, size, value, write));
     }
 }
 
@@ -1211,7 +1215,7 @@ mod tests {
     #[test]
     fn uart_transmits_and_reports_ready() {
         let out = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
-        let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let log = std::rc::Rc::new(std::cell::RefCell::new(std::collections::VecDeque::new()));
         let mut uart = Uart::new("uart", std::rc::Rc::clone(&out), std::rc::Rc::clone(&log));
         let status = uart.read(0x004, AccessSize::Word);
         assert_eq!(status & 0x1, 0x1, "TX ready must be set");
@@ -1239,7 +1243,7 @@ mod tests {
 
     #[test]
     fn timer_counts_and_is_software_resettable() {
-        let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let log = std::rc::Rc::new(std::cell::RefCell::new(std::collections::VecDeque::new()));
         let mut t = TimerCounter::new("timer", std::rc::Rc::clone(&log));
         assert_eq!(t.read(0x00, AccessSize::Word), 0);
         t.tick();
@@ -1260,7 +1264,7 @@ mod tests {
         // Reproduce the loader's exact transaction (hypothesis H3):
         // TX=0x0604 -> +0x3E0C, start 0x20 -> +0x3E04, poll +0x3E08 bit
         // 0x400, write 0 to clear, read +0x3E14 == 6.
-        let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let log = std::rc::Rc::new(std::cell::RefCell::new(std::collections::VecDeque::new()));
         let mut spi = SpiController::new("spi", std::rc::Rc::clone(&log));
         spi.write(0x0C, AccessSize::Word, 0x0604);
         assert_eq!(spi.read(0x08, AccessSize::Word), 0, "not done before start");
@@ -1290,7 +1294,7 @@ mod tests {
         // level output must follow raised sources.
         let sources = std::rc::Rc::new(std::cell::Cell::new(0u32));
         let out = std::rc::Rc::new(std::cell::Cell::new(0u8));
-        let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let log = std::rc::Rc::new(std::cell::RefCell::new(std::collections::VecDeque::new()));
         let mut intc = IntController::new(
             "intc",
             std::rc::Rc::clone(&sources),
@@ -1341,7 +1345,7 @@ mod tests {
         let pressed = std::rc::Rc::new(std::cell::Cell::new(0u32));
         let events = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
         let done = std::rc::Rc::new(std::cell::Cell::new(0u8));
-        let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let log = std::rc::Rc::new(std::cell::RefCell::new(std::collections::VecDeque::new()));
         let mut kp = KeyPort::new(
             "keyport",
             std::rc::Rc::clone(&pressed),
@@ -1386,7 +1390,7 @@ mod tests {
 
     #[test]
     fn decomp_engine_start_request_and_done_handshake() {
-        let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let log = std::rc::Rc::new(std::cell::RefCell::new(std::collections::VecDeque::new()));
         let done = std::rc::Rc::new(std::cell::Cell::new(0u8));
         let (mut lo, shared) = DecompEngineLo::new(
             "decomp",

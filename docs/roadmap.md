@@ -3,6 +3,26 @@
 Milestones follow the original project plan (A → G). Status reflects what is
 actually demonstrated by code + tests in this repository.
 
+## Milestone V — performance: device-log ring defect fixed, 13.4× boot
+### throughput ✅
+
+- **Measured first (§24.1)**: a bench harness (`examples/bench.rs`) plus an
+  isolation probe showed the raw interpreter core at 71.6 M steps/s against
+  a 1.45 M steps/s full-machine rate — the bottleneck was never decode.
+- **The defect (§24.2)**: every device access log used
+  `Vec::remove(0)` at capacity — an O(n) 128–256 KiB shift per logged
+  access, 12 sites; the boot's hot windows log on every access. Replaced by
+  `VecDeque` rings with identical capped/oldest-dropped semantics.
+- **Secondary fixes (§24.3)**: per-step trace formatting made lazy
+  (`CpuBackend::set_describe`; +16% alone), interrupt-line re-programming
+  gated on change, watch-arming fast path, hot-region memo (hashed page
+  key; non-overlap asserted at build).
+- **Results (§24.4)**: deterministic boot chain 1.45 → 19.4–19.6 M instr/s
+  (13.4×); 100 M steps ≈ 5 s; test suite ~29 s → ~3.2 s. All 104 prior
+  tests pass unchanged (semantic equivalence), plus 2 new regression tests.
+- **Decode-cache verdict (§24.5)**: refuted as the needed mechanism by
+  measurement; remains optional future work for the raw core.
+
 ## Milestone U — device coverage: Cause fixes, COP0 timer, keycode verdict ✅
 
 - **Cause-register corrections (§23.2)**: BD = bit 31, IV = bit 23, TI =
@@ -312,8 +332,9 @@ Track by evidence-first value, in rough order:
 4. ~~**0x98010000 / 0xB0000000 / 0xF0000000 windows**~~ ✅ resolved in
    Milestone M (§16.4): flash-mirror data path + address-classification
    masks; no peripherals found behind them.
-5. **Performance**: ~5 M instr/s today; a decode cache would lift the
-   100 M-step runs from ~20 s to a few seconds.
+5. ~~**Performance**~~ ✅ resolved in Milestone V (§24): the real defect
+   was the O(n) device-log ring, not decode — 1.45 → 19.4 M instr/s
+   (13.4×); 100 M-step runs ≈ 5 s.
 6. ✅ **CI**: GitHub Actions running fmt/clippy/test on push (Milestone M).
 7. **SP tail structure + LZ value semantics** (§16.1/§16.3/§16.5): the
    primary boot blocker — decode the 169,229 bits after SP block 1.

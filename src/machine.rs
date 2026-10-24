@@ -30,9 +30,11 @@ use crate::devices::{
 use crate::firmware::Image;
 use crate::memory::{AddressSpace, WatchCtx, WatchHit, WatchKinds};
 
-/// Shared access log entry: (offset, size, value, was_write).
-pub type AccessLog =
-    std::rc::Rc<std::cell::RefCell<Vec<(u32, crate::memory::AccessSize, u32, bool)>>>;
+/// Shared access log entry: (offset, size, value, was_write). Backed by a
+/// capped `VecDeque` ring (see `devices::AccessLog`, Milestone V §24).
+pub type AccessLog = std::rc::Rc<
+    std::cell::RefCell<std::collections::VecDeque<(u32, crate::memory::AccessSize, u32, bool)>>,
+>;
 
 /// Machine hardware configuration.
 #[derive(Debug, Clone)]
@@ -582,6 +584,7 @@ impl Machine {
     /// Run up to `max_steps` instructions. Returns the stop reason and a
     /// per-window touchmap for diagnostics.
     pub fn run(&mut self, max_steps: u64) -> RunResult {
+        self.cpu.set_describe(false);
         let mut steps: u64 = 0;
         let stop = loop {
             if steps >= max_steps {
@@ -634,6 +637,7 @@ impl Machine {
     /// candidate decodes a register-aware dynamic oracle instead of static
     /// word classification.
     pub fn run_until_pc(&mut self, max_steps: u64, watch: u32) -> RunResult {
+        self.cpu.set_describe(false);
         let mut steps: u64 = 0;
         let stop = loop {
             if self.cpu.pc() == watch {
@@ -686,6 +690,7 @@ impl Machine {
     /// Execute up to `max_steps` instructions while capturing every step
     /// into a [`Tracer`]. Slower than [`Machine::run`]; used by `trace`.
     pub fn run_traced(&mut self, max_steps: u64, tracer: &mut Tracer) -> RunResult {
+        self.cpu.set_describe(true);
         let mut steps: u64 = 0;
         let stop = loop {
             if steps >= max_steps {

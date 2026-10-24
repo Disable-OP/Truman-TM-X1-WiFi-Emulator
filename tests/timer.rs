@@ -21,10 +21,10 @@ use truman_emulator::firmware;
 use truman_emulator::machine::{Machine, MachineConfig};
 use truman_emulator::memory::AccessSize;
 
-type TimerLog = Rc<RefCell<Vec<(u32, AccessSize, u32, bool)>>>;
+type TimerLog = Rc<RefCell<std::collections::VecDeque<(u32, AccessSize, u32, bool)>>>;
 
 fn new_timer() -> (TimerCounter, TimerLog) {
-    let log = Rc::new(RefCell::new(Vec::new()));
+    let log = Rc::new(RefCell::new(std::collections::VecDeque::new()));
     let t = TimerCounter::new("timer-test", Rc::clone(&log));
     (t, log)
 }

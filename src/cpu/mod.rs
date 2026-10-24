@@ -120,6 +120,14 @@ pub trait CpuBackend {
     /// of the next step. Default: no interrupt inputs.
     fn set_ext_irq_lines(&mut self, _lines: u8) {}
 
+    /// Enable or disable per-step textual descriptions (Milestone V
+    /// performance work, §24): untraced run loops never read
+    /// `StepReport::desc`, so they disable formatting to avoid building
+    /// and dropping a `String` per executed instruction. Traced loops
+    /// re-enable it. Backends default to descriptions ON (direct `step`
+    /// users, unit tests); the machine run loops toggle the flag.
+    fn set_describe(&mut self, _on: bool) {}
+
     /// Type-erased self reference for backend-specific diagnostics.
     fn as_any(&self) -> &dyn std::any::Any;
 }

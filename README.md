@@ -117,8 +117,12 @@ Requires a stable Rust toolchain (https://rustup.rs). No other dependencies.
 
 ```sh
 cargo build --release
-cargo test --release          # 104 tests: boot chain, entry harness, interrupt + COP0 timer delivery, key injection,
-                              # watchpoints, Q8 runtime evidence, timer program, keycode-consumer pin
+cargo test --release          # 106 tests: boot chain, entry harness, interrupt + COP0 timer delivery, key injection,
+                              # watchpoints, Q8 runtime evidence, timer program, keycode-consumer pin,
+                              # perf-model regressions (lazy describe, hot-region memo)
+cargo build --release --example bench
+./target/release/examples/bench firmware/*.bin   # throughput harness (Milestone V): ~19.5 M instr/s
+                                                  # on the deterministic boot chain (13.4x over 0.17.0)
 
 # Identify a firmware image
 ./target/release/truman-emulator inspect firmware/*.bin

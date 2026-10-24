@@ -2049,3 +2049,98 @@ The §21.6 device-coverage candidates are both closed:
 
 Remaining emulator-side work is capability, not evidence: performance
 (roadmap item 5), and whatever a hardware session exposes (§22.5).
+
+## 24. Milestone V — performance: the device-log ring defect (13.4× boot
+### throughput), measured and fixed without semantic change
+
+After Milestone U the emulator-side evidence program was complete (§22.5,
+§23.5); the remaining emulator-side work was capability, not evidence —
+specifically roadmap item 5 ("~5 M instr/s today; a decode cache would lift
+the 100 M-step runs from ~20 s to a few seconds"). This milestone delivers
+that capability, with the mechanism chosen by measurement rather than by
+plan.
+
+### 24.1 Method
+
+* `examples/bench.rs` — reproducible harness: untraced `Machine::run` of the
+  real firmware, wall-clock throughput, stop reason. The workload is the
+  deterministic boot chain (identical to the acceptance test; it halts at
+  the §19.2 model-head fault after exactly 1,301,783 steps), so before/after
+  numbers compare identical instruction mixes.
+* An isolation probe (temporary, removed after use) ran a minimal
+  `addiu/bne` loop directly against `Mips32::step` over a one-region bus:
+  **71.6 M steps/s**. The raw interpreter core was never the bottleneck —
+  the 43× gap to the 1.45 M instr/s full-machine rate had to be device/bus
+  side. (A pure-Rust integer-loop calibration on the same host measured
+  ~507 M iter/s, ruling out a slow environment.)
+
+### 24.2 The defect: O(n) shifts in every device access log
+
+All device models record every access into a shared capped log
+(`AccessLog`). The record path was:
+
+```rust
+if log.len() >= self.log_capacity { log.remove(0); }   // VecDeque needed
+log.push(entry);
+```
+
+`Vec::remove(0)` shifts the whole 8,192–16,384-entry buffer (128–256 KiB)
+on **every logged access once the log is full** — and the boot's hot windows
+(param RAM, DDR PHY/controller, UART, keyport, the engine register block)
+are logged on every access. This one line dominated the entire run: 12
+record sites across `devices.rs`. Replaced by a `VecDeque` ring
+(`push_back`/`pop_front`, O(1)) with identical semantics (capped,
+oldest-dropped — no recorded-content change; the touchmap and all
+log-consuming tests are unchanged).
+
+### 24.3 Secondary costs fixed (each measured, all semantics preserved)
+
+* **Per-step trace formatting**: untraced run loops built and dropped a
+  formatted `String` per executed instruction (`StepReport::desc`). The
+  `CpuBackend::set_describe` flag now gates it; `run`/`run_until_pc` turn it
+  off, `run_traced` keeps it on. Pinned by
+  `cpu::mips32::tests::set_describe_off_keeps_execution_identical_and_empties_desc`
+  (identical PC sequences with and without descriptions; `desc` empty iff
+  off). This was worth +16% on its own (1.45 → 1.68 M instr/s).
+* **Interrupt-line re-programming per step**: `set_ext_irq_lines` now
+  returns early when the platform lines are unchanged (the steady state for
+  the whole observed boot, IE = 0).
+* **Watch arming**: `watch_armed` short-circuits on an empty watch list
+  (the un-instrumented case; the zero-overhead path test already pinned the
+  no-watch behavior).
+* **Region lookup memo**: a 4-slot direct-mapped hot-region memo
+  (hashed 4 KiB page key — a plain `page % 4` parks every region in slot 0,
+  since all machine bases are page-aligned with page numbers ≡ 0 mod 4),
+  range-validated on hit, filled on miss; `add_region` asserts the
+  non-overlap invariant the memo relies on. Transparency pinned by
+  `memory::tests::hot_region_memo_is_transparent_under_slot_conflicts`.
+  Measured alone this was neutral on the real machine (the two hottest
+  regions are already early in the region vec) — it is kept as
+  insurance for region-count growth, at zero measured cost.
+
+### 24.4 Results
+
+| workload | before | after | speedup |
+|---|---|---|---|
+| deterministic boot chain (1,301,783 steps, `bench`) | 1.45 M instr/s | 19.4–19.6 M instr/s | **13.4×** |
+| full boot test (`tests/boot.rs`, 7 tests) | 1.37 s | 0.13 s | 10.5× |
+| two 30 M-step dispatcher-poll boots (`keycode_consumer`) | ~41 s | 3.06 s | 13.4× |
+| whole test suite (106 tests, release) | ~29 s | ~3.2 s | 9× |
+
+At 19.4 M instr/s a 100 M-step run costs ~5 s — roadmap item 5's target
+("from ~20 s to a few seconds") is met, with margin.
+
+**Semantic equivalence.** The pre-existing 104 tests pass unchanged —
+including the deterministic boot-chain pin (steps within the pinned window),
+the §20 entry-harness register-state pins, the §22 watchpoint pins and the
+§23 COP0/timer pins — plus the two new regression tests above. The bench
+reports an identical step count and stop fault before and after.
+
+### 24.5 The decode-cache question
+
+The roadmap had assumed a decode cache would be the mechanism. Measurement
+refuted that plan: the interpreter core (fetch + decode + execute) measured
+71.6 M steps/s against the 1.45 M full-machine rate, so decoding was < 2% of
+the cost. The actual defect was in the device layer. A decode cache remains
+available future work (it would still lift the raw core), but no longer
+bottlenecks any documented workflow.

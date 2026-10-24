@@ -14,6 +14,8 @@
 //! Physical regions are declared per machine configuration
 //! (see [`crate::machine`]) and are tagged as RAM, ROM or device-backed.
 
+use std::cell::Cell;
+
 use crate::devices::Device;
 
 /// Access width used by a load/store.
@@ -179,6 +181,20 @@ struct WatchRange {
 /// long runs over hot ranges). Further hits only raise the overflow flag.
 const WATCH_CAP_DEFAULT: usize = 1 << 20;
 
+/// Hot-region memo size (Milestone V, §24): 4 direct-mapped slots keyed by
+/// a hashed 4 KiB page. Boot execution has strong locality, so this
+/// resolves the vast majority of lookups without the linear region scan.
+const HOT_REGION_SLOTS: usize = 4;
+
+/// Slot index for `phys`: 2 bits from a multiplied hash of the 4 KiB page.
+/// A plain `page % 4` collides for the machine's aligned region bases
+/// (every base's page number is ≡ 0 mod 4), parking all regions in one
+/// slot and thrashing the memo.
+#[inline]
+fn hot_slot(phys: u32) -> usize {
+    (((phys >> 12).wrapping_mul(0x9E37_79B1)) >> 30) as usize
+}
+
 /// Backing kind of a physical region.
 enum RegionKind {
     /// Read-write memory.
@@ -212,6 +228,15 @@ impl Region {
 /// translation and dispatches to RAM, ROM or device regions.
 pub struct AddressSpace {
     regions: Vec<Region>,
+    /// Hot-region memo (Milestone V, §24): per-step fetch/load/store pay a
+    /// linear scan here otherwise; boot execution has strong locality (one
+    /// code region, one stack window), so a 4-slot direct-mapped memo keyed
+    /// by `phys >> 12` resolves most lookups with one range check. Entries
+    /// store the region's (base, limit, index) and a hit re-validates the
+    /// full range, so the memo is sound even if it thrashes; region layout
+    /// is frozen at machine construction (see `push_region`). `Cell` lets
+    /// the shared `&self` lookup path fill the memo.
+    hot: [Cell<(u32, u32, u32)>; HOT_REGION_SLOTS],
     /// Indices of regions whose device implements time behavior.
     tickable: Vec<usize>,
     /// Installed watchpoints (Q8 instrument, docs/firmware-analysis.md §22).
@@ -230,6 +255,7 @@ impl Default for AddressSpace {
     fn default() -> Self {
         Self {
             regions: Vec::new(),
+            hot: std::array::from_fn(|_| Cell::new((0, 0, u32::MAX))),
             tickable: Vec::new(),
             watches: Vec::new(),
             watch_hits: Vec::new(),
@@ -285,6 +311,9 @@ impl AddressSpace {
     }
 
     fn watch_armed(&self, kind: WatchKind, phys: u32) -> bool {
+        if self.watches.is_empty() {
+            return false; // hot path: no watches installed
+        }
         self.watches.iter().any(|w| {
             w.kinds.contains(kind) && phys >= w.base && phys < w.base.saturating_add(w.len)
         })
@@ -317,7 +346,7 @@ impl AddressSpace {
 
     /// Declare a RAM region over `base..base+len`.
     pub fn add_ram(&mut self, name: &str, base: u32, len: u32) {
-        self.regions.push(Region {
+        self.push_region(Region {
             base,
             len,
             name: name.to_string(),
@@ -328,7 +357,7 @@ impl AddressSpace {
     /// Declare a read-only ROM region filled with `data`.
     pub fn add_rom(&mut self, name: &str, base: u32, data: Vec<u8>) {
         let len = data.len() as u32;
-        self.regions.push(Region {
+        self.push_region(Region {
             base,
             len,
             name: name.to_string(),
@@ -339,12 +368,32 @@ impl AddressSpace {
     /// Declare a device-backed region. The device receives offsets relative
     /// to `base`.
     pub fn add_device(&mut self, name: &str, base: u32, len: u32, dev: Box<dyn Device>) {
-        self.regions.push(Region {
+        self.push_region(Region {
             base,
             len,
             name: name.to_string(),
             kind: RegionKind::Device(dev),
         });
+    }
+
+    /// Append a region, asserting the layout invariant the hot-region memo
+    /// relies on: regions do not overlap (the linear scan's first-match
+    /// rule is then equivalent to any region containing the address). The
+    /// region vec is append-only; indices stay stable for the memo.
+    fn push_region(&mut self, region: Region) {
+        let base = region.base;
+        let limit = region.base.saturating_add(region.len);
+        for r in &self.regions {
+            let r_base = r.base;
+            let r_limit = r.base.saturating_add(r.len);
+            debug_assert!(
+                limit <= r_base || base >= r_limit,
+                "overlapping regions: {} [{base:#x}..{limit:#x}) vs {} [{r_base:#x}..{r_limit:#x})",
+                region.name,
+                r.name,
+            );
+        }
+        self.regions.push(region);
     }
 
     /// Declare a device-backed region that advances with CPU time
@@ -383,11 +432,52 @@ impl AddressSpace {
     }
 
     fn find_region(&self, phys: u32) -> Option<&Region> {
-        self.regions.iter().find(|r| r.contains(phys))
+        // Hot memo first (Milestone V, §24): one or two range checks in the
+        // common case; entries are re-validated over the region's full
+        // range, so a stale/aliased slot costs only the linear rescan.
+        // Slot key: multiplied hash of the 4 KiB page — all region bases in
+        // the machine are page-aligned with page numbers ≡ 0 (mod 4), so a
+        // plain `page % 4` would park every region in slot 0 and thrash.
+        let slot = hot_slot(phys);
+        let (base, limit, idx) = self.hot[slot].get();
+        if base <= phys && phys < limit && (idx as usize) < self.regions.len() {
+            let r = &self.regions[idx as usize];
+            if r.base == base && r.base.saturating_add(r.len) == limit {
+                return Some(r);
+            }
+        }
+        let found = self.regions.iter().position(|r| r.contains(phys))?;
+        self.hot_set(phys, found);
+        Some(&self.regions[found])
     }
 
     fn find_region_mut(&mut self, phys: u32) -> Option<&mut Region> {
-        self.regions.iter_mut().find(|r| r.contains(phys))
+        let slot = hot_slot(phys);
+        let (base, limit, idx) = self.hot[slot].get();
+        let memo_hit = if base <= phys && phys < limit && (idx as usize) < self.regions.len() {
+            let r = &self.regions[idx as usize];
+            r.base == base && r.base.saturating_add(r.len) == limit
+        } else {
+            false
+        };
+        let found = if memo_hit {
+            idx as usize
+        } else {
+            let f = self.regions.iter_mut().position(|r| r.contains(phys))?;
+            self.hot_set(phys, f);
+            f
+        };
+        Some(&mut self.regions[found])
+    }
+
+    /// Fill the hot-region slot for `phys`'s 4 KiB page with the resolved
+    /// region. Keyed by the page so neighboring accesses share a slot;
+    /// conflicts overwrite (direct-mapped cache).
+    fn hot_set(&self, phys: u32, index: usize) {
+        let r = &self.regions[index];
+        let limit = r.base.saturating_add(r.len);
+        let slot = hot_slot(phys);
+        self.hot[slot].set((r.base, limit, index as u32));
     }
 
     /// Name of the region containing `phys`, for diagnostics.
@@ -680,6 +770,50 @@ impl AddressSpace {
 mod tests {
     use super::*;
     use crate::devices::LoggingDevice;
+
+    /// Milestone V (§24): the hot-region memo must stay transparent —
+    /// interleaved accesses over more regions than memo slots (slot
+    /// conflicts) resolve to the correct region data every time.
+    #[test]
+    fn hot_region_memo_is_transparent_under_slot_conflicts() {
+        let mut bus = AddressSpace::new();
+        // 6 disjoint RAM regions > HOT_REGION_SLOTS(4), hashed so that
+        // their 4 KiB pages collide in slots.
+        let bases = [
+            0x0000_0000u32,
+            0x0100_0000,
+            0x0200_0000,
+            0x0300_0000,
+            0x0400_0000,
+            0x0500_0000,
+        ];
+        for (i, b) in bases.iter().enumerate() {
+            bus.add_ram(&format!("r{i}"), *b, 0x1000);
+            bus.store(*b | 0x8000_0000, AccessSize::Word, 0xA000_0000 + i as u32)
+                .unwrap();
+        }
+        // Interleave accesses (memo thrash) and verify every read.
+        for round in 0..50 {
+            for (i, b) in bases.iter().enumerate() {
+                let v = bus.load(b | 0x8000_0000, AccessSize::Word).unwrap();
+                assert_eq!(v, 0xA000_0000 + i as u32, "round {round}");
+                let name = bus.region_name(*b).unwrap().to_string();
+                assert_eq!(name, format!("r{i}"));
+            }
+        }
+        // Writes through the memo path stay precise (no cross-region bleed).
+        bus.store(bases[1] | 0x8000_0000, AccessSize::Word, 0xDEAD_BEEF)
+            .unwrap();
+        for (i, b) in bases.iter().enumerate() {
+            let v = bus.load(b | 0x8000_0000, AccessSize::Word).unwrap();
+            let want = if i == 1 {
+                0xDEAD_BEEF
+            } else {
+                0xA000_0000 + i as u32
+            };
+            assert_eq!(v, want);
+        }
+    }
 
     #[test]
     fn kseg_translation() {

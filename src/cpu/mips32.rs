@@ -30,6 +30,10 @@ pub struct Mips32 {
     /// Level-triggered hardware interrupt inputs (IP2..IP7) driven by the
     /// platform interrupt controller via `set_ext_irq_lines`.
     ext_irq_lines: u8,
+    /// Per-step `StepReport::desc` formatting (Milestone V, §24): the
+    /// untraced run loops never read the description, so they disable it
+    /// to skip a heap-formatted `String` per executed instruction.
+    describe: bool,
 }
 
 impl Default for Mips32 {
@@ -50,6 +54,7 @@ impl Mips32 {
             in_delay_slot: false,
             cop0: Cop0::new(),
             ext_irq_lines: 0,
+            describe: true,
         }
     }
 
@@ -816,10 +821,18 @@ impl CpuBackend for Mips32 {
     }
 
     fn set_ext_irq_lines(&mut self, lines: u8) {
-        self.ext_irq_lines = lines & 0x3F;
+        let lines = lines & 0x3F;
+        if lines == self.ext_irq_lines {
+            return; // hot path: the platform lines are stable across most steps
+        }
+        self.ext_irq_lines = lines;
         // Reflect the hardware inputs in Cause.IP[7:2] (read-only to
         // software) so mfc0 Cause and the pending check see one state.
         self.cop0.set_ip_hw(self.ext_irq_lines);
+    }
+
+    fn set_describe(&mut self, on: bool) {
+        self.describe = on;
     }
 
     fn as_any(&self) -> &dyn std::any::Any {
@@ -887,7 +900,11 @@ impl CpuBackend for Mips32 {
         Ok(StepReport {
             pc,
             word,
-            desc: describe(word),
+            desc: if self.describe {
+                describe(word)
+            } else {
+                String::new()
+            },
             mem,
         })
     }
@@ -1042,6 +1059,43 @@ pub const REG_NAMES: [&str; 32] = [
 mod tests {
     use super::*;
     use crate::memory::AddressSpace;
+
+    /// Milestone V (§24): with descriptions disabled the report carries an
+    /// empty `desc` (no per-step formatting cost) but execution is
+    /// bit-identical to the describe-on path (same PCs, same stop).
+    #[test]
+    fn set_describe_off_keeps_execution_identical_and_empties_desc() {
+        let prog: [u32; 4] = [
+            0x2404_0008, // addiu $a0, $zero, 8
+            0x2484_FFFF, // addiu $a0, $a0, -1
+            0x1480_0000, // bne  $a0, $zero, +0 (self until $a0 == 0)
+            0x0000_0000, // nop (delay slot)
+        ];
+        let run = |describe: bool| -> (u64, Vec<u32>) {
+            let (mut cpu, mut bus) = setup(&prog);
+            cpu.reset(0x8000_0000);
+            cpu.set_describe(describe);
+            let mut pcs = Vec::new();
+            let mut steps = 0u64;
+            while let Ok(r) = cpu.step(&mut bus) {
+                assert_eq!(
+                    r.desc.is_empty(),
+                    !describe,
+                    "desc must be empty iff describe is off"
+                );
+                pcs.push(r.pc);
+                steps += 1;
+                if steps > 200 {
+                    break;
+                }
+            }
+            (steps, pcs)
+        };
+        let (on_steps, on_pcs) = run(true);
+        let (off_steps, off_pcs) = run(false);
+        assert_eq!(on_steps, off_steps);
+        assert_eq!(on_pcs, off_pcs);
+    }
 
     /// Build an address space with 64 KiB RAM at phys 0 (kseg0 0x80000000),
     /// load `words` at the start, and return (cpu, bus).

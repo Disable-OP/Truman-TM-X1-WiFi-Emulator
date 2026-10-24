@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.18.0 — Milestone V: performance (13.4× boot throughput, no semantic change)
+
+### Fixed
+- **Device access logs are O(1) rings** (`src/devices.rs`, all 12 record
+  sites): the capped log used `Vec::remove(0)` at capacity — an O(n)
+  128–256 KiB shift on every logged device access once full. The boot's hot
+  windows (param RAM, DDR PHY/controller, UART, keyport, engine registers)
+  log on every access, so this one line dominated whole runs. Backed by
+  `VecDeque` (`push_back`/`pop_front`), identical capped/oldest-dropped
+  semantics; the touchmap and every log-consuming test are unchanged.
+- Untraced run loops no longer build and drop a formatted trace `String`
+  per executed instruction: `CpuBackend::set_describe` gates
+  `StepReport::desc` formatting (`run`/`run_until_pc` disable it,
+  `run_traced` keeps it). Pinned by a CPU unit test (identical PC sequences
+  with and without descriptions; `desc` empty iff disabled).
+- `set_ext_irq_lines` returns early while the platform lines are unchanged
+  (the steady state of the entire observed boot); `watch_armed`
+  short-circuits on an empty watch list.
+
+### Added
+- `examples/bench.rs` — reproducible throughput harness over the
+  deterministic real-firmware boot chain (the roadmap item 5 instrument).
+- A hashed hot-region memo for physical region lookup (4 direct-mapped
+  slots, range-validated on hit, filled on miss; `add_region` asserts the
+  non-overlap invariant). Transparency pinned by a slot-conflict unit test.
+  Measured neutral on the current region layout; kept as insurance.
+
+### Results (docs/firmware-analysis.md §24)
+- Deterministic boot chain: 1.45 → 19.4–19.6 M instr/s (13.4×); 100 M-step
+  runs ≈ 5 s; full test suite ~29 s → ~3.2 s.
+- Semantic equivalence: all 104 pre-existing tests pass unchanged,
+  including the deterministic boot-chain step pin and the §20/§22/§23
+  register-state/watchpoint/COP0 pins.
+- Decode-cache verdict: refuted as the needed mechanism by measurement
+  (raw interpreter core already 71.6 M steps/s); optional future work.
+
 ## 0.17.0 — Milestone U: device coverage (Cause fixes, COP0 timer, keycode verdict)
 
 ### Added
