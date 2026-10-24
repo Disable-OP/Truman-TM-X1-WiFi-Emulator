@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.19.0 — Milestone W: the chunk-resync dialect refuted (§16.5's three open probes closed)
+
+### Added
+- `tools/fw_chunk_resync.py` — one decisive experiment combining the three
+  §16.5 probes: per-chunk framing from the 128-byte rounding rule, the
+  dialect meaning of the two mid-stream EOB symbols, and tail alignment to
+  the engine's start-bit + k×1024 grid. Sweeps 4 semantics (eob-grid /
+  hard-grid / eob-byte control / continuous control) × 4 grid origins × 4
+  periods (36 walks) with scoring by output size, strict validity (the
+  capstone word oracle), ASCII runs and eCos markers; `chain`, `gap` and
+  `sweep` subcommands.
+
+### Findings (docs/firmware-analysis.md §25)
+- **New structural fact**: the 16 body-gap bits (stream 1008..1023) are
+  all zero — the encoder padded the dynamic header to the 128-bit
+  boundary; `PNG_BS_OFFSET = 1088 = 64 (SP header) + round_up(1008, 128)`.
+  The "body = stream bit 1024" convention is now evidence-backed.
+- Baselines reproduced exactly (out 75,398 / EOB#1 106,259→28,260 /
+  EOB#2 45,137 / head `60 81`), validating the tool against §16.1/§16.3.
+- **Verdict**: no grid variant approaches the 79,872-byte image (best
+  76,799, Δ ≥ 3,073) and validity stays on the 46–49 % plateau; every
+  walk finds exactly 2 EOBs and runs to stream end. With the tool's
+  premise evidence-forced (the tables are uploaded once, §13.2), the
+  entire "same-tables, re-framed tail" class is refuted; the remaining
+  space stays as §21.6 bounded it.
+
 ## 0.18.0 — Milestone V: performance (13.4× boot throughput, no semantic change)
 
 ### Fixed

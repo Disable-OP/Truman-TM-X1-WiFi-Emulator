@@ -338,6 +338,10 @@ Track by evidence-first value, in rough order:
 6. ✅ **CI**: GitHub Actions running fmt/clippy/test on push (Milestone M).
 7. **SP tail structure + LZ value semantics** (§16.1/§16.3/§16.5): the
    primary boot blocker — decode the 169,229 bits after SP block 1.
+   Framing is now closed: §25 refutes the chunk-resync dialect family
+   (all three §16.5 probes) and §16.1 already excluded new block headers;
+   what remains is the §16.3 combined length+distance value semantics
+   class or hardware-side residue.
 
 ## Milestone P — size anchor + ladder verdict + pre-decode DRAM bound ✅ (commit pending)
 

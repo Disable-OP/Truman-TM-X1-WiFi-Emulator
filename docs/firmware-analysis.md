@@ -1079,6 +1079,8 @@ becomes immediately visible.
   derived from the driver's 128-byte rounding rule; (b) dialect meaning
   of mid-stream symbol 256 (2 occurrences); (c) whether the tail's bit
   positions align to the engine's start-bit + k×1024 grid.
+  *(All three resolved-negative in §25: the chunk-resync dialect family
+  is refuted; the body gap 1008..1023 is zero padding.)*
 * **Q8 checksum** (§16.2) — custom algorithm or different coverage;
   disassemble the loader's checksum routine via an access trace on the
   descriptor reads.
@@ -2144,3 +2146,89 @@ refuted that plan: the interpreter core (fetch + decode + execute) measured
 the cost. The actual defect was in the device layer. A decode cache remains
 available future work (it would still lift the raw core), but no longer
 bottlenecks any documented workflow.
+
+---
+
+## 25. Milestone W — the chunk-resync dialect: §16.5's three open probes
+### tested together and refuted (session record)
+
+The three probes §16.5 left open — (a) per-chunk framing from the driver's
+128-byte rounding rule, (b) the dialect meaning of the two mid-stream EOB
+symbols, (c) tail alignment to the engine's start-bit + k×1024 grid — are
+combined into one decisive experiment
+(`tools/fw_chunk_resync.py`, committed and reproducible).
+
+### 25.1 New structural fact: the body gap is all-zero padding
+
+The dynamic block header ends at stream bit **1008**; the engine's
+`PNG_BS_OFFSET = 1088` (container-relative) puts the body at stream bit
+**1024**. The 16 bits between them — stream bits 1008..1023 — are **all
+zero** (`gap` probe): the encoder padded the header up to the 128-bit
+boundary, and the driver's body start (1088 = 64 SP-header bits + 1024)
+is exactly `round_up(1008, 128) + 64`. This makes the "body = stream bit
+1024" convention used by every tool since Milestone M an evidence-backed
+fact, not a convention choice.
+
+### 25.2 The hypothesis: same tables, grid resync
+
+The premise is forced by evidence: the driver uploads the Huffman tables
+**once** (§13.2's verified program has exactly one round A and one round
+B), so the tail MUST decode with block 1's tables; the last remaining
+freedom was the bit position each "chunk" starts at and what EOB does.
+H-chunk: after the first EOB (bit 106,259, out 28,260) the engine resyncs
+to the next grid position (origin + k·period) and keeps decoding with the
+same tables; symbol 256 ends a chunk, not the stream.
+
+Four semantics swept: **A** eob-grid (EOB jumps to the first grid position
+≥ EOB end), **B** hard-grid (the decoder additionally resets at every grid
+line, aborting codes that cross it), **C** eob-byte control (EOB → next
+byte boundary), **D** continuous control (the RFC walk itself). Grids:
+origin ∈ {0, 64, 512, 1008} × period ∈ {512, 1024, 2048, 4096} — origin 0
+covers the hardware lattice (BS_OFFSET 1088 = stream 1024 + k·1024 ≡
+k·1024), origin 64 the container-byte lattice, origin 1008 the unpadded
+body lattice.
+
+### 25.3 Baselines reproduced exactly
+
+| walk | out | EOB#1 (bit, out) | EOB#2 (bit, out) | head |
+|---|---|---|---|---|
+| body 1024, continuous (D) | **75,398** | (106,259, 28,260) | (168,418, 45,137) | `60 81` |
+| body 1024, eob-byte (C) | 75,496 | (106,259, 28,260) | (168,418, 45,236) | `60 81` |
+| body 1008, continuous (D) | 75,394 | (106,259, 28,256) | (168,418, 45,133) | `00 00` |
+
+The continuous walk reproduces §16.1/§16.3's anchor numbers exactly
+(75,398 / 28,260 / 45,137), validating the tool; the earlier "EOB at
+106,245" (§16.1 wording) is the EOB code's START bit — it ends at
+106,259 as the chain probe reported.
+
+### 25.4 Sweep verdict — the framing family is refuted
+
+All 33 grid variants plus both controls (36 walks) complete to the stream
+end (no invalid-symbol fault — complete tables decode anything, as §16.1
+warned), each finds **exactly 2 EOBs**, and:
+
+| metric | range over all variants | required |
+|---|---|---|
+| output bytes | 74,443 – 76,799 | 79,872 (Δ ≥ 3,073 everywhere) |
+| strict validity | 46.2 – 48.8 % | ~90 %+ (real code) |
+| ASCII runs ≥ 6 | 62 – 115 (no eCos markers) | the image's strings |
+
+No variant meets the success criteria (fault-free, out within one row of
+79,872, validity ≥ 90 %). The best output size (mode B, origin 64,
+period 512: 76,799) is still 3,073 bytes short, and its validity is 47.1 %
+— the familiar plateau. Honoring the mid-stream EOBs as chunk ends (probe
+b) and every natural grid alignment (probes a, c) changes neither the
+size nor the content quality. **The tail is not a grid-framed continuation
+under block 1's tables.**
+
+### 25.5 What this closes — and what it cannot
+
+With §25.2's premise evidence-forced, the refutation covers the entire
+"same-tables, re-framed tail" class: per-chunk framing (a), EOB dialects
+(b), and grid alignment (c) are closed together. Combined with §16.1
+(no new block header exists in the tail) and §17.5 (no filter geometry),
+the only remaining hypotheses for the SP tail are the ones §21.6 already
+bounded: **combined length+distance value semantics with position shift**
+(§16.3's surviving class) or hardware-side residue that needs a real
+device. The head paradox and the size gap (−4,474 under the ±2-per-match
+predicates) stand as recorded; nothing in this sweep moves either.
