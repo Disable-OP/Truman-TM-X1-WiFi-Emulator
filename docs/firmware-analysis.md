@@ -1269,3 +1269,131 @@ ceiling; (2) extract the real device's pre-decode DRAM content at
 0x01600000 from hardware (or bound it: DDR-training patterns vs loader
 staging) to resolve the dist>output copy semantics; (3) Q8 checksum
 remains the decisive missing oracle.
+
+## 18. Milestone P — the size anchor and the ladder verdict (session record)
+
+### 18.1 The size anchor (corrects the Milestone O "exact fill" reading)
+
+Under the m2 bit accounting (length extra bits consumed per the RFC
+counts, distance extra bits not consumed — §17.5), the symbol path is
+**value-independent**: the Huffman parse of the fixed bits yields the
+same symbol sequence for every length-ladder candidate. The full-parse
+decode length is therefore a LINEAR function of the ladder,
+
+```
+S(L) = n_lit + extra_sum + sum_s(count[s] * L[s])
+     = 21,054 + 1,873 + sum_s(count[s] * L[s])            (m2 parse)
+```
+
+with per-symbol match counts [4175, 4451, 1111, 532, 495, 506, 123, 130,
+256, 115, 133, 68, 127, 148, 61, 26, 76, 55, 23, 21, 21, 4, 2, 7, 2, 5,
+4, 1, 12] (12,690 matches + 21,054 literals = 33,744 symbols; the parse
+consumes 275,488 bits = 100.0% of the stream, 8.16 bits/symbol — a
+compressor-like density).
+
+With the RFC ladder this evaluates to **S = 103,014 bytes — 23,142 bytes
+beyond the 79,872-byte image**. Milestone O's "m2 fills the image
+exactly" was the walk's image CAP firing (out crossed 79,872 with ~22%
+of the stream still unread), not an input-end property. Since the vendor
+tool encoded the image and the parse consumes every bit to input end,
+the engine's TRUE ladder must bring S(L) to the image size. This anchor
+has teeth: it prunes the entire degenerate-exploitation region that the
+§17.5 beam search fell into (high scores by racing through the stream
+with huge lengths, leaving most of it unread).
+
+### 18.2 The ladder search and its verdict (`examples/ladder_search.rs`)
+
+The search treats the 29 length-ladder values as unknown ROM constants
+under the m2 accounting, with the image-truncated strict validity oracle
+(§14.2) — re-based here on the crate's own MIPS32r2 decoder
+(`cpu::mips32::describe` tokens, calibrated on flash[0..0x10000), 49
+common mnemonics) so the search runs at Rust speed:
+
+* **Phase 0** — 477 in-band seed ladders (greedy count-weighted
+  decrements from RFC into the size band S ∈ [75,000, 80,130], then
+  band-preserving jitter).
+* **Phase 1** — every seed scores 56.8–57.1% (my oracle): a tight
+  cluster at the baseline, no outlier structure.
+* **Phase 2** — band-preserving coordinate descent (single + pair moves
+  over the high-count symbols): best 58.51%, ladder
+  `[1, 1, 4, 6, 7, 7, 9, 10, 11, 1, 11, 17, 19, 23, 27, 31, 35, 43, 51,
+  59, 67, 83, 105, 115, 131, 163, 194, 227, 256]` — non-monotone,
+  unstructured (L[0]=L[1]=L[9]=1 tweaks), unstable across seeds.
+* **Phase 3** — monotone projection of the winner: 55.70% ≈ baseline; a
+  ROM-like ordered ladder buys nothing.
+
+**Capstone cross-check** (`tools/fw_ladder_verify.py`, the published
+§14.2 oracle): RFC m2 baseline 47.0%, search winner 49.5%, monotone
+projection 47.3%. The +2.5-point lift of the winner is the same
+magnitude the beam search's per-match deltas bought by oracle
+exploitation (§17.5) — and unlike a semantics, it shows no structure.
+
+(The two oracles differ in absolute percentage — different decoder and
+calibration — so numbers are compared within each oracle only; every
+conclusion rests on the capstone cross-check.)
+
+**Verdict: the m2 length-ladder family (with the distance ladder at its
+RFC values) is REFUTED.** No size-feasible ladder scores materially
+above the baseline; the only ladders that score high (83.3% in the
+unconstrained pre-run of this tool) violate the size anchor by
+construction — their walks hit the image cap after only 4,633 of the
+33,744 parsed symbols, leaving ~80% of the stream unconsumed (a vendor
+tool does not encode 4x the image it ships). Together with the distance
+ladder mini-grid and field-order refutations (§17.5, §17.3), the
+"custom silicon ROM ladder" hypothesis now has both of its halves
+bounded: neither a re-valued distance ladder nor a re-valued length
+ladder (nor both at RFC shape) produces a structured validity jump under
+a size-feasible accounting.
+
+### 18.3 Pre-decode DRAM below the pixel base: bounded (`examples/dram_prebound.rs`)
+
+§17.5 item 2 asked for the real device's pre-decode DRAM content below
+the pixel buffer (phys 0x01600000), which dist>output copies would read
+if the engine's LZ window were the output stream itself. Emulator-side
+bound, both passes on the real firmware through the full boot (1,301,783
+steps to the known post-jump stop at 0xA1600050):
+
+* **Canary pass** (`AddressSpace::poke_phys`, new diagnostics API — the
+  CPU-facing store still rejects ROM, so this cannot smuggle writes into
+  running code): seeding 0x01500000..0x01600000 with 0xA5A5A5A5 and
+  booting changes **nothing** — 0 boot-written bytes in 0 ranges across
+  the whole 1 MiB.
+* **Fresh pass**: 0 non-zero bytes — the region is never touched.
+* Determinism check: trivially clean (nothing written, nothing read);
+  the boot never branches on the region's prior content.
+
+Consequences:
+
+1. The loader stages NOTHING below the pixel base; the only software
+   writes near the decode are the driver's own zero-fills of the band
+   buffer (0x02040000) and scaling buffer (§17.2).
+2. On the real device, below-base content is therefore determined solely
+   by DRAM initialization / DDR-training residue — not observable from
+   software, and deterministic across boots only if the training's last
+   write pattern there is fixed (not provable from this dump).
+3. **Device determinism + (1) imply the engine's dist>output source
+   cannot be raw below-base DRAM**: the boot jumps into the decoded
+   image and must do so identically on every power cycle, so any
+   semantic reading non-deterministic residue would make the boot
+   non-deterministic. The zero-filled band-buffer window (the emulator's
+   model) remains the only software-visible deterministic choice.
+4. Impact bound under the RFC parse (m1, `tools/fw_engine_lz.py`
+   semantics): exactly **458 matches** reach beyond the output start,
+   copying **3,001 bytes = 3.98%** of the 75,398-byte block-1 content
+   from the zero preset. Even if the window semantics were wrong in
+   exactly this dimension, at most 4% of the output differs — the 48%
+   validity baseline cannot be explained by window placement alone.
+
+### 18.4 What stays open
+
+* The engine's LZ value semantics: with length-ladder (this milestone),
+  distance-ladder (§17.5), field-order, framing, preset, shift and
+  filter families all refuted under size-feasible accountings, the
+  remaining hypothesis space is the ACCOUNTING itself — how the engine
+  consumes bits per symbol (e.g. a non-RFC extra-bit scheme, or the m4
+  all-fixed accounting with its own size anchor solved for BOTH ladders
+  jointly — 59 unknowns against the same linear anchor, feasible with
+  the §18.2 machinery).
+* Q8 (the desc[6] checksum) remains the decisive missing oracle (§14).
+* DDR-training residue below the pixel base: bounded, not extracted
+  (§18.3 item 2) — needs hardware, not more software.

@@ -206,3 +206,29 @@ Track by evidence-first value, in rough order:
 6. ✅ **CI**: GitHub Actions running fmt/clippy/test on push (Milestone M).
 7. **SP tail structure + LZ value semantics** (§16.1/§16.3/§16.5): the
    primary boot blocker — decode the 169,229 bits after SP block 1.
+
+## Milestone P — size anchor + ladder verdict + pre-decode DRAM bound ✅ (commit pending)
+
+- **Size anchor (§18.1)**: under the m2 accounting the symbol path is
+  value-independent, so the full-parse decode length is LINEAR in the
+  ladder; with RFC values it is 103,014 bytes vs the 79,872 image —
+  Milestone O's "exact fill" was the walk cap, not an input-end
+  property. The true ladder must satisfy S(L) = image size.
+- **Length-ladder search (§18.2)**: 477 in-band seeds cluster at the
+  baseline; band-preserving descent tops out at 58.51% (my oracle) /
+  49.5% (capstone) with NO structure; monotone projection ≈ baseline.
+  Capstone cross-checked (`tools/fw_ladder_verify.py`).
+- **Verdict**: the m2 length-ladder family (RFC distance ladder) is
+  refuted; unconstrained high scores are size-infeasible by
+  construction.
+- **Pre-decode DRAM bound (§18.3)**: canary + fresh boot replays prove
+  the boot NEVER writes below the pixel base (0 bytes in 1 MiB);
+  device determinism then forces the engine's dist>output source to the
+  zero-filled band buffer (the emulator's model). New diagnostics API
+  `AddressSpace::poke_phys` (ROM write-safe, store still faults).
+  Impact bound: 458 matches / 3,001 bytes = 3.98% of the block-1
+  content would differ under a below-base window semantics.
+- **Next (§18.4)**: the remaining hypothesis space is the BIT
+  ACCOUNTING itself — m4-style all-fixed accounting with BOTH ladders
+  (59 unknowns) solved jointly against the same linear anchor; Q8
+  checksum; DDR residue needs hardware.

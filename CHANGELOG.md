@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.12.0 — Milestone P: the size anchor; m2 length-ladder refuted; pre-decode DRAM bounded
+
+### Added
+- `examples/ladder_search.rs` — the Milestone P ladder hunt: the 29
+  length-ladder values as unknown ROM constants under the m2 accounting,
+  searched against the image-truncated validity oracle with the new
+  linear size anchor (in-band seeding, band-preserving coordinate
+  descent with pair moves, monotone projection). Oracle = the crate's
+  own MIPS32r2 decoder calibrated on the flash's code regions.
+- `tools/fw_ladder_verify.py` — capstone cross-check of the reported
+  finalists on the published §14.2 oracle.
+- `examples/dram_prebound.rs` — canary/fresh boot replays bounding the
+  pre-decode DRAM content below the PNG pixel buffer.
+- `AddressSpace::poke_phys` — diagnostics-only physical write (RAM and
+  ROM; the CPU-facing store still faults on ROM), with tests.
+
+### Resolved
+- **The size anchor** (§18.1): the m2 symbol path is value-independent,
+  so the full-parse decode length is linear in the ladder; the RFC
+  ladder gives 103,014 bytes vs the 79,872 image — Milestone O's
+  "exact fill" was the walk cap, not an input-end property.
+- **The m2 length-ladder family is refuted** (§18.2): no size-feasible
+  ladder beats the baseline beyond oracle-exploitation noise (+2.5
+  points, unstructured); unconstrained high scores are
+  size-infeasible.
+- **Pre-decode DRAM below the pixel base is never written by the boot**
+  (§18.3): 0 of 1 MiB across canary + fresh replays; device determinism
+  forces the engine's dist>output source to the zero-filled band
+  buffer; RFC-impact bound 458 matches / 3,001 bytes (3.98%).
+
+### Documented
+- docs/firmware-analysis.md §18; docs/roadmap.md Milestone P. Next: the
+  bit-accounting hypothesis space (m4 both-ladders joint solve), Q8.
+
 ## 0.11.1 — Milestone O: the ladder hunt (analysis session)
 
 ### Added

@@ -399,6 +399,41 @@ impl AddressSpace {
         }
     }
 
+    /// Diagnostic write to physical memory (mirror of [`Self::peek_phys`]).
+    /// Used by analysis examples to seed DRAM with canary patterns before a
+    /// run (e.g. bounding the pre-decode content around the PNG pixel
+    /// buffer, docs/firmware-analysis.md §18.3). Writing to a device region
+    /// goes through the device's normal write path; ROM is writable only
+    /// through this diagnostics path (the CPU-facing `store` rejects ROM,
+    /// so this cannot be used to smuggle writes into running code).
+    pub fn poke_phys(&mut self, phys: u32, size: AccessSize, value: u32) -> Option<()> {
+        let region = self.find_region_mut(phys)?;
+        let off = (phys - region.base) as usize;
+        match &mut region.kind {
+            RegionKind::Ram(bytes) | RegionKind::Rom(bytes) => {
+                let n = size.bytes() as usize;
+                if off + n > bytes.len() {
+                    return None;
+                }
+                match size {
+                    AccessSize::Byte => bytes[off] = value as u8,
+                    AccessSize::Half => {
+                        let b = value.to_le_bytes();
+                        bytes[off..off + 2].copy_from_slice(&b[..2]);
+                    }
+                    AccessSize::Word => {
+                        bytes[off..off + 4].copy_from_slice(&value.to_le_bytes());
+                    }
+                }
+                Some(())
+            }
+            RegionKind::Device(dev) => {
+                dev.write(off as u32, size, value);
+                Some(())
+            }
+        }
+    }
+
     /// Summary of declared regions for diagnostics output.
     pub fn region_map(&self) -> Vec<(String, u32, u32, &'static str)> {
         self.regions
@@ -518,5 +553,33 @@ mod tests {
         asp.store(0x8000_0010, AccessSize::Word, 0x1234_5678)
             .unwrap();
         assert_eq!(asp.peek_phys(0x10, AccessSize::Word), Some(0x1234_5678));
+    }
+
+    #[test]
+    fn poke_phys_seeds_ram_but_not_cpu_writable_rom() {
+        let mut asp = AddressSpace::new();
+        asp.add_ram("dram", 0, 0x100);
+        asp.add_rom("flash", 0x1000_0000, vec![0xAA; 0x100]);
+        // RAM: poke lands, peek sees it.
+        assert!(asp.poke_phys(0x40, AccessSize::Word, 0xA5A5_A5A5).is_some());
+        assert_eq!(asp.peek_phys(0x40, AccessSize::Word), Some(0xA5A5_A5A5));
+        // ROM: diagnostics path writes it (canonical 0xAA..0xA5).
+        assert!(asp
+            .poke_phys(0x1000_0010, AccessSize::Word, 0x1111_2222)
+            .is_some());
+        assert_eq!(
+            asp.peek_phys(0x1000_0010, AccessSize::Word),
+            Some(0x1111_2222)
+        );
+        // ...but the CPU-facing store still faults on ROM.
+        assert!(asp
+            .store(0xB000_0010, AccessSize::Word, 0xDEAD_BEEF)
+            .is_err());
+        assert_eq!(
+            asp.peek_phys(0x1000_0010, AccessSize::Word),
+            Some(0x1111_2222)
+        );
+        // Out-of-range pokes are None.
+        assert!(asp.poke_phys(0x200, AccessSize::Word, 0).is_none());
     }
 }
