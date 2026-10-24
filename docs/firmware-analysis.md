@@ -2686,3 +2686,89 @@ ladders, proving the tables flow through the engine path end-to-end.
 The hardware-session edit is therefore literally one constant: replace
 `ENGINE_VALUE_TABLES` with the capture-recovered values and run
 `dram_compare --post` (docs/hardware-session.md).
+
+## 32. Milestone AD — the post-handoff horizon, mapped (v0.24.0)
+
+### 32.1 The instrument
+
+Milestone AC made the engine's value tables injectable; the other half
+of the post-capture procedure is knowing what the machine does once the
+decompressed stage starts executing. The engine now answers that
+directly: `Machine::map_handoff(pre, post, head)` boots the real chain
+up to the loader's `jr v0` entry (`MachineConfig::handoff_entry`,
+default 0xA1600000 — the PNG_DEC pixel output address, §17), stopping
+before the stage's first instruction with the loader's register state
+live, then executes up to `post` further steps under the post-handoff
+instrument:
+
+- a per-4 KiB-page executed-instruction histogram (`PageHistogram`,
+  recorded per actually-executed instruction — a faulting instruction is
+  not counted);
+- MMIO watchpoints over every modeled device window (the sysreg page and
+  the three vendor windows), recording each post-handoff access with its
+  issuing `(step, PC)`, kind, width and value;
+- an optional per-instruction head trace of the first `head` post-handoff
+  instructions;
+- the UART console bytes emitted after the handoff.
+
+Everything is bounded by construction (pre/post budgets, watch cap with
+an explicit overflow flag, a 256-entry page histogram, a capped head
+trace) and deterministic (identical maps from fresh machines; identical
+counts in debug and release). The CLI exposes it as
+`truman-emulator map <firmware> [--pre-steps N] [--post-steps N]
+[--head N]`. The map is evidence-only: it asserts nothing about
+stage-internal semantics, and it is value-table-agnostic — the same
+command that documents the RFC decode's dead end today maps the real
+menu path the moment the recovered tables land (§32.3).
+
+### 32.2 The current horizon: 20 instructions, no I/O, one trap
+
+Measured on the committed image (SHA-256 prefix `5ca012b2…`), the map is:
+
+| Field | Value |
+|---|---|
+| handoff step | 1,301,763 (`run_until_pc` entry; +20 = the 1,301,783-step full-run trap pin of §17) |
+| registers live | `v0`=0xA1600000, `v1`=0x00013800 (79,872 = 78×1024 — the driver's pixel-count return, §13.6), `a0`=0x00000400 (= 1024 = PNG_IMG_WIDTH), `sp`=0x82004B80 (the driver's DRAM stack) |
+| post-handoff steps | 20 (all in the entry page 0xA1600000) |
+| stop | `UnknownInstruction { pc: 0xA1600050, word: 0x0000FFFF }` |
+| MMIO | none — zero accesses over every modeled device window |
+| console | none — zero UART bytes after the handoff |
+
+The 20 executed words are `00008160`, then mostly `00000000` (NOPs)
+punctuated by zero-upper-half words (`0x02140000`, `0x00004800`,
+`0x00008F00`, `0x00A5A703`, `0x00360000`, `0x20000000`, `0x00002000`,
+`0x02AC2700`) — harmless NOPs and shifts — ending at the `FFFF` halfword
+that kills the run. In dynamic terms this *is* the §19.1 head paradox:
+the RFC-decoded head executes trivially and dies on a literal within
++0x50, exactly as §19.3's static oracle predicted ("heads die on
+literals; ladder values cannot fix the head — the true decode's head
+must differ in kind"). The instrument therefore adds no new doubt about
+the blocker; it measures the blocker's blast radius precisely: from the
+handoff to death there is no device access and no output, so every
+post-handoff behavior the product ever shows (menu render, key
+dispatch, anything) lies beyond a wall this decode never gets past.
+
+### 32.3 What this pins — and the post-capture procedure
+
+- The menu path's first unmapped step is now a measured quantity: the
+  stage dies at entry+0x50 having touched nothing. When the capture-
+  recovered value tables replace `ENGINE_VALUE_TABLES` (§31.4), the
+  post-capture procedure is exactly: swap the constant, run `cargo test`
+  (all pins re-verify), then run `map` — the executed-page histogram
+  becomes the stage's real code map, the MMIO record becomes its device
+  init sequence in order, and the console delta shows what it prints. No
+  further instrumentation is anticipated.
+- Pinned in code (tests/map.rs): the synthetic instrument mechanics
+  (pages, MMIO attribution, console delta, unreached-handoff shape,
+  histogram ordering) and the real-firmware horizon above — handoff step,
+  live registers, 20 steps, the trap word at 0xA1600050, empty MMIO,
+  empty console, determinism across fresh machines.
+- Fresh survey (this session): public sources still contain no PNG_DEC
+  value-ROM evidence beyond the vendor driver lineage of §30. One
+  same-SoC avenue remains *out-of-repo*: a second SP container from the
+  same 1506HV family (another firmware dump encoded by the same vendor
+  tool against the same hardware ROM) would over-determine the 59
+  constants that one container leaves structurally underdetermined
+  (§30.3). Obtaining one means downloading third-party firmware, which
+  this project's constraints prohibit; the option is recorded here for
+  the owner's decision and deliberately not exercised.

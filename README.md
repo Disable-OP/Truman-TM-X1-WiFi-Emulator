@@ -9,7 +9,7 @@ the firmware itself** (static disassembly + dynamic execution traces), and
 every hypothesis is documented and falsifiable. Nothing is faked to look
 working — unimplemented hardware logs its accesses and is listed as unknown.
 
-## Current status — the real firmware boots to its eCos idle loop
+## Current status — the real firmware boots through the loader's handoff into the decompressed stage
 
 ```
 $ truman-emulator run firmware/1506HV_..._flashfile_20220902.bin
@@ -60,6 +60,14 @@ emulator models the PNG row semantics (the engine completes every
 programmed row; `tests/png.rs` pins the whole register program); the
 remaining blocker is the engine's LZ *value* semantics — which bytes a
 match copies (`docs/firmware-analysis.md` §17).
+
+**Milestone AD maps what executes after the handoff** (§32):
+`truman-emulator map` boots to the `jr v0` handoff and records the
+post-handoff horizon — today 20 instructions in the entry page, zero
+device accesses, zero console output, death on the RFC decode's first
+bad word (0xFFFF) at 0xA1600050. The instrument is value-table-
+agnostic: when the capture-recovered tables land, the same command maps
+the real menu path (executed-page code map, device init order, console).
 
 **Milestone R adds the decisive instrument** (`docs/firmware-analysis.md`
 §20): the **entry harness** (`examples/entry_oracle.rs`) boots the real
@@ -133,6 +141,11 @@ cargo build --release --example bench
 # Per-instruction trace of a window (PC, instruction, memory accesses)
 ./target/release/truman-emulator trace firmware/*.bin --max-steps 2000 --limit 120
 
+# Map the post-handoff horizon (executed pages, MMIO record, console;
+# Milestone AD / §32) — today the RFC decode dies at entry+0x50; post-capture
+# this same command maps the real menu path
+./target/release/truman-emulator map firmware/*.bin
+
 # Entry harness: execute candidate decodes as real code from the eCos entry
 # (see docs/firmware-analysis.md §20; tools/fw_syms_family.py generates them)
 python3 tools/fw_syms_family.py firmware/*.bin
@@ -168,7 +181,7 @@ fault/unknown instruction.
 | `src/devices.rs` | Device models: UART, timer, SPI controller, DDR PHY/controller, interrupt controller, param RAM, mirror window |
 | `src/machine.rs` | Machine composition (memory map = documented hypotheses) + run loop + IRQ injection API |
 | `src/firmware.rs`, `src/boot.rs` | Image identification/validation, reset/diagnostics |
-| `src/bin/truman-emulator.rs` | CLI frontend (`inspect` / `run` / `trace`) |
+| `src/bin/truman-emulator.rs` | CLI frontend (`inspect` / `run` / `trace` / `map`) |
 | `tests/boot.rs`, `tests/interrupt.rs` | Integration tests: real-firmware boot chain, interrupt injection |
 | `tests/hwsession.rs` | Milestone Y: capture-comparison/residue analysis pins + the real-firmware reference path |
 | `tests/watch.rs`, `tests/q8.rs` | Watchpoint mechanics; the §22 runtime-evidence pins (loader reads exactly three descriptor words, one-pass copy, no checksum pass) |

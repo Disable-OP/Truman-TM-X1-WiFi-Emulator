@@ -39,7 +39,7 @@ pub struct StepReport {
 }
 
 /// Errors that terminate emulation cleanly (never panic, never loop).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CpuError {
     /// Memory fault (fetch/read/write/alignment).
     Fault { pc: u32, fault: AccessFault },

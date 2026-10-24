@@ -36,6 +36,13 @@ pub type AccessLog = std::rc::Rc<
     std::cell::RefCell<std::collections::VecDeque<(u32, crate::memory::AccessSize, u32, bool)>>,
 >;
 
+/// The loader's `jr v0` handoff entry (§13.3): the PNG_DEC pixel output
+/// address (PNG_PXL_EXT_ADDR = 0x01600000) executed under the kseg1
+/// alias — the decompressed stage's documented load address. The
+/// [`MachineConfig::handoff_entry`] default; see
+/// [`Machine::map_handoff`].
+pub const DEFAULT_HANDOFF_ENTRY: u32 = 0xA160_0000;
+
 /// Machine hardware configuration.
 #[derive(Debug, Clone)]
 pub struct MachineConfig {
@@ -91,6 +98,12 @@ pub struct MachineConfig {
     /// faults in this model — the stub exists so the map stays explicit.
     pub win_300_base: u32,
     pub win_300_size: u32,
+    /// The loader's `jr v0` handoff entry (§13.3): the PNG_DEC pixel
+    /// output address (PNG_PXL_EXT_ADDR = 0x01600000) executed under the
+    /// kseg1 alias — the decompressed stage's documented load address.
+    /// [`Machine::map_handoff`] stops here before executing the stage's
+    /// first instruction, leaving the loader's register state live.
+    pub handoff_entry: u32,
 }
 
 impl Default for MachineConfig {
@@ -123,12 +136,13 @@ impl Default for MachineConfig {
             win_100_size: 0x0010_0000,
             win_300_base: 0x3000_0000,
             win_300_size: 0x0010_0000,
+            handoff_entry: DEFAULT_HANDOFF_ENTRY,
         }
     }
 }
 
 /// Why a run stopped.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StopReason {
     /// Executed the requested number of instructions.
     StepLimit,
@@ -771,6 +785,198 @@ impl Machine {
         self.cpu.snapshot()
     }
 
+    /// Run up to `max_steps` instructions while recording a per-4KiB-page
+    /// executed-instruction histogram (Milestone AD, §32). Semantics are
+    /// exactly [`Machine::run`]; the histogram is instrumentation, not a
+    /// behavior change (only instructions that actually executed are
+    /// counted — the faulting instruction of a `StopReason::Cpu` stop is
+    /// not).
+    pub fn run_observed(&mut self, max_steps: u64, hist: &mut PageHistogram) -> RunResult {
+        self.cpu.set_describe(false);
+        let mut steps: u64 = 0;
+        let stop = loop {
+            if steps >= max_steps {
+                break StopReason::StepLimit;
+            }
+            if self.bus.has_watches() {
+                self.bus.watch_ctx = WatchCtx {
+                    step: steps,
+                    pc: self.cpu.pc(),
+                };
+            }
+            self.cpu.set_ext_irq_lines(self.intc_line.get());
+            let pc_before = self.cpu.pc();
+            match self.cpu.step(&mut self.bus) {
+                Ok(_) => {
+                    hist.record(pc_before);
+                    steps += 1;
+                    self.bus.tick();
+                    self.timer_count.set(self.timer_count.get().wrapping_add(1));
+                    self.service_decomp_engine();
+                }
+                Err(e) => break StopReason::Cpu(e),
+            }
+        };
+        let touchmap = self
+            .logs
+            .iter()
+            .map(|(name, log)| {
+                let offsets: std::collections::BTreeSet<u32> =
+                    log.borrow().iter().map(|e| e.0).collect();
+                (name.clone(), offsets.into_iter().collect())
+            })
+            .collect();
+        RunResult {
+            steps,
+            stop,
+            pc: self.cpu.pc(),
+            touchmap,
+        }
+    }
+
+    /// Map the post-handoff horizon (Milestone AD, §32).
+    ///
+    /// Boot the real chain up to the loader's `jr v0` entry
+    /// ([`MachineConfig::handoff_entry`]) within `pre_budget` steps —
+    /// stopping *before* the stage's first instruction executes, with the
+    /// loader's register state live — then execute up to `post_budget`
+    /// further steps under the post-handoff instrument:
+    ///
+    /// - a per-4KiB-page executed-instruction histogram
+    ///   ([`PageHistogram`]),
+    /// - MMIO watchpoints over every modeled device window (the sysreg
+    ///   page and the three vendor windows), recording each post-handoff
+    ///   access with its issuing `(step, PC)`,
+    /// - an optional per-instruction head trace of the first `head_trace`
+    ///   post-handoff instructions,
+    /// - the UART console bytes emitted after the handoff.
+    ///
+    /// The map is evidence-only: it asserts nothing about stage-internal
+    /// semantics. With the RFC value tables ([`ENGINE_VALUE_TABLES`]) the
+    /// stage dies on its first bad instruction (§32.2); when the capture-
+    /// recovered tables land, this same call maps the real menu path.
+    pub fn map_handoff(
+        &mut self,
+        pre_budget: u64,
+        post_budget: u64,
+        head_trace: usize,
+    ) -> HandoffMap {
+        let handoff_pc = self.config.handoff_entry;
+        let pre = self.run_until_pc(pre_budget, handoff_pc);
+        if !matches!(pre.stop, StopReason::EntryReached { .. }) {
+            return HandoffMap {
+                handoff_reached: false,
+                pre_steps: pre.steps,
+                handoff_pc,
+                handoff_regs: None,
+                post_steps: 0,
+                post_stop: None,
+                final_pc: pre.pc,
+                exec_pages: Vec::new(),
+                mmio: Vec::new(),
+                mmio_overflow: false,
+                console_after: String::new(),
+                head: Vec::new(),
+            };
+        }
+        let handoff_regs = Some(self.snapshot());
+        let console_at_handoff = self.uart_output.borrow().len();
+
+        // Watch every modeled device window so post-handoff MMIO is
+        // captured with (step, PC) attribution. Data reads and writes only;
+        // executed code is covered by the page histogram.
+        self.bus.add_watch(
+            self.config.sysreg_base,
+            self.config.sysreg_size,
+            WatchKinds::READ_WRITE,
+        );
+        self.bus.add_watch(
+            self.config.win_180_base,
+            self.config.win_180_size,
+            WatchKinds::READ_WRITE,
+        );
+        self.bus.add_watch(
+            self.config.win_100_base,
+            self.config.win_100_size,
+            WatchKinds::READ_WRITE,
+        );
+        self.bus.add_watch(
+            self.config.win_300_base,
+            self.config.win_300_size,
+            WatchKinds::READ_WRITE,
+        );
+
+        let mut hist = PageHistogram::new();
+        let mut head: Vec<crate::cpu::StepReport> = Vec::new();
+        let mut post_steps: u64 = 0;
+        let mut post_stop: Option<StopReason> = None;
+        let mut mmio: Vec<(
+            u64,
+            u32,
+            u32,
+            crate::memory::WatchKind,
+            crate::memory::AccessSize,
+            u32,
+        )> = Vec::new();
+
+        // Segment 1: the head trace (optional). Watch hits drained here are
+        // already post-window-relative (the loops number steps from zero).
+        let mut head_steps: u64 = 0;
+        if head_trace > 0 {
+            let n = (head_trace as u64).min(post_budget);
+            let mut tracer = Tracer::new(head_trace);
+            let r1 = self.run_traced(n, &mut tracer);
+            head_steps = r1.steps;
+            post_steps += r1.steps;
+            head = tracer.drain();
+            // The traced segment does not feed the histogram itself — its
+            // executed PCs are exactly the head reports.
+            for r in &head {
+                hist.record(r.pc);
+            }
+            post_stop = Some(r1.stop);
+            for h in self.take_watch_hits() {
+                mmio.push((h.step, h.pc, h.phys, h.kind, h.size, h.value));
+            }
+        }
+
+        // Segment 2: the remaining budget under the histogram-only loop.
+        if head_steps < post_budget && matches!(post_stop, Some(StopReason::StepLimit) | None) {
+            let r2 = self.run_observed(post_budget - head_steps, &mut hist);
+            post_steps += r2.steps;
+            post_stop = Some(r2.stop);
+            // This segment's loop numbered steps from zero again — shift
+            // them past the head segment so every hit is post-window-relative.
+            for h in self.take_watch_hits() {
+                mmio.push((h.step + head_steps, h.pc, h.phys, h.kind, h.size, h.value));
+            }
+        }
+        let mmio_overflow = self.bus.watch_overflow();
+        self.clear_watches();
+
+        let uart_len = self.uart_output.borrow().len();
+        let console_after = if uart_len > console_at_handoff {
+            String::from_utf8_lossy(&self.uart_output.borrow()[console_at_handoff..]).into_owned()
+        } else {
+            String::new()
+        };
+
+        HandoffMap {
+            handoff_reached: true,
+            pre_steps: pre.steps,
+            handoff_pc,
+            handoff_regs,
+            post_steps,
+            post_stop,
+            final_pc: self.cpu.pc(),
+            exec_pages: hist.top_pages(256),
+            mmio,
+            mmio_overflow,
+            console_after,
+            head,
+        }
+    }
+
     /// Bytes emitted by the emulated UART so far (the serial console).
     pub fn uart_bytes(&self) -> Vec<u8> {
         self.uart_output.borrow().clone()
@@ -969,6 +1175,103 @@ pub fn classify_residue(captured: &[u8]) -> ResidueReport {
         longest_nonzero_run: longest_run,
         nonzero_blocks,
     }
+}
+
+/// Per-4KiB-page executed-instruction histogram (Milestone AD, §32).
+/// Recorded by [`Machine::run_observed`]: the executed-code map of a run
+/// window without storing per-step records. Only instructions that
+/// actually executed are counted.
+#[derive(Debug, Clone, Default)]
+pub struct PageHistogram {
+    pages: std::collections::BTreeMap<u32, u64>,
+    total: u64,
+}
+
+impl PageHistogram {
+    /// New empty histogram.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Record one executed instruction at `pc`.
+    pub fn record(&mut self, pc: u32) {
+        *self.pages.entry(pc & 0xFFFF_F000).or_insert(0) += 1;
+        self.total += 1;
+    }
+
+    /// Total instructions recorded.
+    pub fn total(&self) -> u64 {
+        self.total
+    }
+
+    /// Distinct pages recorded.
+    pub fn page_count(&self) -> usize {
+        self.pages.len()
+    }
+
+    /// Executed pages, descending by instruction count (ties ascending by
+    /// page base), at most `n` entries.
+    pub fn top_pages(&self, n: usize) -> Vec<(u32, u64)> {
+        let mut v: Vec<(u32, u64)> = self.pages.iter().map(|(k, c)| (*k, *c)).collect();
+        v.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        v.truncate(n);
+        v
+    }
+
+    /// All recorded pages ascending by base.
+    pub fn pages(&self) -> impl Iterator<Item = (u32, u64)> + '_ {
+        self.pages.iter().map(|(k, c)| (*k, *c))
+    }
+
+    /// Instruction count recorded for one page base (masked to 4 KiB).
+    pub fn count_at(&self, base: u32) -> Option<u64> {
+        self.pages.get(&(base & 0xFFFF_F000)).copied()
+    }
+}
+
+/// Structured post-handoff execution map (Milestone AD, §32): what the
+/// machine actually does after the loader's `jr v0` into the decompressed
+/// stage. Evidence-only — every field is observed, none is assumed; no
+/// stage-internal semantics are asserted. Deterministic for a deterministic
+/// machine.
+#[derive(Debug, Clone)]
+pub struct HandoffMap {
+    /// Whether the handoff entry was reached within the pre budget.
+    pub handoff_reached: bool,
+    /// Steps consumed booting to the handoff (when reached; otherwise the
+    /// steps the pre run consumed before its stop).
+    pub pre_steps: u64,
+    /// The handoff entry PC ([`MachineConfig::handoff_entry`]).
+    pub handoff_pc: u32,
+    /// CPU snapshot at the handoff — the loader's live register state
+    /// (on the real firmware: `v1` = the driver's 0x13800 return value,
+    /// §19.1). `None` when the handoff was not reached.
+    pub handoff_regs: Option<crate::cpu::CpuSnapshot>,
+    /// Instructions executed after the handoff (a faulting instruction is
+    /// not counted).
+    pub post_steps: u64,
+    /// Why the post window ended (`None` when the handoff was not reached).
+    pub post_stop: Option<StopReason>,
+    /// Final PC after the post window.
+    pub final_pc: u32,
+    /// Executed 4 KiB pages, descending by instruction count (at most 256).
+    pub exec_pages: Vec<(u32, u64)>,
+    /// Post-handoff MMIO accesses over the modeled device windows:
+    /// `(step_in_post_window, pc, phys_addr, kind, size, value)`.
+    pub mmio: Vec<(
+        u64,
+        u32,
+        u32,
+        crate::memory::WatchKind,
+        crate::memory::AccessSize,
+        u32,
+    )>,
+    /// True when the watch hit cap truncated the MMIO record.
+    pub mmio_overflow: bool,
+    /// UART console bytes emitted after the handoff (lossy UTF-8).
+    pub console_after: String,
+    /// The first post-handoff instructions, when a head trace was requested.
+    pub head: Vec<crate::cpu::StepReport>,
 }
 
 /// Ring-buffer instruction tracer.

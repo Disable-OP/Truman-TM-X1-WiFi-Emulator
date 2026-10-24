@@ -68,7 +68,7 @@ impl FaultKind {
 /// A failed memory access, with both the virtual and (attempted) physical
 /// address so diagnostics can distinguish translation problems from
 /// physical decode problems.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AccessFault {
     /// Virtual address issued by the CPU.
     pub vaddr: u32,

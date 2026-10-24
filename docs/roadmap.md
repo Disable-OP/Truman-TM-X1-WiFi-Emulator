@@ -1,5 +1,24 @@
 # Roadmap
 
+## Milestone AD — the post-handoff horizon, mapped ✅ (v0.24.0)
+
+- **The instrument (§32.1)**: `Machine::map_handoff(pre, post, head)`
+  plus CLI `map` — boots to the loader's `jr v0` entry
+  (`MachineConfig::handoff_entry`, default 0xA1600000) and records the
+  post window: a per-4 KiB-page executed-instruction histogram, MMIO
+  watchpoints over every modeled device window with `(step, PC)`
+  attribution, the console delta, and an optional head trace. Bounded by
+  construction; deterministic.
+- **The current horizon, measured (§32.2)**: handoff at step 1,301,763
+  with `v1`=0x13800 (79,872 pixels) and `a0`=0x400 (PNG width) live;
+  20 instructions, all in the entry page; death on the 0xFFFF word at
+  0xA1600050; zero MMIO; zero console — the §19.1 head paradox, now a
+  dynamic measurement.
+- **Post-capture procedure closed (§32.3)**: swap `ENGINE_VALUE_TABLES`
+  → `cargo test` → `map` — the menu path (code map, device init order,
+  console) is mapped by the same command. Pinned in `tests/map.rs`;
+  125 tests, debug and release.
+
 ## Milestone AC — the value-table seam ✅ (v0.23.2)
 
 - **Prep for the hardware session (§31.4)**: the engine's length/

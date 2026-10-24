@@ -5,6 +5,9 @@
 //! - `run <firmware> [--max-steps N] [--trace-tail N] [-v]` — boot and execute
 //! - `trace <firmware> [--max-steps N] [--limit N] [-v]` — boot and print a
 //!   per-instruction trace of the first N steps
+//! - `map <firmware> [--pre-steps N] [--post-steps N] [--head N]` — boot to
+//!   the loader's `jr v0` handoff and map the post-handoff horizon
+//!   (Milestone AD, §32): executed pages, MMIO touches, console, head trace
 //!
 //! Exit codes: 0 = success, 1 = usage/IO error, 2 = emulation stopped on a
 //! condition (fault/unknown instruction/step limit).
@@ -24,11 +27,15 @@ fn usage() -> String {
          \x20 truman-emulator inspect <firmware-path>\n\
          \x20 truman-emulator run <firmware-path> [--max-steps N] [--trace-tail N] [-v]\n\
          \x20 truman-emulator trace <firmware-path> [--max-steps N] [--limit N] [-v]\n\
+         \x20 truman-emulator map <firmware-path> [--pre-steps N] [--post-steps N] [--head N]\n\
          \n\
          OPTIONS:\n\
          \x20 --max-steps N   instruction budget (default: run = 1_000_000, trace = 1_000)\n\
          \x20 --trace-tail N  print last N traced instructions on stop (default 24)\n\
          \x20 --limit N       print first N traced instructions (default 100)\n\
+         \x20 --pre-steps N   map: budget for booting to the handoff (default 2_000_000)\n\
+         \x20 --post-steps N  map: post-handoff execution budget (default 1_000_000)\n\
+         \x20 --head N        map: trace the first N post-handoff instructions (default 64)\n\
          \x20 -v              verbose diagnostics"
     )
 }
@@ -83,6 +90,7 @@ fn dispatch(args: &[String]) -> Result<ExitCode, ArgsError> {
         "inspect" => cmd_inspect(&args[1..]),
         "run" => cmd_run(&args[1..]),
         "trace" => cmd_trace(&args[1..]),
+        "map" => cmd_map(&args[1..]),
         "--help" | "-h" | "help" => {
             println!("{}", usage());
             Ok(ExitCode::from(0))
@@ -399,5 +407,168 @@ fn cmd_trace(args: &[String]) -> Result<ExitCode, ArgsError> {
         truman_emulator::machine::StopReason::StepLimit => Ok(ExitCode::from(0)),
         truman_emulator::machine::StopReason::Cpu(_) => Ok(ExitCode::from(2)),
         truman_emulator::machine::StopReason::EntryReached { .. } => Ok(ExitCode::from(0)),
+    }
+}
+
+struct MapOptions {
+    pre_steps: u64,
+    post_steps: u64,
+    head: usize,
+    verbose: bool,
+}
+
+fn parse_map_options(args: &[String]) -> Result<(MapOptions, Vec<String>), ArgsError> {
+    let mut opts = MapOptions {
+        pre_steps: 2_000_000,
+        post_steps: 1_000_000,
+        head: 64,
+        verbose: false,
+    };
+    let mut rest = Vec::new();
+    let mut i = 0;
+    while i < args.len() {
+        let take = |name: &str, slot: &mut u64| -> Result<(), ArgsError> {
+            let v = args
+                .get(i + 1)
+                .ok_or_else(|| ArgsError::MissingValue(name.to_string()))?;
+            *slot = v
+                .parse()
+                .map_err(|_| ArgsError::BadOption(name.to_string()))?;
+            Ok(())
+        };
+        match args[i].as_str() {
+            "--pre-steps" => {
+                take("--pre-steps", &mut opts.pre_steps)?;
+                i += 2;
+            }
+            "--post-steps" => {
+                take("--post-steps", &mut opts.post_steps)?;
+                i += 2;
+            }
+            "--head" => {
+                let v = args
+                    .get(i + 1)
+                    .ok_or_else(|| ArgsError::MissingValue("--head".into()))?;
+                opts.head = v
+                    .parse()
+                    .map_err(|_| ArgsError::BadOption("--head".into()))?;
+                i += 2;
+            }
+            "-v" | "--verbose" => {
+                opts.verbose = true;
+                i += 1;
+            }
+            other if other.starts_with('-') => return Err(ArgsError::BadOption(other.to_string())),
+            other => {
+                rest.push(other.to_string());
+                i += 1;
+            }
+        }
+    }
+    Ok((opts, rest))
+}
+
+/// `map`: boot to the loader's `jr v0` handoff and map what executes after
+/// it (Milestone AD, §32). Evidence-only output; exit 2 when the post
+/// window ends on a CPU condition or the handoff is not reached, 0 when it
+/// ends on the step budget.
+fn cmd_map(args: &[String]) -> Result<ExitCode, ArgsError> {
+    let (opts, rest) = parse_map_options(args)?;
+    let path = parse_path_arg(&rest, "map")?;
+    let (img, _id) = match load_and_identify(&path) {
+        Ok(v) => v,
+        Err(c) => return Ok(c),
+    };
+    let mut machine = Machine::new(MachineConfig::default(), &img);
+    for line in boot::reset_with_diagnostics(&mut machine, opts.verbose) {
+        println!("{line}");
+    }
+    println!(
+        "map: boot to handoff (budget {}), then observe up to {} steps…",
+        opts.pre_steps, opts.post_steps
+    );
+    let map = machine.map_handoff(opts.pre_steps, opts.post_steps, opts.head);
+
+    if !map.handoff_reached {
+        println!(
+            "map: handoff NOT reached within {} steps (stop: {:?}, pc=0x{:08x})",
+            opts.pre_steps, map.post_stop, map.final_pc
+        );
+        return Ok(ExitCode::from(2));
+    }
+    let regs = map
+        .handoff_regs
+        .as_ref()
+        .expect("handoff reached implies a snapshot");
+    println!(
+        "map: handoff at step {} -> pc=0x{:08x}  v0=0x{:08x} v1=0x{:08x} a0=0x{:08x} sp=0x{:08x}",
+        map.pre_steps, map.handoff_pc, regs.regs[2], regs.regs[3], regs.regs[4], regs.regs[29]
+    );
+    match &map.post_stop {
+        Some(stop) => println!(
+            "map: post-handoff {} steps, stop: {stop}, final pc=0x{:08x}",
+            map.post_steps, map.final_pc
+        ),
+        None => println!("map: post-handoff budget exhausted before execution"),
+    }
+
+    if map.exec_pages.is_empty() {
+        println!("map: executed pages: (none)");
+    } else {
+        println!("-- executed pages (4 KiB, top) --");
+        for (base, count) in map.exec_pages.iter().take(8) {
+            println!("  0x{base:08x}  x{count}");
+        }
+        if map.exec_pages.len() > 8 {
+            println!("  (+{} more)", map.exec_pages.len() - 8);
+        }
+    }
+
+    if map.mmio.is_empty() {
+        println!("map: post-handoff MMIO: (no accesses over modeled device windows)");
+    } else {
+        println!("-- post-handoff MMIO ({} accesses) --", map.mmio.len());
+        if map.mmio_overflow {
+            println!("  (watch cap hit — record truncated)");
+        }
+        for (step, pc, phys, kind, size, value) in map.mmio.iter().take(64) {
+            println!(
+                "  step {step:>7}  pc=0x{pc:08x}  {} 0x{phys:08x}/{:x} = 0x{value:08x}",
+                match kind {
+                    truman_emulator::memory::WatchKind::Read => "R",
+                    truman_emulator::memory::WatchKind::Write => "W",
+                    truman_emulator::memory::WatchKind::Fetch => "F",
+                },
+                size.bytes()
+            );
+        }
+        if map.mmio.len() > 64 {
+            println!("  (+{} more)", map.mmio.len() - 64);
+        }
+    }
+
+    if map.console_after.is_empty() {
+        println!("map: console after handoff: (no UART output)");
+    } else {
+        println!("-- serial console after handoff --");
+        for line in map.console_after.lines() {
+            println!("  | {line}");
+        }
+        if !map.console_after.ends_with('\n') {
+            println!();
+        }
+    }
+
+    if !map.head.is_empty() {
+        println!("-- first {} post-handoff instructions --", map.head.len());
+        for r in &map.head {
+            print_step(r);
+        }
+    }
+
+    match map.post_stop {
+        Some(truman_emulator::machine::StopReason::StepLimit) | None => Ok(ExitCode::from(0)),
+        Some(truman_emulator::machine::StopReason::Cpu(_)) => Ok(ExitCode::from(2)),
+        Some(truman_emulator::machine::StopReason::EntryReached { .. }) => Ok(ExitCode::from(0)),
     }
 }

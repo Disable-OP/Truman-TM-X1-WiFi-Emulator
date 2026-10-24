@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.24.0 — Milestone AD: the post-handoff horizon, mapped (§32)
+
+### Added
+- `Machine::map_handoff(pre, post, head)` + `Machine::run_observed` +
+  `PageHistogram` (machine.rs): boot to the loader's `jr v0` handoff
+  (`MachineConfig::handoff_entry`, default `DEFAULT_HANDOFF_ENTRY` =
+  0xA1600000) and record the post-handoff horizon — a per-4 KiB-page
+  executed-instruction histogram, MMIO watchpoints over every modeled
+  device window (sysreg page + the three vendor windows) with
+  `(step, PC)` attribution, the UART console delta, and an optional
+  per-instruction head trace. Bounded by construction; the `HandoffMap`
+  report is evidence-only and value-table-agnostic.
+- CLI subcommand `map <firmware> [--pre-steps N] [--post-steps N]
+  [--head N]`: prints the handoff register state, the post-handoff stop
+  reason, executed pages, the MMIO record, the console delta and the
+  head trace (exit 2 when the post window ends on a CPU condition or
+  the handoff is not reached).
+- `tests/map.rs` (5 tests): the synthetic instrument mechanics (pages,
+  MMIO attribution, console delta, unreached-handoff shape, histogram
+  ordering) and the real-firmware horizon pinned exactly (handoff step
+  1,301,763; v1=0x13800 and a0=0x400 live; 20 post-handoff instructions;
+  `UnknownInstruction` at 0xA1600050 on 0x0000FFFF; empty MMIO; empty
+  console; determinism across fresh machines).
+
+### Notes
+- The measured horizon (§32.2) confirms §19.3's static verdict: the
+  RFC-decoded stage head executes 20 trivial instructions (NOPs /
+  zero-upper-half shifts), touches no device, prints nothing, and dies
+  on a literal 0xFFFF at entry+0x50. The menu path remains blocked on
+  the engine's value ROM (§30); the same `map` command maps the real
+  path once the recovered tables land (§31.4 + §32.3).
+- 125 tests (was 120); fmt / clippy `-D warnings` / check green, debug
+  and release.
+
 ## 0.23.2 — Milestone AC: the value-table seam (§31.4)
 
 ### Added
