@@ -1,10 +1,11 @@
-//! Integration tests: the post-handoff map (Milestone AD, §32).
+//! Integration tests: the post-handoff map (Milestones AD+AE, §32–§33).
 //!
 //! [`truman_emulator::machine::Machine::map_handoff`] boots the chain up to
 //! the loader's `jr v0` entry and records what executes after it: the
 //! executed-page histogram, every MMIO access over the modeled device
-//! windows with `(step, PC)` attribution, the console bytes emitted after
-//! the handoff, and an optional per-instruction head trace.
+//! windows with `(step, PC)` attribution, the DRAM data-write map (written
+//! pages, total stores, bounded first-store sample), the console bytes
+//! emitted after the handoff, and an optional per-instruction head trace.
 //!
 //! The synthetic tests pin the instrument's mechanics on a machine whose
 //! handoff target is a DRAM stage installed through `copy_in`; the
@@ -63,8 +64,9 @@ const LAUNCHER: [u32; 4] = [0x3C08_8000, 0x3508_2000, 0x0100_0008, 0x0000_0000];
 //   ori   t3, t2, 0x0900   ; UART TX register (console output)
 //   addiu t1, zero, 'M'
 //   sb    t1, 0(t3)        ; emit 'M' -> instrumented MMIO write
-//   lui   t4, 0x8000       ; DRAM (kseg0) — NOT a watched device window
-//   sw    t1, 0x3000(t4)   ; marker store, must stay out of the MMIO record
+//   lui   t4, 0x8000       ; DRAM (kseg0) — NOT a device window
+//   sw    t1, 0x3000(t4)   ; marker store — a DRAM data write: belongs in
+//                          ; the Milestone AE write map, never in MMIO
 //   j     self ; nop       ; park: the post window ends on its step budget
 const STAGE: [u32; 8] = [
     0x3C0A_BFFE, // lui   t2, 0xBFFE
@@ -128,6 +130,20 @@ fn synthetic_handoff_map_records_pages_mmio_and_console() {
     assert_eq!(value, 0x4D);
     assert!(!map.mmio_overflow);
 
+    // Written-memory map (Milestone AE, §33): exactly the marker store —
+    // counted, histogrammed and sampled, with full attribution; and it is
+    // a DRAM write, so it never leaks into the MMIO record above.
+    assert_eq!(map.writes_total, 1, "writes: {:?}", map.write_sample);
+    assert_eq!(map.write_pages, vec![(0x3000, 1)]);
+    assert_eq!(map.write_sample.len(), 1);
+    let w = &map.write_sample[0];
+    assert_eq!(w.step, 5, "the sw is the stage's 6th instruction");
+    assert_eq!(w.pc, STAGE_ENTRY + 0x14);
+    assert_eq!(w.vaddr, 0x8000_3000, "kseg0 view of the same DRAM byte");
+    assert_eq!(w.phys, 0x3000);
+    assert_eq!(w.size, AccessSize::Word);
+    assert_eq!(w.value, 0x4D);
+
     // Console: exactly the byte emitted after the handoff.
     assert_eq!(map.console_after, "M");
 }
@@ -147,6 +163,9 @@ fn unreached_handoff_is_reported_without_post_data() {
     assert_eq!(map.post_stop, None);
     assert!(map.exec_pages.is_empty());
     assert!(map.mmio.is_empty());
+    assert_eq!(map.writes_total, 0);
+    assert!(map.write_pages.is_empty());
+    assert!(map.write_sample.is_empty());
     assert!(map.console_after.is_empty());
     assert!(map.head.is_empty());
     assert_eq!(map.handoff_pc, DEFAULT_HANDOFF_ENTRY);
@@ -175,6 +194,78 @@ fn page_histogram_orders_and_counts() {
     assert_eq!(h.top_pages(1), vec![(0x0, 7)]);
 }
 
+// A stage that renders before parking — 100 word stores to one DRAM page
+// (0x80005000), then a self-loop:
+//   lui   t4, 0x8000       ; DRAM (kseg0)
+//   addiu t1, zero, 0x40   ; pixel value
+//   addiu t2, zero, 100    ; loop bound
+// loop:
+//   sw    t1, 0x5000(t4)
+//   addiu t1, t1, 1
+//   addiu t2, t2, -1
+//   bne   t2, zero, loop   ; offset -4
+//   nop                    ; (delay slot)
+// park:
+//   j     park ; nop
+const RENDER_STAGE: [u32; 12] = [
+    0x3C0C_8000, // 0x00 lui   t4, 0x8000
+    0x2409_0040, // 0x04 addiu t1, zero, 0x40
+    0x240A_0064, // 0x08 addiu t2, zero, 100
+    0xAD89_5000, // 0x0C sw    t1, 0x5000(t4)
+    0x2529_0001, // 0x10 addiu t1, t1, 1
+    0x214A_FFFF, // 0x14 addiu t2, t2, -1
+    0x1540_FFFC, // 0x18 bne   t2, zero, loop
+    0x0000_0000, // 0x1C nop (delay slot)
+    0x0800_0808, // 0x20 j 0x80002020 (park self)
+    0x0000_0000, // 0x24 nop (delay slot)
+    0x0000_0000,
+    0x0000_0000,
+];
+
+/// The write map under sustained rendering (Milestone AE, §33): every store
+/// counted in the histogram and total, the sample capped at the *first*
+/// [`truman_emulator::machine::WRITE_SAMPLE_CAP`] events with intact
+/// attribution, MMIO untouched, no cap overflow. This is the shape a
+/// framebuffer discovery takes on the real post-capture path: one page,
+/// one stride, values advancing per row.
+#[test]
+fn render_loop_write_map_counts_all_and_caps_the_sample() {
+    let image = img(synthetic_image(&LAUNCHER));
+    let cfg = MachineConfig {
+        handoff_entry: STAGE_ENTRY,
+        ..MachineConfig::default()
+    };
+    let mut m = Machine::new(cfg, &image);
+    let bytes: Vec<u8> = RENDER_STAGE.iter().flat_map(|w| w.to_le_bytes()).collect();
+    m.bus.copy_in(0x2000, &bytes);
+    m.reset();
+
+    let map = m.map_handoff(1_000, 700, 0);
+
+    assert_eq!(map.post_stop, Some(StopReason::StepLimit));
+    assert_eq!(map.writes_total, 100, "every store counted");
+    assert_eq!(map.write_pages, vec![(0x5000, 100)]);
+    assert_eq!(
+        map.write_sample.len(),
+        truman_emulator::machine::WRITE_SAMPLE_CAP,
+        "sample capped, not total"
+    );
+    // The sample is the *first* stores: sw at step 3, then every 5 steps
+    // (sw, addiu, addiu, bne, nop per iteration).
+    for (k, w) in map.write_sample.iter().enumerate() {
+        assert_eq!(w.step, 3 + 5 * k as u64, "sample ordering, item {k}");
+        assert_eq!(w.pc, STAGE_ENTRY + 0x0C, "the loop's sw");
+        assert_eq!(w.vaddr, 0x8000_5000);
+        assert_eq!(w.phys, 0x5000);
+        assert_eq!(w.size, AccessSize::Word);
+        assert_eq!(w.value, 0x40 + k as u32, "the counter advances");
+    }
+    assert_eq!(map.write_sample[63].value, 0x40 + 63);
+    assert!(map.mmio.is_empty(), "no device access: {:?}", map.mmio);
+    assert!(!map.mmio_overflow, "100 stores are far below the cap");
+    assert!(map.console_after.is_empty());
+}
+
 fn real_firmware_path() -> Option<std::path::PathBuf> {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("firmware")
@@ -186,14 +277,15 @@ fn real_firmware_path() -> Option<std::path::PathBuf> {
 }
 
 /// The current post-handoff horizon of the real firmware, pinned exactly as
-/// observed (§32.2): the loader hands off at step 1,301,763 with the
-/// driver's return value (v1 = 0x13800 = 78×1024 pixels) and the PNG width
-/// (a0 = 0x400) still live; the RFC-decoded stage executes 20 instructions
-/// — all in its entry page, touching no device, emitting no console output
-/// — and dies on the 0xFFFF word at 0xA1600050. This is the §19.1 head
-/// paradox in dynamic terms. When the capture-recovered value tables land,
-/// this same instrument maps the real menu path instead; the pin is the
-/// honest record of what the RFC tables produce.
+/// observed (§32.2, extended by §33): the loader hands off at step
+/// 1,301,763 with the driver's return value (v1 = 0x13800 = 78×1024
+/// pixels) and the PNG width (a0 = 0x400) still live; the RFC-decoded
+/// stage executes 20 instructions — all in its entry page, touching no
+/// device, storing nothing to DRAM, emitting no console output — and dies
+/// on the 0xFFFF word at 0xA1600050. This is the §19.1 head paradox in
+/// dynamic terms. When the capture-recovered value tables land, this same
+/// instrument maps the real menu path instead; the pin is the honest
+/// record of what the RFC tables produce.
 #[test]
 fn real_firmware_handoff_map_pins_the_current_horizon() {
     let Some(path) = real_firmware_path() else {
@@ -228,6 +320,9 @@ fn real_firmware_handoff_map_pins_the_current_horizon() {
     assert_eq!(map.exec_pages, vec![(0xA160_0000, 20)]);
     assert!(map.mmio.is_empty(), "no post-handoff MMIO: {:?}", map.mmio);
     assert!(!map.mmio_overflow);
+    assert_eq!(map.writes_total, 0, "the stage stores nothing (§33)");
+    assert!(map.write_pages.is_empty());
+    assert!(map.write_sample.is_empty());
     assert!(map.console_after.is_empty());
     assert_eq!(map.head.len(), 20);
     assert_eq!(map.head[0].pc, 0xA160_0000);
@@ -255,6 +350,9 @@ fn real_firmware_handoff_map_is_deterministic() {
     assert_eq!(ma.post_stop, mb.post_stop);
     assert_eq!(ma.exec_pages, mb.exec_pages);
     assert_eq!(ma.mmio, mb.mmio);
+    assert_eq!(ma.writes_total, mb.writes_total);
+    assert_eq!(ma.write_pages, mb.write_pages);
+    assert_eq!(ma.write_sample, mb.write_sample);
     assert_eq!(ma.console_after, mb.console_after);
     let pa: Vec<u32> = ma.head.iter().map(|r| r.pc).collect();
     let pb: Vec<u32> = mb.head.iter().map(|r| r.pc).collect();

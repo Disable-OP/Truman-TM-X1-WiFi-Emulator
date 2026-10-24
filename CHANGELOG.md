@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.25.0 — Milestone AE: the written-memory map (§33)
+
+### Added
+- `Machine::map_handoff` now records the post-handoff **data-write
+  map** (machine.rs): a fifth watch over the whole DRAM span
+  (`MachineConfig::dram_base`/`dram_size`), write-kind only, routed by
+  kind+physical address so DRAM data stores never leak into the MMIO
+  record. New `HandoffMap` fields: `write_pages` (per-4 KiB physical
+  page store counts, top 256, same `PageHistogram` type), `writes_total`
+  and `write_sample` (first `WRITE_SAMPLE_CAP` = 64 stores as new
+  `WriteEvent { step, pc, vaddr, phys, size, value }` — kseg0/kseg1
+  views and the written value for stride/framebuffer inference).
+  Evidence-only and bounded by construction; no recorded hit is
+  dropped (non-DRAM hits stay in the MMIO record). Zero CPU hot-path
+  changes — the bus watch machinery already in place (Q8 instrument,
+  §22) does the counting; `mmio_overflow` now documents the shared
+  watch-hit cap for both records.
+- CLI `map`: prints the data-write section — total stores, distinct
+  written pages, top pages by count, and the first sampled stores with
+  `(step, pc, phys, vaddr, width, value)`.
+- `tests/map.rs` (6 tests, +1): the DRAM marker store is now pinned as
+  a write-map event with full attribution (step 5, kseg0 vaddr, phys,
+  Word, value) while staying out of MMIO; a 100-store render-loop stage
+  pins the counting (every store histogrammed and totalled) and the
+  sample cap (first 64, values advancing, MMIO untouched, no cap
+  overflow); the real-firmware horizon gains the zero-writes
+  measurement; determinism covers the write fields.
+
+### Notes
+- The RFC-table horizon is unchanged in kind and now fully measured
+  (§33.3): 20 instructions, no MMIO, zero DRAM stores, no console —
+  "touches nothing" (§32.2) includes data writes. When the
+  capture-recovered value tables land (§31.4), the same `map` command
+  answers the framebuffer question directly: a render path shows up as
+  written pages and a stride in the first-store sample (stores 0x400
+  apart = 1024-byte rows = the PNG width).
+- Fresh survey (this session): public sources still contain no PNG_DEC
+  value-ROM evidence beyond §30.1's vendor driver lineage; the blocker
+  stays hardware-gated (§30.4/§32.3).
+
 ## 0.24.0 — Milestone AD: the post-handoff horizon, mapped (§32)
 
 ### Added

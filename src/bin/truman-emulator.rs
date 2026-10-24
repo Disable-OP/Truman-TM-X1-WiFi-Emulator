@@ -6,8 +6,10 @@
 //! - `trace <firmware> [--max-steps N] [--limit N] [-v]` — boot and print a
 //!   per-instruction trace of the first N steps
 //! - `map <firmware> [--pre-steps N] [--post-steps N] [--head N]` — boot to
-//!   the loader's `jr v0` handoff and map the post-handoff horizon
-//!   (Milestone AD, §32): executed pages, MMIO touches, console, head trace
+//!   the loader's `jr v0` handoff and map the post-handoff horizon:
+//!   executed pages, MMIO over modeled device windows, DRAM data writes
+//!   (the framebuffer question, Milestone AE §33), console delta, head
+//!   trace (Milestone AD, §32)
 //!
 //! Exit codes: 0 = success, 1 = usage/IO error, 2 = emulation stopped on a
 //! condition (fault/unknown instruction/step limit).
@@ -544,6 +546,40 @@ fn cmd_map(args: &[String]) -> Result<ExitCode, ArgsError> {
         }
         if map.mmio.len() > 64 {
             println!("  (+{} more)", map.mmio.len() - 64);
+        }
+    }
+
+    if map.writes_total == 0 {
+        println!("map: post-handoff data writes: (no DRAM stores)");
+    } else {
+        println!(
+            "-- post-handoff data writes ({} stores, {} distinct 4 KiB pages) --",
+            map.writes_total,
+            map.write_pages.len()
+        );
+        if map.mmio_overflow {
+            println!("  (watch cap hit — record truncated)");
+        }
+        for (base, count) in map.write_pages.iter().take(8) {
+            println!("  0x{base:08x}  x{count}");
+        }
+        if map.write_pages.len() > 8 {
+            println!("  (+{} more)", map.write_pages.len() - 8);
+        }
+        println!(
+            "-- first {} post-handoff data stores --",
+            map.write_sample.len()
+        );
+        for w in &map.write_sample {
+            println!(
+                "  step {:>7}  pc=0x{:08x}  W 0x{:08x} (vaddr 0x{:08x})/{:x} = 0x{:08x}",
+                w.step,
+                w.pc,
+                w.phys,
+                w.vaddr,
+                w.size.bytes(),
+                w.value
+            );
         }
     }
 

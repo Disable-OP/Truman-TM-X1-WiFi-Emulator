@@ -1,5 +1,36 @@
 # Roadmap
 
+## Milestone AE — the written-memory map: the framebuffer question ✅ (v0.25.0)
+
+- **The measured gap (§33.1)**: §32.3's post-capture map answers code
+  (executed pages), device init (MMIO record) and console — but not
+  *where the stage writes data*. The handoff entry (0xA1600000) is
+  itself DRAM, the menu surface will be DRAM, and the AD instrument's
+  own test pins the DRAM marker store as "not a device access": a real
+  menu render would light up `exec_pages` and `mmio` and leave the
+  framebuffer invisible.
+- **The instrument (§33.2)**: `map_handoff` now installs a fifth watch
+  over the whole DRAM span, write-kind only (fetches are the page
+  histogram's business; reads are not evidence of rendering), and routes
+  every post-handoff hit by kind+physical address: DRAM data stores feed
+  a written-page histogram (`write_pages`, top 256), a total
+  (`writes_total`) and a bounded first-store sample (`write_sample`,
+  `WRITE_SAMPLE_CAP` = 64, addresses/values/widths for stride
+  inference); every other hit stays in the MMIO record — no recorded
+  evidence is dropped. Shared watch cap semantics preserved
+  (`mmio_overflow` documents truncation); zero CPU hot-path changes.
+- **The horizon, re-measured (§33.3)**: identical blast radius — 20
+  instructions, no MMIO, **zero DRAM stores**, no console. §32.2's
+  "touches nothing" is now measured for data writes too; pinned in
+  `tests/map.rs` (6 tests: marker-store mechanics, render-loop counting
+  + sample capping, real-firmware horizon, determinism). 126 tests,
+  debug and release.
+- **Post-capture procedure updated (§33.4)**: same one command after
+  swapping `ENGINE_VALUE_TABLES`; the map now also yields the
+  written-page map — consecutive stores 0x400 apart are 1024-byte rows
+  (the PNG width), so framebuffer placement and stride fall out of the
+  sample directly. No further instrumentation is anticipated.
+
 ## Milestone AD — the post-handoff horizon, mapped ✅ (v0.24.0)
 
 - **The instrument (§32.1)**: `Machine::map_handoff(pre, post, head)`

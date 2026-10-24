@@ -2757,7 +2757,9 @@ dispatch, anything) lies beyond a wall this decode never gets past.
   (all pins re-verify), then run `map` — the executed-page histogram
   becomes the stage's real code map, the MMIO record becomes its device
   init sequence in order, and the console delta shows what it prints. No
-  further instrumentation is anticipated.
+  further instrumentation is anticipated. (Extended by §33: the
+  data-write map — §32.3's map left the framebuffer question open, and
+  the "no further instrumentation" line proved to be the gap itself.)
 - Pinned in code (tests/map.rs): the synthetic instrument mechanics
   (pages, MMIO attribution, console delta, unreached-handoff shape,
   histogram ordering) and the real-firmware horizon above — handoff step,
@@ -2772,3 +2774,89 @@ dispatch, anything) lies beyond a wall this decode never gets past.
   (§30.3). Obtaining one means downloading third-party firmware, which
   this project's constraints prohibit; the option is recorded here for
   the owner's decision and deliberately not exercised.
+
+## 33. Milestone AE — the written-memory map: the framebuffer question (v0.25.0)
+
+### 33.1 The gap §32 left, measured in its own test
+
+The §32.3 post-capture procedure maps three of the four things "boot
+AND render AND show the menu" needs: the executed-page histogram is the
+stage's code map, the MMIO record is its device init sequence, the
+console delta is what it prints. The fourth — *where the stage writes
+data* — was invisible by construction. The handoff entry (0xA1600000)
+is itself DRAM (the PNG_DEC pixel output buffer, §17); the menu surface
+will be DRAM too; and the AD instrument's own test pins the principle
+explicitly — its stage's marker store (`sw` to DRAM) is documented as
+"must stay out of the MMIO record". A real menu render would have lit
+up `exec_pages` and `mmio` and left the framebuffer, the one artifact
+render verification needs, unobserved. §32.3 anticipated no further
+instrumentation; that anticipation was itself the gap, and this section
+closes it.
+
+### 33.2 The instrument
+
+`Machine::map_handoff` installs a fifth watch alongside §32.1's four
+device-window watches: the whole DRAM span
+(`MachineConfig::dram_base`/`dram_size`), **write-kind only** —
+instruction fetches are the executed-page histogram's business, and
+data reads are not evidence of rendering. Every post-handoff watch hit
+is routed by kind + physical address (`record_post_hit`):
+
+- a DRAM data store increments `writes_total`, the written-page
+  histogram (`write_pages`; the same 4 KiB-page `PageHistogram` type,
+  top 256), and — for the first `WRITE_SAMPLE_CAP` = 64 stores — a
+  `WriteEvent { step, pc, vaddr, phys, size, value }` sample. The
+  sample keeps the *first* stores deliberately: before a render loop
+  saturates the pattern, its head exposes stride and placement (for
+  this SoC's own constants: consecutive stores 0x400 apart are
+  1024-byte rows — the PNG width a0 carries into the handoff, §32.2).
+- every other hit stays in the MMIO record; nothing recorded is
+  dropped, including any hypothetical hit that is neither a DRAM write
+  nor a device-window access (defensive: the map loses no evidence).
+
+The split is by classification, not by which watch fired, so the
+instrument's semantics do not depend on watch ordering. Boundedness is
+inherited from §32.1 (pre/post budgets, the shared 1 M-hit watch cap
+with `mmio_overflow` — its doc now covers both records) plus the new
+64-event sample cap. Determinism is inherited end-to-end and pinned.
+The CPU core is untouched — zero hot-path changes; the counting rides
+the bus watch machinery that has carried the Q8 instrument since §22.
+
+### 33.3 The horizon, re-measured: the RFC stage stores nothing
+
+The CLI `map` (same command, same defaults) now ends its MMIO section
+with the data-write section. On the committed image (SHA-256 prefix
+`5ca012b2…`), the §32.2 horizon gains one line, and it is empty:
+
+| Field | Value |
+|---|---|
+| handoff / registers / steps / stop / MMIO / console | exactly §32.2 — 20 instructions, trap on 0xFFFF at 0xA1600050 |
+| post-handoff DRAM stores | **0** (`writes_total` = 0; `write_pages` empty; `write_sample` empty) |
+
+§32.2's "touches nothing" is now a measured statement about data writes
+as well: the RFC-decoded stage's blast radius is fully mapped — no
+device access, no data write, no output, from the handoff to death.
+Pinned in `tests/map.rs` (6 tests): the synthetic marker store lands in
+the write map with full attribution (step 5, kseg0 vaddr 0x80003000 /
+phys 0x3000, Word, value 0x4D) while the MMIO record stays at exactly
+the console store; a 100-store render-loop stage pins the counting
+(100/100 histogrammed and totalled) against the capped sample (first
+64, values advancing 0x40, 0x41, …, one page 0x5000); the real-firmware
+pin carries the zero-writes measurement; determinism covers the new
+fields. 126 tests, debug and release, all green; boot pins unchanged.
+
+### 33.4 The post-capture procedure, restated
+
+Unchanged in shape, richer in return: swap `ENGINE_VALUE_TABLES` for
+the capture-recovered ROM values (§31.4), `cargo test` (all pins
+re-verify), then `map`. The executed-page histogram is the code map,
+the MMIO record the device init order, the console delta the startup
+print, and the data-write map the framebuffer answer — written pages
+show where the surface lives, the first-store sample shows stride and
+placement without any semantic assumption. With §33 the anticipated
+instrument set for the menu path is complete: code, devices, console,
+memory. The blocker itself is unchanged — the 59 value-ROM constants
+remain hardware-gated (§30.4); the fresh survey this session (web and
+public code search, register-name and SoC-family queries) again found
+no PNG_DEC value-ROM evidence beyond §30.1.
+

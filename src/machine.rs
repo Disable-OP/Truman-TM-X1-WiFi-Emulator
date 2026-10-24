@@ -847,6 +847,11 @@ impl Machine {
     /// - MMIO watchpoints over every modeled device window (the sysreg
     ///   page and the three vendor windows), recording each post-handoff
     ///   access with its issuing `(step, PC)`,
+    /// - a data-write watch over the DRAM span (Milestone AE, §33):
+    ///   every post-handoff store is counted per written 4 KiB page and
+    ///   the first [`WRITE_SAMPLE_CAP`] are sampled with their addresses
+    ///   and values — the written-memory map, i.e. the framebuffer
+    ///   question, answered without asserting any semantics,
     /// - an optional per-instruction head trace of the first `head_trace`
     ///   post-handoff instructions,
     /// - the UART console bytes emitted after the handoff.
@@ -875,6 +880,9 @@ impl Machine {
                 exec_pages: Vec::new(),
                 mmio: Vec::new(),
                 mmio_overflow: false,
+                write_pages: Vec::new(),
+                writes_total: 0,
+                write_sample: Vec::new(),
                 console_after: String::new(),
                 head: Vec::new(),
             };
@@ -905,8 +913,21 @@ impl Machine {
             self.config.win_300_size,
             WatchKinds::READ_WRITE,
         );
+        // The DRAM span itself, writes only (Milestone AE, §33): fetches
+        // are the page histogram's business and reads are not evidence of
+        // rendering; the stores are where a framebuffer would light up.
+        self.bus.add_watch(
+            self.config.dram_base,
+            self.config.dram_size,
+            WatchKinds::WRITE,
+        );
 
         let mut hist = PageHistogram::new();
+        let mut write_hist = PageHistogram::new();
+        let mut writes_total: u64 = 0;
+        let mut write_sample: Vec<WriteEvent> = Vec::new();
+        let dram_base = self.config.dram_base;
+        let dram_end = self.config.dram_base.saturating_add(self.config.dram_size);
         let mut head: Vec<crate::cpu::StepReport> = Vec::new();
         let mut post_steps: u64 = 0;
         let mut post_stop: Option<StopReason> = None;
@@ -936,7 +957,15 @@ impl Machine {
             }
             post_stop = Some(r1.stop);
             for h in self.take_watch_hits() {
-                mmio.push((h.step, h.pc, h.phys, h.kind, h.size, h.value));
+                record_post_hit(
+                    h,
+                    dram_base,
+                    dram_end,
+                    &mut mmio,
+                    &mut write_hist,
+                    &mut write_sample,
+                    &mut writes_total,
+                );
             }
         }
 
@@ -947,8 +976,17 @@ impl Machine {
             post_stop = Some(r2.stop);
             // This segment's loop numbered steps from zero again — shift
             // them past the head segment so every hit is post-window-relative.
-            for h in self.take_watch_hits() {
-                mmio.push((h.step + head_steps, h.pc, h.phys, h.kind, h.size, h.value));
+            for mut h in self.take_watch_hits() {
+                h.step += head_steps;
+                record_post_hit(
+                    h,
+                    dram_base,
+                    dram_end,
+                    &mut mmio,
+                    &mut write_hist,
+                    &mut write_sample,
+                    &mut writes_total,
+                );
             }
         }
         let mmio_overflow = self.bus.watch_overflow();
@@ -972,6 +1010,9 @@ impl Machine {
             exec_pages: hist.top_pages(256),
             mmio,
             mmio_overflow,
+            write_pages: write_hist.top_pages(256),
+            writes_total,
+            write_sample,
             console_after,
             head,
         }
@@ -1229,6 +1270,73 @@ impl PageHistogram {
     }
 }
 
+/// Cap on the post-handoff data-store sample ([`HandoffMap::write_sample`],
+/// Milestone AE, §33). The histogram counts every recorded store regardless;
+/// the sample keeps the *first* writes — the ones that reveal stride and
+/// framebuffer placement before the pattern saturates.
+pub const WRITE_SAMPLE_CAP: usize = 64;
+
+/// One post-handoff DRAM data store (Milestone AE, §33): the written-memory
+/// evidence with its issuing instruction. Evidence-only — the fields record
+/// what the machine did, not what the stage "meant".
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WriteEvent {
+    /// Step number within the post window (the handoff is step 0's start).
+    pub step: u64,
+    /// PC of the storing instruction.
+    pub pc: u32,
+    /// Virtual address issued by the CPU (kseg0/kseg1 view).
+    pub vaddr: u32,
+    /// Physical address after translation (the DRAM byte that changed).
+    pub phys: u32,
+    /// Access width.
+    pub size: crate::memory::AccessSize,
+    /// Value written (zero-extended to 32 bits).
+    pub value: u32,
+}
+
+/// Route one post-handoff watch hit to its record (Milestone AE, §33).
+/// DRAM data writes feed the written-memory map (histogram, total, bounded
+/// sample); every other hit stays in the MMIO record. The split is by
+/// physical address and kind, not by which watch fired — the DRAM span is
+/// watched alongside the device windows with the same machinery, and any
+/// hit that is neither a DRAM write nor a device-window access is kept in
+/// the MMIO record rather than dropped (the map loses no recorded evidence).
+fn record_post_hit(
+    h: crate::memory::WatchHit,
+    dram_base: u32,
+    dram_end: u32,
+    mmio: &mut Vec<(
+        u64,
+        u32,
+        u32,
+        crate::memory::WatchKind,
+        crate::memory::AccessSize,
+        u32,
+    )>,
+    write_hist: &mut PageHistogram,
+    write_sample: &mut Vec<WriteEvent>,
+    writes_total: &mut u64,
+) {
+    let in_dram = h.phys >= dram_base && h.phys < dram_end;
+    if h.kind == crate::memory::WatchKind::Write && in_dram {
+        *writes_total += 1;
+        write_hist.record(h.phys);
+        if write_sample.len() < WRITE_SAMPLE_CAP {
+            write_sample.push(WriteEvent {
+                step: h.step,
+                pc: h.pc,
+                vaddr: h.vaddr,
+                phys: h.phys,
+                size: h.size,
+                value: h.value,
+            });
+        }
+    } else {
+        mmio.push((h.step, h.pc, h.phys, h.kind, h.size, h.value));
+    }
+}
+
 /// Structured post-handoff execution map (Milestone AD, §32): what the
 /// machine actually does after the loader's `jr v0` into the decompressed
 /// stage. Evidence-only — every field is observed, none is assumed; no
@@ -1266,8 +1374,23 @@ pub struct HandoffMap {
         crate::memory::AccessSize,
         u32,
     )>,
-    /// True when the watch hit cap truncated the MMIO record.
+    /// True when the shared watch-hit cap truncated the post-handoff
+    /// access record (device-window accesses and/or DRAM data stores —
+    /// both are capped by the same budget).
     pub mmio_overflow: bool,
+    /// Post-handoff DRAM data stores, per written 4 KiB physical page,
+    /// descending by store count (at most 256) — the written-memory map
+    /// (Milestone AE, §33). A framebuffer lights up here without any
+    /// assumption about stage semantics.
+    pub write_pages: Vec<(u32, u64)>,
+    /// Total post-handoff DRAM data stores recorded (bounded by the shared
+    /// watch-hit cap; [`HandoffMap::mmio_overflow`] reports truncation).
+    pub writes_total: u64,
+    /// The first post-handoff DRAM data stores, at most
+    /// [`WRITE_SAMPLE_CAP`] — addresses, widths and values for stride and
+    /// framebuffer inference (consecutive stores 0x400 apart are 1024-byte
+    /// rows: the PNG width, §32.2).
+    pub write_sample: Vec<WriteEvent>,
     /// UART console bytes emitted after the handoff (lossy UTF-8).
     pub console_after: String,
     /// The first post-handoff instructions, when a head trace was requested.

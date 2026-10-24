@@ -69,6 +69,13 @@ bad word (0xFFFF) at 0xA1600050. The instrument is value-table-
 agnostic: when the capture-recovered tables land, the same command maps
 the real menu path (executed-page code map, device init order, console).
 
+**Milestone AE adds the written-memory map** (§33): the same `map`
+command also watches the whole DRAM span for data stores — written
+pages, total stores and the first 64 stores with addresses and values.
+A framebuffer lights up there without any assumption about stage
+semantics; consecutive stores 0x400 apart are 1024-byte rows (the PNG
+width). The RFC horizon measures zero stores (§33.3).
+
 **Milestone R adds the decisive instrument** (`docs/firmware-analysis.md`
 §20): the **entry harness** (`examples/entry_oracle.rs`) boots the real
 firmware with a watch at 0xA1600000 (the loader's `jr v0` target), captures
@@ -125,9 +132,10 @@ Requires a stable Rust toolchain (https://rustup.rs). No other dependencies.
 
 ```sh
 cargo build --release
-cargo test --release          # 120 tests: boot chain, entry harness, interrupt + COP0 timer delivery, key injection,
+cargo test --release          # 126 tests: boot chain, entry harness, interrupt + COP0 timer delivery, key injection,
                               # watchpoints, Q8 runtime evidence, timer program, keycode-consumer pin,
-                              # perf-model regressions (lazy describe, hot-region memo)
+                              # perf-model regressions (lazy describe, hot-region memo),
+                              # post-handoff map (exec pages, MMIO, DRAM write map)
 cargo build --release --example bench
 ./target/release/examples/bench firmware/*.bin   # throughput harness (Milestones V+Z): ~25.4 M instr/s
                                                   # on the deterministic boot chain (17.5x over 0.17.0)
