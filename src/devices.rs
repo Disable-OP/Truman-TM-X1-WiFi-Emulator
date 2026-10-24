@@ -922,7 +922,9 @@ pub struct EngineShared {
     /// | 0x3C  | PNG_BLK_INFO           | (btype<<1)\|bfinal = 5        |
     /// | 0x40  | PNG_HUF_TB_ADDR        | 0x20                          |
     /// | 0x44/48 | PNG_HUF_TB_CTRL/DATA | table upload FIFO             |
-    /// | 0x4C  | PNG_INTERRUPT          | event/ack line (shared w/key) |
+    /// | 0x4C  | PNG_INTERRUPT          | event/ack line (§34.1: bit 0
+    ///       bitstream-empty, 2 end-of-chunk, 4 end-of-image, 5
+    ///       pixel-ready, 6 error; ack = bit<<8) |
     /// | 0x50/54 | PNG_SCL_EXT_ADDR_M/L | scaling buffer 0x02048000     |
     /// | 0x58  | PNG_SCL_BUF_ADDR       | 0xC0                          |
     /// | 0x5C/60 | PNG_BW_EXT_ADDR_M/L  | band buffer 0x02040000 (32K)  |
@@ -1159,42 +1161,60 @@ impl Device for DecompEngineHi {
     }
 }
 
-/// Front-panel key data port (0xBFFE384C, 4 bytes), reverse-engineered from
-/// the main firmware's key-scan dispatcher (docs/firmware-analysis.md
-/// §10.3, dispatch loop at DRAM 0x82002548..0x82002630).
+/// Register 0xBFFE384C (4 bytes) — vendor-named **PNG_DEC_INTERRUPT**
+/// (Milestone AG, docs/firmware-analysis.md §34.1), first reverse-
+/// engineered from the main firmware's service dispatcher
+/// (docs/firmware-analysis.md §10.3, dispatch loop at DRAM
+/// 0x82002548..0x82002630).
 ///
 /// **Verified by execution + disassembly** ($s6 = 0xBFFE8000, so
 /// `$s6 - 0x47B4` = 0xBFFE384C is loaded into `$a1` at 0x82002504):
 ///
-/// - READ (`lw $v0, ($a1)`, masked to bits 15:0): raw key-line bits.
-///   The dispatcher tests bits **0, 2, 4, 5, 6** (`andi/ext` sequences).
-///   Steady state (no key) reads 0 — matches the post-boot register dump.
-/// - WRITE (`sw $tX, ($a1)`): the firmware writes the detected key's
-///   **keycode** into the same port — bit 0 → 0x100, bit 2 → 0x400,
-///   bit 4 → 0x1000, bit 5 → 0x2000 (keycodes set up at 0x82002540..0x50,
-///   one bit each in the 8..13 range, disjoint from the raw key bits).
-///   Bit 6 takes a separate long path (via 0xBFFE3824 → 0x82002308).
+/// - READ (`lw $v0, ($a1)`, masked to bits 15:0): the dispatcher tests
+///   bits **0, 2, 4, 5, 6** (`andi/ext` sequences). Steady state reads 0
+///   — matches the post-boot register dump. Under the vendor interrupt
+///   map these are exactly the PNG_DEC interrupt lines: bit 0 =
+///   bitstream-empty, bit 2 = end-of-chunk, bit 4 = end-of-image, bit 5
+///   = pixel-buffer-ready (the engine event line, §13.3), bit 6 =
+///   decode-error.
+/// - WRITE (`sw $tX, ($a1)`): the firmware's **acknowledge** writes —
+///   bit 0 → 0x100, bit 2 → 0x400, bit 4 → 0x1000, bit 5 → 0x2000 —
+///   the vendor drivers clear the same bits with the same `bit << 8`
+///   encoding (§34.1). Bit 6 takes a separate long path (via
+///   0xBFFE3824 = PNG_DEC_CTRL → 0x82002308): the vendor error handler
+///   reads PNG_DEC_CTRL to name the error type.
+///
+/// The §10.3 "front-panel key port / keycode" reading of this traffic is
+/// thereby re-attributed: the tested bits are engine interrupt lines and
+/// the written "keycodes" are their acks — which is also the structural
+/// explanation of §23.3's negative keycode-consumer verdict (no code
+/// consumes keycodes because the dispatcher produces none). The raw
+/// low-bit driver source on the 1506HV (real front-panel GPIOs, if any
+/// are muxed here) is unknown; the level model below is retained as the
+/// documented falsifiable choice for those bits. All observed traffic is
+/// engine-side and identical under both readings.
 ///
 /// Emulation model (evidence-complete for the observed accesses):
 /// - Reads return the currently **pressed** key-line level from a shared
 ///   handle — level semantics: a "button press" is injected by setting
 ///   bits and cleared by releasing them (see
 ///   [`Machine::press_key`](crate::machine::Machine::press_key)).
-/// - Writes are captured verbatim into a shared **key event queue**
-///   (the firmware's keycode output). Writes do not modify the pressed
-///   level (falsifiable choice: a latch/ack-on-write would read back 0
-///   after a write; the level model is the simpler of the two and matches
-///   all observed traffic — the scan loop re-reads the same bits).
+/// - Writes are captured verbatim into a shared **event queue**. Writes
+///   do not modify the pressed level (falsifiable choice: a
+///   latch/ack-on-write would read back 0 after a write; the level model
+///   is the simpler of the two and matches all observed traffic — the
+///   scan loop re-reads the same bits).
 #[derive(Debug)]
 pub struct KeyPort {
     name: String,
     pressed: std::rc::Rc<std::cell::Cell<u32>>,
     events: std::rc::Rc<std::cell::RefCell<Vec<u32>>>,
     /// Engine event line (decompression engine, §13.3): read as bit 5 of
-    /// this register. 0xBFFE384C is shared between the key lines
-    /// (bits 0/2/4/5 as inputs) and the engine status. Driver evidence:
-    /// the poll's bit-5 branch acks (writes 0x2000), counts the event and
-    /// routes to the success block; the bit-6 branch returns 0 (fail).
+    /// this register — vendor-named the pixel-buffer-ready interrupt
+    /// (§34.1). 0xBFFE384C = PNG_DEC_INTERRUPT; the ack write 0x2000 is
+    /// that bit's vendor encoding (`bit << 8`). Driver evidence: the
+    /// poll's bit-5 branch acks, counts the event and routes to the
+    /// success block; the bit-6 branch is the error epilogue.
     engine_done: std::rc::Rc<std::cell::Cell<u8>>,
     log: AccessLog,
     log_capacity: usize,

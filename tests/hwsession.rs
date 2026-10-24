@@ -3,7 +3,24 @@
 //! test that proves the reference extraction feeds the comparator.
 
 use truman_emulator::firmware;
-use truman_emulator::machine::{classify_residue, compare_dumps, Machine, MachineConfig};
+use truman_emulator::machine::{adler32, classify_residue, compare_dumps, Machine, MachineConfig};
+
+#[test]
+fn adler32_matches_the_standard_zlib_vectors() {
+    // RFC 1950 Adler-32, pinned against zlib's own published examples:
+    // empty → 1, "abc" → 0x024d0127, "Wikipedia" → 0x11E60398.
+    assert_eq!(adler32(b""), 0x0000_0001);
+    assert_eq!(adler32(b"abc"), 0x024d_0127);
+    assert_eq!(adler32(b"Wikipedia"), 0x11E6_0398);
+    // Determinism and 16-bit-halves decomposition (the vendor probe
+    // protocol reads the halves separately: addr 0 = high, 1 = low).
+    let data: Vec<u8> = (0..=255u8).cycle().take(4096).collect();
+    let v = adler32(&data);
+    assert_eq!(v, adler32(&data));
+    let hi = (v >> 16) as u16;
+    let lo = v as u16;
+    assert_eq!(((hi as u32) << 16) | lo as u32, v);
+}
 
 #[test]
 fn identical_camps_report_full_match_and_no_divergence() {
@@ -199,4 +216,13 @@ fn real_firmware_reference_feeds_the_comparator() {
         "boot: stop={:?} steps={} reference={} bytes",
         res.stop, res.steps, total
     );
+
+    // Milestone AG (§34.2/P3): the emulator-side Adler-32 fingerprint of
+    // the reference decode — the value a P3 probe-window read must match
+    // for the emulator's decode to be the device's. Pinned here so a
+    // future engine-semantics change that silently moves the decode
+    // output is caught by this suite, not by a failed capture verdict.
+    let fingerprint = adler32(&reference);
+    assert_eq!(fingerprint, 0xcd8d_03bf, "reference decode fingerprint");
+    eprintln!("reference adler-32: {fingerprint:#010x}");
 }

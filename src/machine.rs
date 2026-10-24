@@ -69,8 +69,11 @@ pub struct MachineConfig {
     /// 0x40 bytes — verified init program; hypothesis H11 for behavior).
     pub intc_offset: u32,
     pub intc_size: u32,
-    /// Front-panel key data port inside the sysreg page (offset +0x384C,
-    /// 4 bytes — verified read/write semantics from the key-scan loop).
+    /// PNG_DEC_INTERRUPT register inside the sysreg page (offset +0x384C,
+    /// 4 bytes — vendor-named in Milestone AG, §34.1; historically the
+    /// "front-panel key port" from the §10.3 dispatcher decode). Read =
+    /// interrupt lines (bit 5 carries the engine event), write = the
+    /// vendor `bit << 8` ack encoding.
     pub keyport_offset: u32,
     pub keyport_size: u32,
     /// Hardware decompression engine register block (hypothesis H12):
@@ -1216,6 +1219,34 @@ pub fn classify_residue(captured: &[u8]) -> ResidueReport {
         longest_nonzero_run: longest_run,
         nonzero_blocks,
     }
+}
+
+/// Adler-32 over a byte slice (RFC 1950), the vendor-documented engine
+/// output fingerprint (Milestone AG, §34.2).
+///
+/// The SPHE-family PNG_DEC exposes an internal probe window
+/// (`PNG_PROBE_ADDR`/`PNG_PROBE_VALUE`, sysreg +0x3878/+0x387C); the
+/// vendor's own drivers read the decoder's Adler-32 through it as two
+/// 16-bit halves (probe address 0 = high half, 1 = low half) at
+/// end-of-image, and the Truman dispatcher's bit-4 handler performs the
+/// exact same probe sequence (§12's "0→1 strobe + two samples"). If the
+/// real device's engine accumulates the checksum over a `zlib_mode=1`
+/// decode (unverified — §34.2/P3), a two-register read at the P1 window
+/// yields a 32-bit fingerprint of the true 79,872-byte output; this
+/// function computes the same fingerprint over any candidate decode so
+/// the comparison is one integer equality.
+///
+/// Integer-only and deterministic; standard zlib test vectors are pinned
+/// in `tests/hwsession.rs`.
+pub fn adler32(data: &[u8]) -> u32 {
+    const MOD: u32 = 65_521;
+    let mut a: u32 = 1;
+    let mut b: u32 = 0;
+    for &byte in data {
+        a = (a + byte as u32) % MOD;
+        b = (b + a) % MOD;
+    }
+    (b << 16) | a
 }
 
 /// Per-4KiB-page executed-instruction histogram (Milestone AD, §32).

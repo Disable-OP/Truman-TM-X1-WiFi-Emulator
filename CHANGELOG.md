@@ -1,5 +1,58 @@
 # Changelog
 
+## 0.26.0 — Milestone AG: the vendor completion protocol named; the probe-window fingerprint (§34)
+
+### Added
+- `machine::adler32` (RFC 1950, integer-only, zero dependencies): the
+  output-fingerprint side of the vendor-documented probe-window readout
+  (§34.2). Pinned against zlib's own published vectors (`""` → 1,
+  `"abc"` → 0x024d0127, `"Wikipedia"` → 0x11E60398) and against the
+  real firmware: the P1 reference decode's fingerprint is pinned at
+  `0xcd8d03bf` (`tests/hwsession.rs`, +1 test = 128 total) so any
+  engine-semantics change that silently moves the decode output is
+  caught by the suite, not by a failed capture verdict.
+- `dram_compare --post/--ref` reports now print the reference's
+  Adler-32 — the emulator-side number a P3 probe-window read compares
+  against.
+- Hardware-session experiment **P3** (docs/hardware-session.md): four
+  debugger operations at the P1 halt window (probe address 0/1 → the
+  decode's Adler-32 halves), pre-registered decision-tree rows for
+  match / mismatch / does-not-accumulate, with the raw-mode caveat
+  registered before any data exists (§34.2: the vendor readout is
+  shown in PNG image mode only; whether the engine accumulates the
+  checksum over `zlib_mode=1` decodes is unverified, and the emulator
+  deliberately models no accumulator).
+- `docs/firmware-analysis.md` §34: the vendor completion protocol
+  extracted from the already-archived sources (fresh download verified
+  byte-identical to `tools/reference/`): the interrupt bit/ack map
+  (bit<<8), the end-of-block continuation flow (BS_USED_CNT/BS_USED_BIT
+  layout, software next-header parse), the table-RAM internal layout
+  (syms/mincode/valptr windows + burst control), and the `sp_gzip`
+  consumer-side interface (usage line; 32 KiB LZ / 256 KiB scanline
+  buffers — the band-window model corroborated vendor-side).
+
+### Changed
+- **Re-attribution (docs + doc-comments only, zero behavior change)**:
+  0xBFFE384C is vendor-named **PNG_DEC_INTERRUPT** (§34.1). The §10.3
+  dispatcher's tested bits (0/2/4/5/6) are the engine's interrupt lines
+  and its written "keycodes" (0x100/0x400/0x1000/0x2000) are the
+  vendor's ack encodings; the bit-6 long path reading PNG_DEC_CTRL is
+  the vendor error-type handler. §23.3's negative keycode-consumer
+  verdict is thereby explained structurally (the dispatcher produces
+  no keycodes). `KeyPort`'s level model for the unknown low-bit drivers
+  is retained as the documented falsifiable choice; all observed
+  traffic is engine-side and identical under both readings; every pin
+  holds.
+
+### Notes
+- No emulator-semantics change: CPU, devices behavior, memory map and
+  boot pins are untouched. 128 tests green in debug and release; fmt,
+  clippy (0 warnings, -D) and check all clean.
+- Blocker unchanged: the 59 PNG_DEC value-ROM constants stay
+  hardware-gated (§30.4); this session's survey (authenticated GitHub
+  code search on the distinctive vendor tokens + web) re-derives the
+  same sources and finds no new public value-ladder evidence.
+
 ## 0.25.1 — Milestone AF: CI parity — the debug blind spot closed (§31's lesson applied to the gate itself)
 
 ### Added

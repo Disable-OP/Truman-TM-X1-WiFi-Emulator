@@ -2860,3 +2860,140 @@ remain hardware-gated (§30.4); the fresh survey this session (web and
 public code search, register-name and SoC-family queries) again found
 no PNG_DEC value-ROM evidence beyond §30.1.
 
+
+## 34. Milestone AG — the vendor completion protocol: the interrupt
+### register, the probe window, and a new capture option (v0.26.0)
+
+A close re-read of the already-archived vendor sources
+(`tools/reference/`, byte-identical to upstream `vicyap/sony-xav-ax100`
+— verified this session by fresh download + diff) extracts the parts of
+the vendor driver that §30 did not need: the *completion* side of the
+PNG_DEC programming flow. Three Truman registers that §10.3/§12 decoded
+behaviorally are now vendor-NAMED, one of them changes an
+interpretation this repo has carried since Milestone G, and one of them
+is a new hardware-session capture option. No emulator semantics change.
+
+### 34.1 0xBFFE384C is PNG_DEC_INTERRUPT — the "key dispatcher"
+#### re-attributed
+
+The vendor drivers' completion loop (`sp_imgdec.c`; the kernel HAL is
+identical) polls one register and services these status bits, acking by
+writing `bit << 8`:
+
+| bit | vendor name | ack write |
+|---|---|---|
+| 0 | Bitstream empty interrupt | 0x100 |
+| 1 | End of block interrupt | 0x200 |
+| 2 | End of chunk interrupt | 0x400 |
+| 3 | End of ZLIB interrupt | 0x800 |
+| 4 | End of image interrupt | 0x1000 |
+| 5 | Pixel buffer full (ready) interrupt | 0x2000 |
+| 6 | Decode error interrupt | (error path) |
+
+§12's dispatcher at DRAM 0x82002548..0x82002630 tests bits **0, 2, 4,
+5, 6** of 0xBFFE384C and writes 0x100 / 0x400 / 0x1000 / 0x2000 — the
+vendor bit map and the vendor ack encoding, exactly, minus the two
+block-boundary bits (1/3) the single-block SP decode never asserts.
+§13.3's engine poll is bit 5 = "Pixel buffer full (ready)" acked with
+0x2000, vendor-named. And §12's bit-6 "standby key" long path reads
+0xBFFE3824 = PNG_DEC_CTRL — the vendor error branch reads PNG_DEC_CTRL
+to name the error type (DMA busy / chunk type / Adler checksum / decode
+suspend / non-compressed length).
+
+Consequences, none behavioral:
+
+* The register is PNG_DEC_INTERRUPT. The §10.3 reading of this traffic
+  as a "front-panel key port" emitting "keycodes" is re-attributed: the
+  tested bits are engine interrupt lines, the written "keycodes" are
+  their acks. §23.3's negative keycode-consumer verdict now has a
+  structural explanation — no code consumes keycodes because the
+  dispatcher produces none.
+* The low-bit "key line" source on the 1506HV (real front-panel GPIOs,
+  if any are muxed here) is unknown; `KeyPort`'s level model is
+  retained as the documented falsifiable choice for exactly those bits,
+  and `press_key` remains a register-level instrument. All observed
+  traffic is engine-side and identical under both readings; every test
+  pin holds (§12.1's end-to-end proof now demonstrates the firmware
+  reacting to an injected *interrupt line*, which is what the hardware
+  evidence says the bits are).
+* The register table in `devices.rs` and the `MachineConfig::keyport_*`
+  docs carry the vendor naming; field names are unchanged (API churn
+  without a behavior delta buys nothing).
+
+### 34.2 The probe window: 0xBFFE3878/0x387C = PNG_PROBE_ADDR /
+#### PNG_PROBE_VALUE — the Adler-32 readout
+
+The vendor drivers' end-of-image branch reads the decoder's **Adler-32
+checksum through a two-register probe window**: write
+`PNG_PROBE_ADDR = 0`, read `PNG_PROBE_VALUE` (high half); write 1, read
+(low half); combine `hi << 16 | lo`. §12's dispatcher table recorded
+this exact shape without naming it: "0xBFFE387C — latch sampled by the
+bit-4 handler (lw before/after a 0→1 write to 0xBFFE3878); two samples
+combined `sample<<16 | sample`". The bit-4 handler is the end-of-image
+branch; the "strobe" is the two probe addresses. The JPEG side of the
+same vendor HAL uses its huff-probe the same way, commented "for hw
+debug" — the probe windows are the vendor's hardware-debug access into
+decoder internals.
+
+What the Truman loader does with it: its end-of-image handler samples
+the same two halves into gp state (§12). Whether the engine *accumulates*
+Adler-32 over a `zlib_mode=1` raw decode (the vendor readout is shown
+in PNG image mode, where the PNG stream carries an expected Adler
+tail) is **unverified** — the drivers never read it in raw mode, and
+the emulator therefore does not model an accumulator (modeling it would
+change the dispatcher's gp state on speculation; §30.3's discipline).
+The sysreg stub at +0x3878/+0x387C keeps its logged-stub semantics.
+
+The same re-read names the table-RAM internal layout the upload
+commands address (§13.6's recorded-but-uninterpreted uploads): length
+symbols @0x000, length mincode @0x180, length valptr @0x190; distance
+mincode @0x1A0, distance valptr @0x1B0, distance symbols @0x1C0; the
+0xC000 control word is burst mode + write-enable. The engine's syms/
+mincode ("first")/valptr ("cum") partition the 32-word internal SRAM
+exactly as the loader's uploads land.
+
+### 34.3 The continuation protocol — one more §16.1 confirmation
+
+The kernel HAL's end-of-block branch documents how a multi-block
+stream continues: read the consumption readout
+(`PNG_BS_USED_CNT`/`PNG_BS_USED_BIT`, layout `[15:13]` DMA-count
+extension / `[12:3]` byte / `[2:0]` bit), software-parse the *next*
+block header straight from the byte stream, rewrite `PNG_BS_OFFSET`,
+clear the end-of-block latch (0x200), re-assert start. The Truman
+loader performs exactly one table upload and one start (§13.6), and
+§16.1/§25 proved the SP container's 169,229 tail bits admit no
+standard continuation — the vendor protocol names what a continuation
+would *require* (a next dynamic-block header for this software flow to
+parse), and none exists. The `sp_gzip` consumer-side interface is also
+named now (`cmd_sp_png_dec.c` usage line: `./sp_gzip file_in file_out
+u16_scramble_key`), including its production shape: a `ZlibBlockCnt`
+loop decoding while NAND-streams the next block, LZ-backward buffer
+32 KiB, scanline buffer 256 KiB — the emulator's 32 KiB zero-filled
+band-window model (§13.4), corroborated vendor-side. The compressor
+tool itself remains unpublished (§30.3); only its interface is now
+documented.
+
+### 34.4 The new instrument: a comparable output fingerprint
+
+`machine::adler32` (RFC 1950, integer-only, pinned against zlib's own
+published vectors: `""` → 1, `"abc"` → 0x024d0127, `"Wikipedia"` →
+0x11E60398) plus one printed line in `dram_compare` post/ref reports —
+the emulator-side fingerprint to hold against a probe-window read.
+On the committed image the P1 reference fingerprint is **pinned**:
+`adler32(reference) = 0xcd8d03bf` (79,872-byte engine decode,
+`tests/hwsession.rs`). If the device's engine accumulates the checksum
+in raw mode, the whole P3 experiment below collapses to comparing two
+32-bit integers; if it does not, the pin still guards the decode output
+against silent drift.
+
+### 34.5 What this changes, and what it does not
+
+The boot blocker is untouched: the 59 value-ROM constants stay
+hardware-gated (§30.4). This session's survey re-derives the same
+vendor sources (fresh download, byte-identical to the archive),
+re-confirms nothing public uploads a value ladder in any vendor flow,
+and adds no new public evidence beyond §30.1 — but it converts two
+behaviorally-decoded registers into vendor-named ones, explains a
+closed verdict (§23.3) structurally, and adds a second, much cheaper
+capture option (P3, docs/hardware-session.md) to the session protocol.
+128 tests, debug and release, all green; boot pins unchanged.

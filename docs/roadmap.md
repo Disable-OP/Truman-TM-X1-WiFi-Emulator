@@ -1,5 +1,30 @@
 # Roadmap
 
+## Milestone AG — the vendor completion protocol; the probe-window
+### fingerprint ✅ (v0.26.0)
+
+- **Registers vendor-named from the already-archived driver sources
+  (§34)**: 0xBFFE384C = PNG_DEC_INTERRUPT — the §10.3 dispatcher's bits
+  are the engine's interrupt lines (0 bitstream-empty, 2 end-of-chunk,
+  4 end-of-image, 5 pixel-buffer-ready = the §13.3 event line, 6
+  decode-error) and its "keycode" writes are the vendor ack encoding
+  (`bit << 8`); the bit-6 path reading PNG_DEC_CTRL is the vendor
+  error-type handler. §23.3's "no keycode consumer" verdict is
+  structural: there are no keycodes. 0xBFFE3878/0x387C =
+  PNG_PROBE_ADDR/VALUE — §12's "strobe + two samples" is the vendor
+  end-of-image **Adler-32 readout** (addr 0 = high half, 1 = low).
+- **The cheap oracle, registered before data (P3,
+  docs/hardware-session.md)**: four debugger operations at the P1
+  window yield the device decode's 32-bit fingerprint;
+  `machine::adler32` (zlib-vector-pinned) + a `dram_compare` report
+  line + the pinned emulator fingerprint `0xcd8d03bf` make it
+  comparable offline. The raw-mode accumulation caveat is registered
+  as a first-class outcome, and the emulator models no accumulator on
+  purpose (§30.3's discipline).
+- **No semantics change**: 128 tests, debug and release, green; boot
+  pins unchanged; the 59 value-ROM constants stay hardware-gated
+  (§30.4).
+
 ## Milestone AF — CI parity: the debug blind spot closed ✅ (v0.25.1)
 
 - **The lesson, applied to the gate itself (§31's own history)**: the

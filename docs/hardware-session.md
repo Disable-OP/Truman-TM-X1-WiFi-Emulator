@@ -13,7 +13,7 @@ of the session. Every claim in this repo about the emulated boot itself
 remains backed by `docs/firmware-analysis.md`; this page only plans the
 physical capture.
 
-## The two decisive experiments
+## The decisive experiments
 
 ### P1 — post-decode pixel buffer (the LZ-semantics oracle)
 
@@ -35,6 +35,43 @@ physical capture.
 P2 must be captured on a **separate cold boot** from P1: P2 is a
 capture-at-reset, P1 is a capture-at-handoff, and you cannot rewind the
 hardware between them.
+
+### P3 — the probe-window fingerprint (the cheap oracle, Milestone AG)
+
+Vendor-named in §34.2: the PNG_DEC probe window
+(`PNG_PROBE_ADDR` sysreg +0x3878 / `PNG_PROBE_VALUE` +0x387C) exposes
+decoder internals; the vendor drivers' end-of-image branch reads the
+decode's **Adler-32** as two 16-bit halves (probe address 0 = high,
+1 = low), and the Truman loader's own end-of-image handler performs
+exactly that probe sequence (§12's "strobe + two samples"). At the P1
+halt window, before (or after) the pixel dump:
+
+```
+# via the same debugger that performs the P1 dump (mips_m4k memory
+# access while halted); addresses are the kseg1 views the loader uses
+mww 0xBFFE3878 0x00000000        # probe address 0
+mdw 0xBFFE387C                   # -> high half
+mww 0xBFFE3878 0x00000001        # probe address 1
+mdw 0xBFFE387C                   # -> low half; adler = (hi<<16)|lo
+```
+
+| item | value |
+|---|---|
+| cost | four debugger operations — no capture file |
+| precondition | the same halt window as P1 |
+| compare against | the pinned emulator fingerprint `0xcd8d03bf` (or the `dram_compare --post` report line "reference adler-32") |
+| **caveat (registered)** | whether the engine accumulates Adler-32 over a `zlib_mode=1` **raw** decode is **unverified** — the vendor readout is shown in PNG image mode only, and the emulator deliberately does not model an accumulator (§34.2). A zero/stuck/implausible readout is the documented "does not accumulate" outcome, not a capture error |
+
+A matching fingerprint would mean the emulator's decode IS the device's
+decode — decide what that would mean via the P1 tree before trusting it
+(a match this strong must survive the P1 capture-point suspicion check
+too). A non-matching fingerprint is still a 32-bit constraint no
+offline search had before: any candidate value-table decode whose
+output does not produce that Adler-32 is eliminated (the §30.3
+m4 underdetermination collapses under one output fingerprint). P3 does
+not replace P1 — P1's divergence map, not a checksum, drives the solve
+— but it is the fastest first read of the session and survives even if
+the DRAM dump path fails.
 
 ## How to capture
 
@@ -127,6 +164,9 @@ out explicitly in the session record.
 | P1 DIVERGENT | the LZ value semantics differ from every model tested in §14–§26 | `first_divergence` + block map become the decisive constraint; feed the solve (the first divergent byte identifies the first match whose value semantics differ) |
 | P2 ZERO | residue ruled out in the captured window | widen the P2 window (the 1 MiB below the base), repeat once; then the paradox residue is elsewhere in DRAM |
 | P2 RESIDUE PRESENT | the §21.6 item-2 answer: the engine starts from non-zero state | load the residue via `AddressSpace::copy_in` before the engine start in a fresh emulator boot and re-run the decode compare — the emulator supports this today |
+| P3 MATCHES `0xcd8d03bf` | the device's decode equals the emulator's reference output (a 2^-32 coincidence for any other decode) | first re-verify the capture point per the P1 IDENTICAL row (a match this strong must survive the same suspicion); then the blocker reframes: the engine decode is known — re-run the §18.4 algebra with the *true* output and re-pin `ENGINE_VALUE_TABLES` from the solved semantics |
+| P3 PRESENT, ≠ reference | the true decode has a 32-bit fingerprint; every candidate decode whose output mismatches it is eliminated offline | re-run the §15.6/§18.2/§26 swept families under the fingerprint oracle (`adler32(decode) == captured`); a family whose best candidate matches is the answer; none matching = the true ladder is outside every swept family — record and close that space too |
+| P3 ZERO / STUCK / implausible | the engine does not accumulate Adler-32 over raw decodes (the registered caveat outcome) | no information lost — proceed with P1/P2 as planned; record the probe values verbatim in the session log regardless |
 
 ## Where the outputs go
 

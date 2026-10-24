@@ -18,6 +18,9 @@
 //!   dram_compare --post <flashfile.bin> <capture.bin>
 //!   dram_compare --pre <capture.bin>
 //!   dram_compare --ref <reference.bin> <capture.bin>
+//!
+//! Post/Ref reports also print the reference's Adler-32 — the
+//! emulator-side fingerprint for the P3 probe-window read (§34.2).
 //! Options:
 //!   --out <map.txt>   write the 1024-byte block map to a file
 //!   --offset <phys>   post mode: pixel base override (default 0x01600000)
@@ -29,7 +32,7 @@
 use std::path::PathBuf;
 
 use truman_emulator::firmware;
-use truman_emulator::machine::{classify_residue, compare_dumps, Machine, MachineConfig};
+use truman_emulator::machine::{adler32, classify_residue, compare_dumps, Machine, MachineConfig};
 use truman_emulator::memory::AccessSize;
 
 const DEFAULT_PIXEL_BASE: u32 = 0x0160_0000;
@@ -248,6 +251,10 @@ fn main() {
             let c = compare_dumps(&reference, &capture);
             println!("P1 post-decode comparison (emulator reference vs device capture)");
             println!("  reference          : {} bytes", c.reference_len);
+            // Milestone AG (§34.2/P3): the vendor probe window exposes the
+            // decode's Adler-32 as two 16-bit halves; this line is the
+            // emulator-side fingerprint to compare a P3 probe read against.
+            println!("  reference adler-32 : 0x{:08x}", adler32(&reference));
             println!("  captured           : {} bytes", c.captured_len);
             println!("  compared           : {} bytes", c.compared_len);
             println!(
