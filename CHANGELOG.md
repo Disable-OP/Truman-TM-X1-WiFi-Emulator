@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.29.1 — Milestone AK: the phantom trigger defect disproven; the fresh-evidence survey (§38)
+
+### Documented
+- **A false CI-trigger defect, diagnosed and refuted byte-level
+  (§38.1)**: this session's terminal toolchain intermittently ate the
+  two-character token that opens a bracketed lowercase-`m` sequence,
+  rendering the workflow's `branches: [main]` as `branches: ain]` in
+  every contiguous-text view (cat, `git show`, grep, python-repr). The
+  resulting diagnosis ("push CI has never fired") was refuted by
+  byte-level evidence: the trigger bytes are `[main]` (5b 6d 61 69 6e
+  5d) in the Milestone-M creation blob (`7cb66eb7`), the Milestone-AF
+  blob (`220819c8`), and origin/main — the trigger was correct from day
+  one. No repo change; the investigation and the verification method
+  are recorded in §38.1.
+- **Fresh-evidence survey (§38.2, 2026-10-25)**: all four archived
+  vendor reference files are byte-identical to their upstreams today
+  (SHA-256 recorded); no new SPHE15xx PNG_DEC sources, no `sp_gzip`
+  publication, no value-ladder constants anywhere reachable. The
+  §30.4 blocker stays hardware-gated; `docs/hardware-session.md`
+  remains the single unlock.
+
+### Verified
+- 146 tests, debug and release, green; fmt/clippy clean; boot pins
+  unchanged (handoff step 1,301,763, trap at 0xA1600050, fingerprint
+  `0xcd8d03bf`).
+
 ## 0.29.0 — Milestone AJ: the capture→ladder solver; the P1 solve, mechanical (§37)
 
 ### Added

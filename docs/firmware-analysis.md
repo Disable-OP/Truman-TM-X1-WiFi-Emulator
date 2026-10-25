@@ -3309,3 +3309,63 @@ the session's own smoke test used). The milestone claims no boot
 progress — the blocker stays the 59 value-ROM constants (§30.4),
 data-gated — but the capture→verdict distance is now zero commands
 deep: capture, solve, swap, re-boot.
+
+## 38. Milestone AK — the phantom trigger defect, disproven; the fresh-evidence survey (v0.29.1)
+
+### 38.1 A false defect, diagnosed and refuted byte-level
+
+This session's terminal toolchain intermittently ate the two-character
+sequence that opens a bracketed lowercase-`m` token: contiguous-text
+views (cat, `cat -A`, `git show`, grep, python `repr`) of
+`.github/workflows/ci.yml` rendered the trigger line as
+`branches: ain]`, while views whose output cannot carry the pair (the
+Read tool, `od -c` column output) showed the true content. The corrupted
+views produced a coherent but wrong diagnosis — that the push trigger is
+the scalar `"ain]"`, which matches no branch, so push-triggered CI never
+fired. The repo's own evidence rule (a plausible story is not evidence,
+§30.3) settles it with bytes:
+
+| blob | epoch | trigger-line bytes (decimal) | decode |
+|---|---|---|---|
+| `7cb66eb7` | Milestone M (creation) | `91 109 97 105 110 93` | `[main]` |
+| `220819c8` | Milestone AF → origin/main → HEAD | `91 109 97 105 110 93` | `[main]` |
+| worktree (`git hash-object`) | this session | same SHA `220819c8…` | unchanged |
+
+The trigger was `branches: [main]` from day one; the AF commit changed
+only the header comment and the gate list (1191 → 1420 bytes) — the
+diffstat of a one-comment rewrite, and push CI has been firing since
+Milestone M. No repo defect exists; nothing was fixed. The incident is
+recorded because the failure mode is dangerous for an evidence-first
+repo: the corrupted reads were consistent across four independent
+shell-level tools, and acting on them would have produced a phantom
+"repair" commit and a false docs claim. The reliable channels were blob
+SHAs (`git rev-parse <commit>:<path>`), per-byte decimal dumps, and
+hash-object equality between the worktree and origin — none of which
+can carry the eaten pair.
+
+### 38.2 The fresh-evidence survey (2026-10-25)
+
+Both upstream sources of the archived vendor references were re-fetched
+and compared byte-for-byte against `tools/reference/`:
+
+| archived file | upstream | result | SHA-256 (both sides) |
+|---|---|---|---|
+| `sphe15xx-regfile.h` | Team-Proton/linux-sunplus-15xx `master`, raw blob, `linux-4.4.7/arch/mips/include/asm/mach-sphe15xx/regfile.h` | identical | `1572efc2e8b23299658a42f3a354e43bd6ba73d2676fb748431acd5a55b42b9a` |
+| `sphe-sp_imgdec.c` | vicyap/sony-xav-ax100 `master` (5682442), blobless clone + `git cat-file`, `sony-xav-ax100/uboot/arch/arm/cpu/sphe-common/sp_imgdec.c` | identical | `eaa0d0b2d662d2551083e820895577bf704ccab48b50467c1e1089086ba14de7` |
+| `sphe-sp_imgdec.h` | vicyap/sony-xav-ax100 `master`, same method | identical | `a15b0d45fe87d0b388728a5135ed8f8b283c2312c47fa9cb2cf079ce8507c4de` |
+| `sphe-cmd_sp_png_dec.c` | vicyap/sony-xav-ax100 `master`, same method | identical | `23d9cdb70582074f64d7c140831ae36cb8aa0dab78120f82ee11ee35e468bf12` |
+
+Method notes, for reproducibility: the raw-blob fetch of `regfile.h`
+required no API quota; the vicyap tree nests one level deeper than the
+`tools/reference/README.md` table implies (the repo root contains a
+single `sony-xav-ax100/` directory), so the three U-Boot files were read
+from the commit object of a `--depth 1 --filter=blob:none` clone rather
+than guessed at over HTTP. The driver's own text confirms the §30.4
+blocker reading once more: the "length/distance group base" table-RAM
+writes at `sp_imgdec.c` +0x190/+0x1b0 are the Huffman `valptr[1..15]`
+arrays (canonical-decode bookkeeping), not the LZ value bases — the
+29+30 silicon constants the vendor never publishes in any reachable
+source. No new SPHE15xx PNG_DEC driver, no `sp_gzip` release, no other
+U-Boot dump surfaced. The blocker stays hardware-gated (§22.5, §26.4,
+§30.4); `docs/hardware-session.md` remains the single unlock, and the
+capture→solve→swap→re-boot chain (§37) is its full offline preparation.

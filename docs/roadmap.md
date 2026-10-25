@@ -1,5 +1,46 @@
 # Roadmap
 
+## Milestone AK — the phantom trigger defect, disproven byte-level; the fresh-evidence survey ✅ (v0.29.1)
+
+- **A false defect, diagnosed and refuted the repo's own way (§38.1)**:
+  this session's terminal toolchain intermittently ate the two-character
+  sequence that opens a bracketed lowercase-`m` token (the display
+  rendered `branches: [main]` as `branches: ain]` across cat, `git
+  show`, grep and python-repr views of `.github/workflows/ci.yml`),
+  which produced a coherent-looking but wrong diagnosis — "the push
+  trigger is the scalar `ain]`, CI has never fired on push". Byte-level
+  verification refutes it completely: the trigger line's bytes are
+  `5b 6d 61 69 6e 5d` (`[main]`) in the Milestone-M creation blob
+  (`7cb66eb7`) AND in the Milestone-AF blob (`220819c8`) AND at
+  origin/main — **the trigger was correct from day one and push CI has
+  been firing since Milestone M**. The only AF change was the header
+  comment and the debug-suite gate (1191 → 1420 bytes). No repo defect,
+  no fix needed; the investigation is recorded because the working
+  discipline that matters here is that a diagnosis, however plausible,
+  is not evidence — only the bytes are (the §30.3 rule applied to the
+  toolchain itself).
+- **Method note**: every textual shell view is suspect when the content
+  can contain the eaten token pair; the reliable reads were the ones
+  whose output channel cannot carry it — `git rev-parse` blob SHAs,
+  per-byte decimal dumps (`' '.join(str(b) …)`), and the Read tool.
+  The initial false positives all came from contiguous-text views. The
+  repo's committed bytes were never touched by the corruption (verified
+  by hash-object equality between the worktree file and the origin
+  blob).
+- **The fresh-evidence survey (§38.2), re-run with a stronger method**:
+  both upstream sources of the archived vendor references were
+  re-fetched on 2026-10-25 (raw-blob fetch for `regfile.h` at
+  Team-Proton/linux-sunplus-15xx `master`; a blobless shallow clone +
+  `git cat-file` for the three U-Boot files at vicyap/sony-xav-ax100
+  `master`, whose tree nests one level deeper than the README path
+  suggested) and **all four files are byte-identical to the archives**
+  (SHA-256 recorded in §38.2). No new SPHE15xx PNG_DEC source, no
+  `sp_gzip` publication, no value-ladder constants anywhere reachable —
+  the §30.4 blocker stays hardware-gated and `docs/hardware-session.md`
+  remains the single unlock. No emulator-semantics change; all 146
+  tests debug and release, green; fmt/clippy clean; boot pins
+  unchanged.
+
 ## Milestone AJ — the capture→ladder solver: the P1 solve, mechanical ✅ (v0.29.0)
 
 - **The hardware session's last manual step is a command (§37)**:
