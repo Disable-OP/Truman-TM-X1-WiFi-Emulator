@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.34.9 — Milestone BA: README measurable claims re-verified on a fresh sandbox (docs hygiene, §54)
+
+### Docs
+- **Replication (§54.1)**: boot chain re-measured at exactly 1,301,783
+  steps (acceptance-test pin holds; trap pc/word re-confirmed); bench
+  re-measured at 25.63 M instr/s — the README's single-sandbox digit
+  replaced with the honest machine-dependent form ("≈25 M instr/s;
+  25.4–25.6 measured across sandbox rebuilds"); the boot-banner sample
+  re-captured and compared line-by-line — identical, with the device's
+  CR line endings normalized as any faithful sample would.
+- **No code changed**: 165 tests debug and release; fmt clean, clippy
+  0 warnings; boot pins unchanged.
+
+
 ## 0.34.8 — Milestone AZ: the CLI surface pinned as a test (docs hygiene, §53)
 
 ### Added

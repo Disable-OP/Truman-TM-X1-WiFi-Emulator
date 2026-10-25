@@ -1,5 +1,20 @@
 # Roadmap
 
+## Milestone BA — the README's measurable claims re-verified on a fresh sandbox ✅ (v0.34.9)
+
+- **Three claims re-measured (§54.1)**: boot chain = exactly 1,301,783
+  steps (pin holds, trap 0xA1600050/0xFFFF re-confirmed); bench =
+  25.63 M instr/s vs the pinned ~25.4 (machine variance — README now
+  states "≈25 M, machine-dependent, 25.4–25.6 across rebuilds"); boot
+  banner re-captured line-by-line identical (device CR line endings
+  normalized in the sample, as any faithful sample would).
+- **No code changed (§54.2)**: 165 tests debug and release; fmt
+  clean, clippy 0 warnings; boot pins unchanged.
+- **Blocker stays hardware-gated (§51.2)**: P1, P2/P2b/P2c, P3; the
+  handoff doc's command lines stay guarded (Milestone AZ). Surveys:
+  named leads only.
+
+
 ## Milestone AZ — the CLI surface pinned as a test ✅ (v0.34.8)
 
 - **`tests/cli_surface.rs` (§53.2)**: four drift-guard tests — usage ↔

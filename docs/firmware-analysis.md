@@ -4492,3 +4492,43 @@ blocker stays hardware-gated exactly as registered (§51.2, §52.3):
 P1, P2/P2b/P2c, P3 — the real-device session per
 docs/hardware-session.md, whose command lines this milestone now
 guards.
+
+## 54. Milestone BA — the README's measurable claims re-verified on a fresh sandbox (docs hygiene, v0.34.9)
+
+### 54.1 The claims and the re-measurement
+
+The project's method makes falsifiable claims; this pass re-verified
+the three README claims that are cheaply measurable, on a fully
+rebuilt sandbox (the environment rolls back between sessions, so each
+re-measurement is an independent replication):
+
+- **The boot-chain step count** ("~1.30 M instructions" to the
+  handoff): re-measured exactly **1,301,783** steps — the value the
+  acceptance test pins (`tests/hwsession.rs`) and the value the bench
+  harness prints. Stop state also re-confirmed: unknown instruction at
+  `pc=0xa1600050` fetching `0x0000ffff` — the trap pin of §13.
+- **The bench throughput** ("~25.4 M instr/s" as of Milestone V+Z):
+  re-measured **25.63 M instr/s** on this rebuild — inside normal
+  machine variance, same order, same 13×+ class over the 0.18.0
+  baseline. The README now states the number honestly as
+  machine-dependent ("≈25 M instr/s; 25.4–25.6 measured across
+  sandbox rebuilds") rather than pinning a single sandbox's digit.
+- **The boot banner sample** (README lines, the device's own UART
+  output): re-captured the full run and compared line-by-line. The
+  sequence is identical — `zeroBoot v1.0 for 1506F`, `SPI SCS flow`,
+  `jump to second boot!!`, `Boot form SPI v1.13`, `Calc RAM Param`,
+  `DDR-V6.2.01.09-v`, `SYS_306`, `DDR_1066`, … — with one expected
+  difference: the device's stream carries CR (`\r`) line endings,
+  which the README sample normalizes (any faithful sample would).
+
+### 54.2 What it means
+
+Every measurable README claim replicates on a fresh environment; the
+one number that moved (throughput) moved inside machine variance and
+now carries its variance in the claim itself. No code, no pins, no
+verdicts changed: boot pins unchanged (handoff step 1,301,783, trap
+0xA1600050, fingerprint 0xcd8d03bf); 165 tests debug and release; fmt
+clean; clippy zero warnings. The blocker stays hardware-gated exactly
+as registered (§51.2): P1, P2/P2b/P2c, P3 — the real-device session
+per docs/hardware-session.md, whose command lines Milestone AZ now
+guards mechanically.
