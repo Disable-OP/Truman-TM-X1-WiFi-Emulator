@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.35.2 — Milestone BD: the `map` success-path and the diagnostics seam pinned (hardening, §57)
+
+### Added
+- **`tests/cli_diag.rs`** — three end-to-end tests (§57.2): the `map`
+  success contract (handoff at step 1,301,763 with the register pin,
+  post window stops on the trap after 20 steps → exit 2, executed
+  pages/MMIO/writes/console/head-trace shapes); the `--dump
+  phys,len,path` seam (the boot window reads back the firmware image
+  head byte-for-byte; an unwritable target reports `FAILED:` inline
+  without failing the run); and the `-v` notes contract. Tests
+  176 → 179 (debug and release).
+
 ## 0.35.1 — Milestone BC: the success-path output contract pinned; the trace head misreport fixed (hardening, §56)
 
 ### Fixed

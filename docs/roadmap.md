@@ -1,5 +1,21 @@
 # Roadmap
 
+## Milestone BD — the `map` success-path and the diagnostics seam pinned ✅ (v0.35.2)
+
+- **`tests/cli_diag.rs` (§57.2)**: three end-to-end tests — the `map`
+  contract on the real firmware (jr v0 handoff at step 1,301,763 with
+  pinned registers; +20 steps to the acceptance trap at 1,301,783, the
+  two counters now explicitly related; Cpu stop 0xa1600050/0x0000ffff →
+  exit 2; one executed page x20; empty MMIO/writes/console; 20-line
+  head trace verbatim); the `--dump` seam (boot window 0x1fc00000
+  reads the image head byte-for-byte, first word 0x24006fb5; FAILED
+  line doesn't fail the run); and `-v` (three `firmware:` notes lead,
+  absent without). Suite 176 → 179 (debug and release).
+- **Unchanged**: boot pins (chain to trap 1,301,783, trap 0xA1600050,
+  fingerprint 0xcd8d03bf); fmt clean, clippy 0 warnings. Blocker stays
+  hardware-gated (P1, P2/P2b/P2c, P3; surveys closed per §51.2).
+
+
 ## Milestone BC — the success-path output contract pinned; the trace head misreport fixed ✅ (v0.35.1)
 
 - **One reporting defect found and fixed (§56.1)**: `Tracer` was a ring

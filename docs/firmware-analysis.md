@@ -4642,3 +4642,45 @@ did not fail on it; it now reads 176 and the claim block names the CLI
 contract tests (§53–§56). The blocker stays hardware-gated
 exactly as registered (§51.2): P1, P2/P2b/P2c, P3 — the real-device
 session per docs/hardware-session.md.
+
+## 57. Milestone BD — the `map` success-path and the diagnostics seam pinned (hardening, v0.35.2)
+
+### 57.1 The gap found
+
+Milestone BC pinned the success reports of `inspect`/`trace`/`run`; the
+fourth subcommand, `map`, was still unpinned — as were the diagnostics
+flags the hardware-session procedure leans on: `--dump phys,len,path`
+(byte-window dump after a run, the framebuffer/DRAM-analysis seam) and
+`-v` (identification notes). A formatter or mapping regression in any
+of them would not have failed a test.
+
+### 57.2 The pins
+
+**`tests/cli_diag.rs`** — three end-to-end tests, all deterministic:
+
+- `map` (default pre-budget, `--post-steps 2000`): the two boot
+  diagnostics, the budget line, the handoff line **at step 1,301,763**
+  — the loader's `jr v0` — with the handoff registers pinned (v0=
+  0xa1600000, v1=0x00013800, a0=0x00000400, sp=0x82004b80). The
+  relationship to the acceptance pin is now explicit: the acceptance
+  boot chain continues **20 steps past the `jr v0`** to the trap
+  (1,301,763 + 20 = 1,301,783) — two counters, one chain, no
+  contradiction. The post window: `20 steps, stop: unknown
+  instruction at pc=0xa1600050: 0x0000ffff`, executed pages exactly
+  one entry (`0xa1600000  x20`), MMIO/DRAM-store/console sections all
+  empty (nothing else is reachable from the entry window), the
+  20-line head trace with its first two decodes verbatim, and exit 2
+  (Cpu stop, same exit mapping as run).
+- `--dump`: a dump of the boot window (phys 0x1fc00000, 0x40 bytes)
+  reads back the firmware image head **byte-for-byte**, first word
+  0x24006fb5 (LE bytes b5 6f 00 24) — the pinned first instruction.
+  An unwritable target prints the `dump: … FAILED:` line inline and
+  the run still exits 0.
+- `-v`: the three identification notes lead the report as
+  `firmware:` lines before the boot diagnostics; without `-v` no
+  `firmware: ` line appears.
+
+Result: the suite grows 176 → **179** (debug and release), fmt clean,
+clippy zero warnings, boot pins unchanged. The blocker stays
+hardware-gated exactly as registered (§51.2): P1, P2/P2b/P2c, P3 — the
+real-device session per docs/hardware-session.md.
