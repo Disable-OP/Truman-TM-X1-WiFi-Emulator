@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.30.0 — Milestone AM: the vendor vector's structural leak; the joint anchor system; the post-capture vector gate (§40)
+
+### Documented
+- **The vector's parse structure (§40.1)**: the SDK test container's
+  dynamic header parses canonically with an alphabet exactly matching
+  the observed output (hex characters, `\n`, `\r`, NUL); a 1-bit scan
+  over every start bit in `[304, 4096)` reaches the end-of-block symbol
+  **zero** times under the canonical tables — the vector's decode ends
+  by the vendor driver's row-count accounting (9 rows), not by EOB.
+- **The literal backbone (§40.2)**: the engine-semantics decode (32 KiB
+  zero preset) completes at every candidate start bit with zero invalid
+  distances, and the vector's literals are ≥99% hex characters forming
+  fluent text — the pattern's content is in the stream, in order, at
+  ladder-unreachable values; match-produced gaps sit between fragments.
+- **The joint two-stream length-anchor system (§40.3)**: Truman's pinned
+  anchor (`Σ n_t·d = +4,464`) against the vector's conditional anchor
+  (`−570/−377/−358` by start bit) have **opposite signs on the same
+  dominant short-length class**; the entire per-extra-bit-class uniform
+  family has zero joint survivors (bounded integer sweep, all three
+  start bits). Conditional on the no-waste reading; the opposite-sign
+  structure is unconditional.
+- **The post-capture vector gate (§40.4)**: a ladder recovered from P1
+  must also re-decode the vendor vector to clean sparse hex text with
+  the pinned backbone and the 9,216-byte accounting — a second,
+  vendor-authored validation for the hardware session, one offline
+  command (`tools/fw_vector_probe.py`). No emulator-semantics change;
+  the §30.4 blocker stays hardware-gated.
+- **Fresh-evidence survey (2026-10-25, third pass)**: nothing new
+  upstream (Team-Proton dormant, no `sp_gzip` publication, no
+  value-ladder constants; Truman third-party firmware sites remain out
+  of scope). Boot pins unchanged.
 ## 0.29.2 — Milestone AL: the CI record observed green; the second survey (§39)
 
 ### Documented

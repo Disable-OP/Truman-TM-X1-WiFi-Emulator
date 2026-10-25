@@ -3399,3 +3399,157 @@ firmware downloads are outside this project's constraints in any case.
 The §30.4 blocker stands: the 59 value-ROM constants are hardware-gated
 (§22.5, §26.4), the capture→solve→swap→re-boot chain (§37) remains the
 single unlock, and the hardware-session protocol (§27) is unchanged.
+
+## 40. Milestone AM — the vendor vector's structural leak: the pattern backbone, the joint anchor system, and the post-capture vector gate (v0.30.0)
+
+The SDK's own test container (`cmd_sp_png_dec.c`, `ZlibBuf`, 3,744 bytes,
+scramble key `0xa6fc`, 9 chunks → 9,216 bytes; archived as
+`tools/reference/sphe-cmd_sp_png_dec.c` and first analyzed in §30.2) is
+**vendor-authored `sp_gzip` output for the same hardware value tables**
+as the Truman stream. §30.2 recorded three facts from it (non-RFC
+distances, clean literals, legitimate zero-preset references) and §30.3
+used it to demonstrate the m4 accounting collapse — but the blind m4
+search "without knowing the true pattern" (§30.3) never asked the
+question this milestone asks: **how much of the vector's true 9,216-byte
+pattern does the vector itself determine?** The answer, established
+byte-by-byte below, is: more than any session has used so far — enough
+to make the vector a permanent second oracle, though not enough to
+replace the hardware session. Tool: `tools/fw_vector_probe.py`
+(deterministic, offline, prints every number in this section).
+
+### 40.1 The parse is clean, the block never ends: row-count completion
+
+The dynamic header parses canonically at stream bit 0
+(`bfinal=1, hlit=286, hdist=26, header_bits=304`), and the decoded
+code-length alphabet is **exactly the observed output alphabet** —
+5-bit codes for the sixteen hex characters, 9–11-bit codes for `\n`,
+`\r`, NUL, and the length codes — a strong internal consistency check
+(a wrong header read could not produce an alphabet so precisely matched
+to the readable text that follows it).
+
+The structural surprise: **no start bit makes the parse reach the
+end-of-block symbol.** A 1-bit scan over `[304, 4096)` with the canonical
+tables — every bit position, not just the aligned candidates — produces
+**zero** walks that decode symbol 256 before input exhaustion
+(`tools/fw_vector_probe.py` block [1]). Every walk instead runs cleanly
+to input end (no `ERR_LIT`, no `ERR_DIST`), producing 1,400–1,439
+matches. For the Truman stream the same walk reaches EOB twice (§36.4);
+for the vector it never does, at any start bit.
+
+The resolution is the vendor driver's own completion discipline
+(`cmd_sp_png_dec.c`): the engine's completion is the **row-count
+accounting** (§13.6 — `PNG_PXL_LINE = height−1`, one row event per
+1,024 output bytes), so a 9-row pattern completes at byte 9,216 **whether
+or not the block's EOB has been consumed**. The vector's block simply
+never needs its EOB: the decode ends by accounting, not by symbol. (The
+Truman stream's loader is the same lineage but its image completes via
+the same row count — the two EOBs there are real block boundaries, a
+different container structure.) Corollary: the no-EOB fact is itself
+evidence that the canonical tables are not the hardware's tables — under
+the true tables the parse differs — consistent with every §14–§30
+refutation of RFC-family semantics.
+
+### 40.2 The literal backbone: the pattern's text is in the stream
+
+The engine-semantics decode (32 KiB zero preset, §13.1/§18.3) completes
+at every candidate start bit — `ceil32(header)`=320, the DMA-window
+1,024, and the vendor `PNG_BS_OFFSET` 1,088 — with **zero invalid
+distances** under the preset (§30.2's "invalid distance too far back"
+happens only under the empty RFC window). The output at each start bit
+is the same *kind* of object: hex characters separated by 1–16-byte
+zero runs, 19 `\n` + 9 `\r`, no other characters — and it over-runs the
+9,216 anchor by **+570 / +377 / +358** bytes respectively.
+
+The decisive observation is *where the text sits*: the output's
+literal-produced fragments, read in event order, are themselves fluent
+hex text — `c5f43df6d00e293648bc70cfe93488e7afc966ba…` — and the
+match-produced zero runs sit **between** backbone fragments, never
+inside one. The literal census makes this quantitative: of the vector's
+1,535–1,577 literals, **1,523–1,565 are hex characters (≈99.2%)**, only
+4 are NUL, 6 `\n`, 2 `\r`. The pattern's text content is therefore
+**in the stream as literals**: the true pattern is the backbone plus
+whatever the matches produce between backbone characters — under RFC
+semantics those matches mostly hit the zero preset (the gaps), which is
+why the RFC output reads as "sparse hex-text in a zero sea" (§30.2)
+while remaining robust across start bits. The backbone pins the pattern
+at ≈17% of its bytes outright, in order, at stream-derived values that
+no ladder can change (literals are ladder-unreachable, §19.3 — here
+that ceases to be a paradox and becomes the leak).
+
+### 40.3 The joint two-stream length-anchor system
+
+The length side of the ladder is now constrained by **two streams at
+once**. With `d_c = base_true(c) − LBASE[c]` for the 29 length codes and
+the per-code census `n(c)` of each stream's matches (the bit-level parse
+is base-independent, §37), the anchors are linear:
+
+* **Truman (equality, pinned):** the Rust engine decode produces 75,408
+  bytes under RFC bases and must produce 79,872 (78×1,024, §17/§18.1):
+  `Σ_c n_t(c)·d_c = +4,464`. Census cross-check: the Python walk gives
+  75,398 (the ±10 is the zero-window tail convention, §36.4), with
+  9,264 matches to the Rust engine's 9,267.
+* **Vector (conditional equality):** under the no-waste prior — the
+  compressor emits the block that decodes to exactly its 9,216-byte
+  pattern, the engine stops at the 9th row — `Σ_c n_v(c)·d_c =
+  9,216 − len_rfc(start)` = **−570 / −377 / −358** for the three
+  candidate start bits. The vector's weights are overwhelmingly
+  concentrated on the short-length class: `[1422, 15, 0, 0, 0, 2]`
+  (classes by extra-bit width, E0 = codes 0–7 + 28) against Truman's
+  `[8410, 415, 272, 131, 25, 11]`.
+
+**The signs are opposite on the same dominant class.** The first
+quantitative consequence independent of any hardware: under the vector's
+anchor the bulk short-length class cannot grow (δ_E0 ≈ −0.4 on the
+vector's 1,422 E0 matches) while Truman's anchor requires +4,464 net
+across a census dominated by the same class — the true ladder cannot be
+RFC-uniform *or* per-extra-bit-class uniform. The joint sweep over the
+entire per-class uniform family (integer deltas bounded by base
+validity `base ≥ 3`, δ ≤ +8, 2 equations / 6 unknowns solved exactly
+over the 4 free dimensions) returns **zero survivors at all three
+candidate start bits**. If a ladder satisfies both anchors, its deltas
+are per-code structured: shorter codes at-or-below RFC, longer codes
+above.
+
+Registered caveat (the §30.3 discipline applied to ourselves): the
+vector anchor is conditional on the no-waste reading of §40.1. If the
+engine over-decodes into the scanline buffer after the 9th row (256 KiB
+reserved, `cmd_sp_png_dec.c`), the vector's equation weakens to an
+inequality `Σ_c n_v(c)·d_c ≥ −570`, and the per-class family survives
+under Truman alone (δ_E0 ≈ +0.53 → vector Σ ≈ +757 ≥ −570). The
+refutation above is therefore stated as conditional; the structural
+conclusion (opposite signs) is what survives unconditionally, because
+it follows from the two RFC deviations themselves (+350…+570 over-run
+vs the −4,464 under-run) whenever the vector's true length is near its
+9,216 anchor.
+
+### 40.4 What this changes: the vector gate, and what it does not
+
+**The post-capture vector gate (new, one command).** When the hardware
+session's `ladder_solve` (§37) recovers a value ladder from the P1
+capture, the ladder must also re-decode the **vector**: `sp_gzip`
+compressed the vendor's own 9,216-byte pattern against the same ROM
+tables, so the recovered ladder's vector decode must be
+  (a) exactly the pattern size the container declares (9 chunks →
+  9,216 bytes) within the §40.3 accounting, and
+  (b) clean sparse hex text — only `[0-9a-f]`, `\n`, `\r`, NUL — with
+  the pinned literal backbone in order (§40.2's census is the reference:
+  1,535–1,577 literals, ≥99% hex).
+A recovered ladder that fails the vector gate is wrong regardless of how
+well it fits P1 — the vector is a second, vendor-authored constraint the
+hardware session gets for free. `tools/fw_vector_probe.py` block [2/3]
+is the reference implementation of the check's data side; the Rust-side
+runner is a natural follow-up once a recovered `SPHEVTBL` exists (the
+§35 seam already carries arbitrary tables through the engine model).
+
+**What this does not change.** The vector alone still does not
+determine the ladder offline: the §30.3 underdetermination extends to
+it (the text oracle is satisfied by many ladders — the RFC ladder
+itself already produces clean text at every start bit), the distance
+side (30 bases) gains no equation from the size anchors, and no public
+source publishes `sp_gzip` or the pattern's generator (survey re-run
+this session; §39.2's conclusion stands). The §30.4 blocker remains
+hardware-gated; the hardware-session protocol (§27) is unchanged except
+that the post-capture procedure gains the vector gate as a mandatory
+second validation, and the §37 solver's candidate ordering can exploit
+§40.3's derived structure (short codes at-or-below RFC, long codes
+above) as its baseline prior.

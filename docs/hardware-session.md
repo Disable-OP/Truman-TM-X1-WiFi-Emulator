@@ -199,6 +199,28 @@ Exit codes: `0` identical / zero residue · `1` divergent / residue
 present (actionable data — this is a *good* outcome for the solve) ·
 `2` usage, IO or empty-overlap error.
 
+**The vector gate (§40.4, Milestone AM — mandatory second validation).**
+A ladder recovered from P1 must also re-decode the vendor's own SDK test
+container (the same hardware ROM values; `tools/reference/`), which
+`sp_gzip` compressed against a *known* 9,216-byte pattern. The
+recovered-ladder vector decode must be clean sparse hex text
+(`[0-9a-f]`, `\n`, `\r`, NUL only) with the pinned literal backbone
+(§40.2: ≥99% of the stream's literals are hex characters) and must
+account to the container's own 9-chunk size (§40.3). A ladder that fits
+P1 but fails the vector gate is wrong. The reference implementation of
+the check's data side (censuses, backbone, joint anchors) is offline
+and deterministic:
+
+```
+python3 tools/fw_vector_probe.py
+```
+
+It also prints the §40.3 joint anchor system — Truman's pinned
++4,464 against the vector's start-bit-dependent −570/−377/−358 — which
+any candidate ladder must satisfy jointly (per-class uniform families
+have zero survivors; the true deltas are per-code structured, short
+codes at-or-below RFC, long codes above).
+
 The comparison is pure integer math (`Machine::compare_dumps` /
 `Machine::classify_residue` in `src/machine.rs`, pinned by
 `tests/hwsession.rs`): matching count and per-mille, first divergence,

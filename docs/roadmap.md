@@ -1,5 +1,43 @@
 # Roadmap
 
+## Milestone AM — the vendor vector's structural leak: the pattern backbone, the joint anchor system, the post-capture vector gate ✅ (v0.30.0)
+
+- **The SDK test container is a richer oracle than any session had used
+  (§40)**: the vendor's own `sp_gzip` output (`ZlibBuf` in the archived
+  `cmd_sp_png_dec.c`, scramble key 0xa6fc, 9 chunks → 9,216 bytes) was
+  re-probed end-to-end (`tools/fw_vector_probe.py`, deterministic,
+  offline). Findings, byte-level: (1) the dynamic header's alphabet is
+  exactly the observed output alphabet, and **no start bit in
+  `[304, 4096)` reaches EOB** under the canonical tables — the vector's
+  decode ends by row-count accounting (§40.1); (2) the engine-semantics
+  decode (32 KiB zero preset) completes with zero invalid distances and
+  over-runs the 9,216 anchor by +570/+377/+358 at the three candidate
+  start bits; (3) the literals are ≥99% hex characters and form fluent
+  text — **the pattern's backbone is in the stream**, with
+  match-produced gaps between fragments (§40.2).
+- **The joint two-stream length-anchor system (§40.3)**: Truman's pinned
+  `Σ n_t·d = +4,464` vs the vector's `−570/−377/−358` — **opposite
+  signs on the same dominant short-length class**. The entire
+  per-extra-bit-class uniform family (bounded integer deltas, base
+  validity enforced) has **zero joint survivors** at all three start
+  bits. Conditional on the vector's no-waste anchor (registered
+  caveat); the opposite-sign structure is unconditional — the first
+  hardware-independent structural fact about the true ladder beyond
+  RFC: short codes at-or-below RFC, long codes above.
+- **The post-capture vector gate (§40.4)**: `ladder_solve`'s recovered
+  ladder must also re-decode the vector to clean sparse hex text with
+  the pinned backbone and the 9,216 accounting — a second,
+  vendor-authored validation, now a mandatory step in
+  `docs/hardware-session.md`. A ladder that fits P1 but fails the
+  vector gate is wrong.
+- **No emulator-semantics change; the blocker stays hardware-gated**:
+  the §30.3 underdetermination extends to the vector (the text oracle
+  admits many ladders — the RFC ladder already produces clean text at
+  every start bit), the distance side gains no size equation, and the
+  survey (third pass, 2026-10-25) finds nothing new upstream. Boot pins
+  unchanged (handoff step 1,301,763, trap 0xA1600050, fingerprint
+  0xcd8d03bf); all 146 tests debug and release, fmt/clippy clean.
+
 ## Milestone AL — the CI record observed green; the second survey (session record) (v0.29.2)
 
 - **The gate battery is now remotely observed, not just locally claimed**:
