@@ -1,5 +1,31 @@
 # Roadmap
 
+## Milestone AX — the fourteenth survey: die-marking, Russian platforms, DVB wikis — all registered angles closed ✅ (v0.34.6)
+
+- **The last three registered angles executed (§51.1)**: die-marking
+  databases carry zero SPHE15xx entries (the family circulates under
+  full MPNs — but the distributor layer yields one new audit datum:
+  **SPHE1506G = QFP-128**, sibling matrix 1502A=HTQFP256 / 1506C=TQFP /
+  1500A=BGA, lifecycle Active production); the Russian-language corpus
+  bounded at the repair/model layer (satproshivka tag page model-only;
+  video titles consistent with AW's repair-channel corpus); DVB
+  hardware wikis documented as the Enigma2/Linux class — the SPHE15xx
+  platform does not appear in them.
+- **One contradiction found and resolved (§51.1)**: an AI-generated
+  commerce guide claims "SPHE1506 = ARM9 + DSP" — refuted by the
+  artifact's own instruction-stream ISA proof (§3, §7); the same
+  corpus's 1512 page says "32-bit MIPS-based" — the corpus contradicts
+  itself, the bytes do not. A live demonstration of why secondary
+  claims cannot outrun primary evidence.
+- **Verdict (§51.2)**: the fourteenth consecutive zero for the §30.3
+  value-ladder; **no registered survey angles remain** — future passes
+  re-open only on a named lead. Blocker stays hardware-gated exactly
+  as registered (P1 dual-gate solve, P2/P2b/P2c, P3 readout).
+- **Unchanged**: boot pins (handoff step 1,301,783, trap 0xA1600050,
+  fingerprint 0xcd8d03bf); 161 tests debug and release; fmt clean,
+  clippy 0 warnings.
+
+
 ## Milestone AW — the thirteenth survey: loader-tool corpus, gitee direct, the academic line ✅ (v0.34.5)
 
 - **Three registered angles executed (§50.1)**: the RS232 loader-tool

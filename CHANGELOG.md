@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.34.6 — Milestone AX: the fourteenth survey — die-marking databases, Russian-language platforms, DVB-community hardware wikis (session record, §51)
+
+### Docs
+- **The survey (§51.1)**: the last three registered angles executed —
+  (1) die-marking/marking-code databases: zero SPHE15xx entries (the
+  family circulates under full MPNs; corpus structurally
+  inapplicable), while the distributor-metadata layer adds
+  SPHE1506G = QFP-128 (suffix variants NRNK/NRNF/DRNK/DRNM/KX,
+  lifecycle Active production) and the sibling package matrix
+  (1502A=HTQFP256, 1506C=TQFP, 1500A=BGA); (2) the Russian-language
+  corpus: bounded at the repair/model layer (satproshivka tag page
+  model-only; video-platform titles consistent with the repair
+  channel, no register/constant/memory-map content); (3) DVB-community
+  hardware wikis: the genre documents the Enigma2/Linux receiver
+  class, no SPHE15xx silicon detail.
+- **Contradiction resolved**: an AI-generated commerce guide's
+  "SPHE1506 = ARM9 + DSP" claim is refuted by the artifact's own
+  instruction-stream ISA proof (§3, §7); the same corpus's SPHE1512A
+  page says "32-bit MIPS-based" — the corpus contradicts itself, the
+  bytes do not.
+- **Verdict (§51.2)**: the fourteenth consecutive zero for the §30.3
+  value-ladder; no registered survey angles remain — future passes
+  re-open only on a named lead. Blocker stays hardware-gated
+  (P1, P2/P2b/P2c, P3).
+
+
 ## 0.34.5 — Milestone AW: the thirteenth survey — loader-tool corpus, gitee direct, the academic PNG-decode line (session record, §50)
 
 ### Docs

@@ -4322,3 +4322,89 @@ rebuilt); 161 tests debug and release; fmt clean; clippy zero
 warnings. Remaining survey angles for future passes: die-marking
 databases, Russian-language video platforms, DVB-community hardware
 wikis.
+
+## 51. Milestone AX — the fourteenth survey: die-marking databases, Russian-language platforms, DVB-community hardware wikis (session record, v0.34.6)
+
+### 51.1 The survey: three registered angles, executed and closed
+
+The thirteenth survey left exactly three registered angles open. The
+fourteenth pass executes all three, none previously used.
+
+- **The die-marking/marking-code database corpus (new corpus, closed)**:
+  the marking-code lookup genre (markingcodes.com, PartGenie, TI's
+  marking lookup, DigiKey's marking forum) exists precisely to map
+  abbreviated top-marks to MPNs — and carries **zero SPHE15xx
+  entries**. The corpus's own structure explains why: SOT-23-class
+  parts need 2–3-character codes, but the SPHE1506 family is a
+  large QFP part that circulates under its full MPN. The
+  distributor-metadata layer adds one genuinely new audit datum:
+  **SPHE1506G ships in QFP-128** (digipart, Jotrin: "QFP-128 /
+  TQFP", eight suffix variants NRNK/NRNF/DRNK/DRNM/KX plus HLEAF/
+  HLEAE, lifecycle "Active production"), with the sibling package
+  matrix visible in the same catalogs — SPHE1502A in HTQFP256,
+  SPHE1506C in TQFP, SPHE1500A in BGA. The package footprint of our
+  exact die (SPHE1506HV) is still unconfirmed; the marking databases
+  are closed, not the package question.
+- **The Russian-language platform corpus (new corpus, bounded)**: the
+  Russian receiver-firmware site satproshivka.com carries a
+  `sunplus-1506g` tag page, but its content is model-layer only (a
+  "55X HD" receiver with no chipset detail). Russian video-platform
+  searches (VK Video, Yandex) surface only repair/flashing video
+  *titles* for the 1506G/1506HV family — consistent with the repair
+  channel the thirteenth survey already bounded (RT809F footage);
+  video *content* itself is not evidence-accessible from this
+  session, and no title names a register, a constant, or a memory
+  map. The Russian-language corpus is bounded at exactly the same
+  layer as the Arabic one (tenth survey): firmware-train and repair
+  metadata, zero engine semantics.
+- **The DVB-community hardware-wiki corpus (new corpus, closed)**: the
+  structured receiver-hardware wiki space (Enigma2's Wikipedia page
+  and the satellite-forum hardware sections reachable from it)
+  documents the **Linux Enigma2 receiver class** — Broadcom MIPS
+  set-top boxes with 512 MB DDR3, 128 MB flash, open SDKs. The
+  SPHE15xx platform does not appear in it: the Sunplus RTOS boxes
+  live in a different, closed ecosystem (the eighth survey's
+  no-BSP finding and the tenth's live-device witness already
+  bracket this). No hardware wiki carries SPHE15xx silicon detail.
+
+- **A contradiction found and resolved (the survey's one substantive
+  yield)**: an AI-generated Alibaba buying guide (2026-08-29) asserts
+  the "SPHE1506 Series" core architecture is "**ARM9 + DSP
+  co-processor**" with "256MB DDR2 + 4MB Flash". This is the first
+  online claim to name a concrete ARM core for the 1506 — and it is
+  **refuted by this session's primary evidence**: the audit's ISA
+  proof (§3, §7) rests on the artifact's own instruction stream
+  (opcode-level little-endian MIPS32r2, booting through the real
+  chain to the eCos handoff pin), which ARM tooling cannot even
+  load. Sharper: the *same commerce corpus* describes the sibling
+  SPHE1512A as a "**32-bit MIPS-based processor (667MHz)**"
+  (Alibaba's 1512 buyer page) — the corpus contradicts itself, and
+  the artifact-level MIPS proof stands independently of both pages.
+  Recorded as: a marketing-layer ARM claim exists; it is
+  hearsay-with-zero-provenance; the primary evidence is the bytes.
+  This is the survey's contribution to the "prove the ISA
+  independently" rule — a live example of why secondary claims
+  cannot outrun instruction-stream evidence.
+
+### 51.2 What it means
+
+The fourteenth consecutive survey returns **zero new evidence toward
+the §30.3 value-ladder**. All three remaining registered angles are
+now executed and closed (die-marking databases: structurally
+inapplicable; Russian platforms: bounded at the repair/model layer;
+DVB hardware wikis: wrong platform class). The survey's yield is one
+new audit datum (SPHE1506G = QFP-128, sibling package matrix), one
+lifecycle datum (Active production), and one resolved contradiction
+(commerce-corpus ARM9 claim refuted by primary ISA evidence, with
+the same corpus's own 1512 MIPS claim contradicting it). The blocker
+stays hardware-gated exactly as registered — P1 (the 59 ladder
+constants via the dual-gate solve), P2/P2b/P2c (residue, window
+preset, staging-tail overhang), P3 (readout, printed by
+`dram_compare`). Session state: environment re-recovered (roll-back
+to Milestone K, `--ff-only` fast-forward to AW 316776d, toolchain
+reinstall with rustfmt/clippy, push_safe.sh rebuilt); 161 tests
+debug and release; fmt clean; clippy zero warnings. Remaining survey
+angles: none registered — every angle family proposed across
+surveys one through thirteen has now been executed. Future passes
+may re-open only on a named lead (new document, new dump, new
+tooling leak), not on re-sampling closed corpora.
