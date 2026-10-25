@@ -31,6 +31,7 @@ physical capture.
 | window | the same, plus ideally 1 MiB below `0x01600000` (the §18.3 never-written region) |
 | when | immediately after reset, before the payload decompress stage starts |
 | expectation | all-zero per the emulator side (§18.3: the boot never writes below the pixel base); **any** non-zero content is the §21.6 item-2 answer |
+| ingestion | classification: `dram_compare --pre p2_predecode.bin`; the re-boot under the residue: `dram_compare --pre p2_predecode.bin --reboot-residue firmware/<flashfile>.bin --base <capture base>` (§45) — one command, verdict + measured decode delta |
 
 P2 must be captured on a **separate cold boot** from P1: P2 is a
 capture-at-reset, P1 is a capture-at-handoff, and you cannot rewind the
@@ -58,6 +59,26 @@ A second dump of the same window at the P1 halt (post-decode, the
 window's final state) is one more `dump_image` line and gives the
 session the engine's window trace end-state for cross-checking; the
 pre-decode P2b dump is the one the seam consumes.
+
+### P2c — the container staging tail at the P2 halt (the §45.3 overhang)
+
+The driver's chunk-size formula (§17: stream_len + 8 + (len&1) + 6)
+programs the engine to read 0x8692 bytes from the staging copy at
+0x02088000 — 6 bytes PAST the loader's 0x868C-byte copy, content
+neither the loader nor the driver's zero-fill ever writes (§45.3). On
+the emulator, those 6 bytes are the model's zero DRAM init and the
+pinned decode (75,408 / 0xcd8d03bf) is a function of them; on the
+device, whatever DDR left there enters the stream tail.
+
+| item | value |
+|---|---|
+| window | phys `0x02090680`, 64 bytes (the staging copy's end plus the overhang and margin) |
+| when | the same P2 cold-boot halt, BEFORE the payload decompress stage starts |
+| expectation | the model has zeros in the 6-byte overhang [0x0209068C, 0x02090692); anything else moves the decode's final 10 bytes |
+| ingestion | the 6 overhang bytes into `dram_compare --pre <capture> --reboot-residue <flash> --base 0x0209068C` reproduces the device's tail state and its decode delta; a P1 compare whose ONLY divergence is [75,398, 75,408) is the pre-registered signature of exactly this residue, not of LZ error |
+
+One `dump_image` line; decide the signature before a P1 compare is
+ever run against it.
 
 ### P3 — the probe-window fingerprint (the cheap oracle, Milestone AG)
 
@@ -167,6 +188,9 @@ cargo run --release --example dram_compare -- \
     --post firmware/<flashfile>.bin p1_pixel.bin --out p1_map.txt
 cargo run --release --example dram_compare -- \
     --pre p2_predecode.bin --out p2_map.txt
+cargo run --release --example dram_compare -- \
+    --pre p2_predecode.bin --reboot-residue firmware/<flashfile>.bin \
+    --base <capture base>          # §45: the re-boot under the residue
 cargo run --release --example dram_compare -- \
     --ref saved_pixel_dump.bin p1_pixel.bin        # offline re-analysis
 ```
@@ -288,7 +312,7 @@ out explicitly in the session record.
 | P1 PREFIX-IDENTICAL, size Δ | same decode, different allocation/length accounting | record both lengths (§26.4's 75,398 vs 79,872 family); re-run the size-anchor algebra with the true length |
 | P1 DIVERGENT | the LZ value semantics differ from every model tested in §14–§26 | run `solve_divergence` (§36): the first divergent byte is attributed to its producing decode event — the first match whose value semantics differ — with the identical prefix's pin; the `--out` event trace is the per-symbol map for the solve |
 | P2 ZERO | residue ruled out in the captured window | widen the P2 window (the 1 MiB below the base), repeat once; then the paradox residue is elsewhere in DRAM |
-| P2 RESIDUE PRESENT | the §21.6 item-2 answer: the engine starts from non-zero state | load the residue via `AddressSpace::copy_in` before the engine start in a fresh emulator boot and re-run the decode compare — the emulator supports this today |
+| P2 RESIDUE PRESENT | the §21.6 item-2 answer: the engine starts from non-zero state | run the re-boot under the residue — one command since Milestone AR (§45): `dram_compare --pre p2_predecode.bin --reboot-residue firmware/<flashfile>.bin --base <capture base>`; RESIDUE INERT = no decode delta through this window (measured), RESIDUE ACTIVE = the block map localizes the channels the solve must account for |
 | P3 MATCHES `0xcd8d03bf` | the device's decode equals the emulator's reference output (a 2^-32 coincidence for any other decode) | first re-verify the capture point per the P1 IDENTICAL row (a match this strong must survive the same suspicion); then the blocker reframes: the engine decode is known — re-run the §18.4 algebra with the *true* output and re-pin `ENGINE_VALUE_TABLES` from the solved semantics |
 | P3 PRESENT, ≠ reference | the true decode has a 32-bit fingerprint; every candidate decode whose output mismatches it is eliminated offline | re-run the §15.6/§18.2/§26 swept families under the fingerprint oracle (`adler32(decode) == captured`) — executable today as a `ladder_eval` loop over `SPHEVTBL` candidate files (§35); a family whose best candidate matches is the answer; none matching = the true ladder is outside every swept family — record and close that space too |
 | P3 ZERO / STUCK / implausible | the engine does not accumulate Adler-32 over raw decodes (the registered caveat outcome) | no information lost — proceed with P1/P2 as planned; record the probe values verbatim in the session log regardless |

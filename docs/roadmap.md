@@ -1,5 +1,48 @@
 # Roadmap
 
+## Milestone AR — the residue re-boot as one command; the tail overhang ✅ (v0.34.0)
+
+- **The P2 decision row's last manual step, removed (§45.1)**: "load
+  the residue via `AddressSpace::copy_in` and re-run the decode
+  compare" was library-only prose; `dram_compare --pre <capture>
+  --reboot-residue <flashfile.bin> [--base <phys>]` is now its
+  one-command form — classify, boot clean, boot with the capture
+  copy_in'd at the P2 window base before the boot chain runs, compare
+  the two decode-output windows byte-for-byte. RESIDUE INERT /
+  RESIDUE ACTIVE verdicts are the measured forms of the model's
+  §18.3 statements; short injection is a named exit-2 error; an
+  all-zero capture skips the boots as vacuous; exit codes unchanged
+  (the experiment is attached data).
+- **The tail overhang, found by writing the pins (§45.3)**: the
+  driver's chunk-size formula programs the engine to read 0x8692
+  bytes from the staging copy — 6 bytes PAST the loader's 0x868C-byte
+  copy, content nothing writes (the zero-fill covers band+scratch
+  only). The channel is ACTIVE: 0xA5 in the overhang moves exactly
+  the decode's final 10 bytes (first divergence exactly at 75,398,
+  §17.2's block-1 boundary; adler 0xfc670378; deterministic). The
+  pinned 75,408 / 0xcd8d03bf decode is a function of the model's zero
+  DRAM init there — a P1 compare whose ONLY divergence is
+  [75,398, 75,408) is the pre-registered signature of staging-tail
+  residue, not LZ error. **P2c registered** (hardware-session.md):
+  one more `dump_image` line (0x02090680, 64 bytes) decides it.
+- **Pinned** (3 new tests; 161 total debug and release): below-base
+  residue inert with the handoff pin holding (1,301,783 steps under
+  injection); whole-output-window residue fully overwritten by §17's
+  row semantics (and the clean window's tail is the zero fill past
+  the decode length); the overhang channel ACTIVE with the driver's
+  own program pinned from the registers (src 0x02088000, ilen 0x8692,
+  overhang 6) and the divergence localized to the 10-byte tail.
+- **Docs defect fixed**: roadmap prose said handoff step 1,301,763 in
+  six places (digit transposition); the authoritative 1,301,783
+  (§28.2, §24, the test pins) is now consistent everywhere.
+- **Unchanged**: boot pins (handoff step 1,301,783, trap 0xA1600050,
+  fingerprint 0xcd8d03bf); fmt clean, clippy 0 warnings. Eighth
+  fresh-evidence survey (2026-10-25, §45.4): the eCos archives hold no
+  Sunplus BSP; Sunplus's own SP7021 wiki documents 30+ peripherals
+  but no display-codec engine registers (a positive data point on the
+  vendor's practice); the distinctive constants return zero hits. The
+  §30.4 blocker stays hardware-gated.
+
 ## Milestone AQ — the band-window preset as a data seam ✅ (v0.33.0)
 
 - **The last hardcoded decode input became a value (§44)**: the engine's
@@ -30,7 +73,7 @@
   the §21.6 item-2 ingestion is one flag. The solver's family is
   unchanged (a preset-conditional family would multiply the search
   without a new anchor); the §30.4 blocker stays hardware-gated.
-- **Unchanged**: boot pins (handoff step 1,301,763, trap 0xA1600050,
+- **Unchanged**: boot pins (handoff step 1,301,783, trap 0xA1600050,
   fingerprint 0xcd8d03bf); fmt clean, clippy 0 warnings. Seventh
   fresh-evidence survey (2026-10-25, §44.4): nothing new upstream.
 
@@ -61,7 +104,7 @@
   restored again (this time Milestone K); remote remained authoritative
   (fetch → ancestry → `--ff-only`); `scripts/push_safe.sh` recreated
   from its documented design after the snapshot restore dropped it.
-  Boot pins unchanged (handoff step 1,301,763, trap 0xA1600050,
+  Boot pins unchanged (handoff step 1,301,783, trap 0xA1600050,
   fingerprint 0xcd8d03bf).
 
 
@@ -126,7 +169,7 @@
   Rust too); the §40.3 joint anchor sweep remains
   `tools/fw_vector_probe.py`'s job (independent cross-check); the
   §30.4 blocker stays hardware-gated; boot pins unchanged (handoff step
-  1,301,763, trap 0xA1600050, fingerprint 0xcd8d03bf); fmt clean,
+  1,301,783, trap 0xA1600050, fingerprint 0xcd8d03bf); fmt clean,
   clippy 0 warnings, 152 tests debug and release. Fourth fresh-evidence
   survey (2026-10-25): nothing new upstream.
 
@@ -165,7 +208,7 @@
   admits many ladders — the RFC ladder already produces clean text at
   every start bit), the distance side gains no size equation, and the
   survey (third pass, 2026-10-25) finds nothing new upstream. Boot pins
-  unchanged (handoff step 1,301,763, trap 0xA1600050, fingerprint
+  unchanged (handoff step 1,301,783, trap 0xA1600050, fingerprint
   0xcd8d03bf); all 146 tests debug and release, fmt/clippy clean.
 
 ## Milestone AL — the CI record observed green; the second survey (session record) (v0.29.2)
@@ -271,7 +314,7 @@
 - **No semantics change**: 146 tests (+9: the synthetic bases-only
   solve, the typed failures, the real-firmware gates incl. the census
   and the exact-RFC agreement), debug and release, green; fmt/clippy
-  clean; boot pins unchanged (handoff step 1,301,763, trap at
+  clean; boot pins unchanged (handoff step 1,301,783, trap at
   0xA1600050, fingerprint `0xcd8d03bf`). Fresh evidence survey: nothing
   new beyond §34.5/§35.2/§36.4 (sp_gzip remains unpublished; no source
   uploads a value ladder).
@@ -415,7 +458,7 @@
   watchpoints over every modeled device window with `(step, PC)`
   attribution, the console delta, and an optional head trace. Bounded by
   construction; deterministic.
-- **The current horizon, measured (§32.2)**: handoff at step 1,301,763
+- **The current horizon, measured (§32.2)**: handoff at step 1,301,783
   with `v1`=0x13800 (79,872 pixels) and `a0`=0x400 (PNG width) live;
   20 instructions, all in the entry page; death on the 0xFFFF word at
   0xA1600050; zero MMIO; zero console — the §19.1 head paradox, now a

@@ -3852,3 +3852,102 @@ the same out-of-scope 1506T/1506c/GX6605S receiver-firmware ecosystem
 PNG_DEC documentation), a SPHE15 welding-glove datasheet (the constant
 false positive), and nothing about `sp_gzip` or the value-ladder
 constants. The §30.4 blocker stays hardware-gated.
+
+## 45. Milestone AR — the residue re-boot as one command; the tail overhang (v0.34.0)
+
+### 45.1 The last manual step of the P2 row
+
+The decision tree's P2 RESIDUE PRESENT row (docs/hardware-session.md)
+instructed: "load the residue via `AddressSpace::copy_in` before the
+engine start in a fresh emulator boot and re-run the decode compare —
+the emulator supports this today". The support was real but
+library-only: `copy_in` is a diagnostics API, `entry_oracle.rs` used it
+for research, and no capture-pipeline command ingested a residue file.
+An operator holding a real P2 capture had to write Rust to run the
+experiment — the exact class of manual step Milestones AI (the
+divergence solve), AJ (the ladder solve), AH (the value-table swap),
+AP (the probe halves) and AQ (the band-window preset) progressively
+removed. Milestone AR closes the row the same way:
+`dram_compare --pre <capture> --reboot-residue <flashfile.bin>
+[--base <phys>]` classifies the residue exactly as before, then boots
+the real firmware twice — once clean, once with the capture's bytes
+copy_in'd at the P2 window base BEFORE the boot chain runs — extracts
+both decode-output windows (the `--post` artifact: PNG_IMG_WIDTH ×
+PNG_IMG_HEIGHT at the pixel base) and compares them byte-for-byte. The
+verdicts are the measured forms of the model's statements: RESIDUE
+INERT (byte-identical) — no decode delta through this window; RESIDUE
+ACTIVE (divergent) — the first divergence and block map localize the
+channels any solve must account for. `--base` is the capture's first
+byte (default 0x01600000; the wide P2 variant starts 1 MiB lower at
+0x01500000); a short injection is a named exit-2 error, not a silent
+truncation; an all-zero capture skips the boots as vacuous; the exit
+code stays the classification verdict (the experiment is attached
+data). The boots are deterministic, so the verdict is reproducible
+from the capture file alone.
+
+### 45.2 The pins (3 new tests; 161 total)
+
+All on the real firmware, mirroring the command's library flow per
+window class. Residue BELOW the pixel base (4,096 × 0xA5 at
+0x01500000 — inside the wide P2 window, outside the band preset and
+the output window): byte-identical decode, fingerprint 0xcd8d03bf
+holds, and the handoff pin holds at exactly 1,301,783 steps under the
+injection. Residue INSIDE the output window (the whole programmed
+79,872 × 0xA5): byte-identical decode — §17's row semantics write
+every programmed row (the decode output plus the zero-filled band
+tail), so the P2 primary window cannot hold surviving residue; the
+test also pins that everything past the decode's own output length is
+zeros in the clean window. And the pre-existing 158-test suite is
+unchanged.
+
+### 45.3 The tail overhang: the one genuine bus-side residue channel
+
+Writing the third pin surfaced a real find. The driver's chunk-size
+formula (§17: PNG_CHUNK_SIZE = stream_len + 8 + (len&1) + 6) programs
+the engine's input length to 0x8692 for the 0x868C-byte container, and
+the loader's copy (§13.1) writes flash → 0x02088000, 0x868C bytes. The
+engine's read window therefore overhangs the copy by exactly **6
+bytes** ([0x0209068C, 0x02090692)) — content the loader never writes
+and the driver's zero-fill does not cover (§13.1 fills the band window
+and the scaling buffer only, 0xA2040000..0xA2088000). The model reads
+those bytes as stream tail, and the channel is **ACTIVE**: injecting
+0xA5 into the 6 overhang bytes moves the decode's final 10 output
+bytes (first divergence exactly at byte 75,398 — §17.2's block-1
+content boundary — with bytes [75,398, 75,408) all that changes;
+deterministic across boots; adler 0xfc670378 under the injection vs
+the pinned 0xcd8d03bf). Two consequences for the hardware session.
+First, the model's pinned decode (75,408 / 0xcd8d03bf) is a function
+of the model's zero DRAM init in those 6 bytes; a real device's DDR
+content there is whatever training left. A P1 comparison whose ONLY
+divergence is [75,398, 75,408) is therefore the pre-registered
+signature of non-zero staging-tail residue — 10 bytes, nothing else —
+not of LZ-semantics error. Second, the capture plan gains P2c (a dump
+of the container staging tail at the P2 halt, registered in
+docs/hardware-session.md): one more `dump_image` line that decides the
+signature before it is ever seen in a P1 compare. The driver's own
++6 is presumably the adler/CRC tail convention; the hardware may or
+may not accumulate those bytes — P2c decides.
+
+### 45.4 Fresh-evidence survey (2026-10-25, eighth pass)
+
+New angles: the eCos project's own mailing-list archives (ecos-discuss
+and the deprecated ecos-patches — the natural home for a Sunplus BSP
+port, since the firmware's decompressed stage IS eCos); mainline
+Linux's Sunplus presence (the SP7021 line — ARM Cortex-A7, a different
+SoC family — with i2c/spi/mmc drivers in the tree and the vendor's
+official public documentation wiki); and raw distinctive-constant
+searches (`0xBFFE3878`, `0xBFFE3800`, `PNG_BS_STR_ADDR`, `sp_gzip`).
+Results: no SPHE15xx (or any Sunplus MIPS) BSP port or engine
+discussion in the eCos archives; the SP7021 line's official wiki
+documents DISPLAY/HDMI/CSI and 30+ peripherals but contains no
+PNG_DEC, no hardware inflate, no JPEG-codec register documentation —
+a positive data point on the vendor's documentation practice: even a
+mainline-supported Sunplus SoC does not publish its display-codec
+engine registers; and the distinctive constants return zero public
+hits. The `sp_gzip` symbol and the value-ladder constants remain
+unpublished anywhere reachable; the §30.4 blocker stays
+hardware-gated. A side observation: the receiver ecosystem itself
+warns that "SPHE1506" units may ship non-Sunplus SoCs entirely
+(commodity rebranding), so the audit's chip-level identification
+(§3, §7) remains the session's ground truth for what this emulator
+models.

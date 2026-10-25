@@ -33,6 +33,16 @@
 //! run reports the preset's adler so the window under test is recorded
 //! with the verdict.
 //!
+//! Pre mode's `--reboot-residue` is the §45 residue re-boot seam (the
+//! last manual step of the P2 decision-tree row, now one command): it
+//! boots the real firmware twice — once clean, once with the capture's
+//! bytes copy_in'd at the P2 window base BEFORE the boot chain runs —
+//! and compares the two decode outputs byte-for-byte. RESIDUE INERT
+//! (identical) measures the model's §18.3 statement on the window;
+//! RESIDUE ACTIVE (divergent) localizes the channels the solve must
+//! account for. The compare window is always the decode output (the
+//! `--post` artifact); the injection base is the capture's first byte.
+//!
 //! Options:
 //!   --out <map.txt>   write the 1024-byte block map to a file
 //!   --offset <phys>   post mode: pixel base override (default 0x01600000)
@@ -42,6 +52,12 @@
 //!   --preset-window <f> post mode: band-window preset CONTENT from a
 //!                     file (§44; exactly 0x8000 bytes, or a larger
 //!                     dump's tail)
+//!   --reboot-residue <f> pre mode: flashfile for the §45 two-boot
+//!                     residue experiment (the P2 RESIDUE PRESENT row,
+//!                     mechanical)
+//!   --base <phys>     pre mode: the capture's window base for the
+//!                     injection (default 0x01600000; the wide P2
+//!                     variant starts 1 MiB lower, 0x01500000)
 //!
 //! Exit codes: 0 = identical / zero residue; 1 = divergent / non-zero
 //! residue (actionable data); 2 = usage, IO or empty-overlap error.
@@ -57,6 +73,7 @@ use truman_emulator::memory::AccessSize;
 const DEFAULT_PIXEL_BASE: u32 = 0x0160_0000;
 const ENGINE_IMG_WIDTH_REG: u32 = 0x1FFE_3828;
 const ENGINE_IMG_HEIGHT_REG: u32 = 0x1FFE_382C;
+const BOOT_STEP_BUDGET: u64 = 2_000_000;
 
 fn usage() -> ! {
     eprintln!(
@@ -91,6 +108,14 @@ struct Args {
     /// The `--preset-window` file, when given (§44). Post mode only, same
     /// rejection rule as `value_tables`.
     preset_window: Option<PathBuf>,
+    /// The `--reboot-residue` flashfile, when given (§45). Pre mode only:
+    /// post and ref do not run the P2 classification, so a value there is
+    /// a usage error (rejected in parse_args).
+    reboot_residue: Option<PathBuf>,
+    /// The `--base` phys address: the capture's first byte, where the
+    /// §45 injection lands. Pre mode only, and only meaningful with
+    /// `reboot_residue` (rejected without it).
+    base: u32,
 }
 
 enum Mode {
@@ -107,6 +132,8 @@ fn parse_args() -> Args {
     let mut len_override = None;
     let mut value_tables: Option<PathBuf> = None;
     let mut preset_window: Option<PathBuf> = None;
+    let mut reboot_residue: Option<PathBuf> = None;
+    let mut base = DEFAULT_PIXEL_BASE;
     let a: Vec<String> = std::env::args().collect();
     let mut i = 1;
     while i < a.len() {
@@ -149,6 +176,21 @@ fn parse_args() -> Args {
                     usage();
                 }
             }
+            "--reboot-residue" => {
+                i += 1;
+                reboot_residue = a.get(i).map(PathBuf::from);
+                if reboot_residue.is_none() {
+                    usage();
+                }
+            }
+            "--base" => {
+                i += 1;
+                base = u32::from_str_radix(
+                    a.get(i).unwrap_or_else(|| usage()).trim_start_matches("0x"),
+                    16,
+                )
+                .unwrap_or_else(|_| usage());
+            }
             other => positional.push(other.to_string()),
         }
         i += 1;
@@ -190,6 +232,18 @@ fn parse_args() -> Args {
         eprintln!("error: --preset-window applies to --post only (pre/ref modes do not decode)");
         usage();
     }
+    if reboot_residue.is_some() && !matches!(mode, Some(Mode::Pre)) {
+        eprintln!(
+            "error: --reboot-residue applies to --pre only (post/ref modes have no residue to inject)"
+        );
+        usage();
+    }
+    if reboot_residue.is_none() && base != DEFAULT_PIXEL_BASE {
+        eprintln!(
+            "error: --base applies to --pre --reboot-residue only (it is the injection base)"
+        );
+        usage();
+    }
     Args {
         mode: mode.unwrap(),
         flash,
@@ -200,6 +254,8 @@ fn parse_args() -> Args {
         len_override,
         value_tables,
         preset_window,
+        reboot_residue,
+        base,
     }
 }
 
@@ -215,6 +271,125 @@ fn write_map(out: &Option<PathBuf>, title: &str, blocks: &[usize]) {
             ));
         }
         std::fs::write(p, s).expect("write map");
+    }
+}
+
+/// The §45 residue re-boot experiment (the P2 RESIDUE PRESENT decision
+/// row, mechanical): boot the real firmware clean, boot it again with
+/// the capture's bytes copy_in'd at the P2 window base BEFORE the boot
+/// chain runs, extract both decode-output windows (the `--post`
+/// artifact: PNG_IMG_WIDTH × PNG_IMG_HEIGHT at the pixel base) and
+/// compare them byte-for-byte.
+///
+/// RESIDUE INERT (byte-identical) is the measured form of the model's
+/// §18.3 statement for this window; RESIDUE ACTIVE (divergent)
+/// localizes the channels any solve must account for. The boots are
+/// deterministic, so the verdict is reproducible from the capture file
+/// alone.
+fn reboot_residue_experiment(args: &Args, capture: &[u8]) {
+    let flash = args.reboot_residue.as_ref().unwrap();
+    let img = firmware::load(flash).unwrap_or_else(|e| {
+        eprintln!("error: cannot load firmware {}: {e}", flash.display());
+        std::process::exit(2);
+    });
+
+    // Boot A: the clean reference (the model's own §18.3 zero state).
+    let mut a = Machine::new(MachineConfig::default(), &img);
+    a.reset();
+    let res_a = a.run(BOOT_STEP_BUDGET);
+
+    // Boot B: the same boot with the capture injected pre-decode. A
+    // short write means the capture does not fit the mapped window at
+    // this base — a named error, not a silent truncation.
+    let mut b = Machine::new(MachineConfig::default(), &img);
+    b.reset();
+    let written = b.bus.copy_in(args.base, capture);
+    if written != capture.len() {
+        eprintln!(
+            "error: residue injection short write ({written}/{} bytes at phys 0x{:08x}) — \
+             the capture does not fit the mapped window at this base",
+            capture.len(),
+            args.base
+        );
+        std::process::exit(2);
+    }
+    let res_b = b.run(BOOT_STEP_BUDGET);
+
+    // Extract the decode-output window from both boots (the same
+    // artifact `--post` compares: engine W×H at the pixel base).
+    let window_of = |m: &mut Machine| {
+        let w = m
+            .bus
+            .peek_phys(ENGINE_IMG_WIDTH_REG, AccessSize::Word)
+            .unwrap_or(0x400);
+        let h = m
+            .bus
+            .peek_phys(ENGINE_IMG_HEIGHT_REG, AccessSize::Word)
+            .unwrap_or(78);
+        let total = (w as usize) * (h as usize);
+        let mut buf = vec![0u8; total];
+        let got = m.bus.copy_out(DEFAULT_PIXEL_BASE, &mut buf);
+        if got != total {
+            eprintln!("error: decode window short read ({got}/{total})");
+            std::process::exit(2);
+        }
+        buf
+    };
+    let win_a = window_of(&mut a);
+    let win_b = window_of(&mut b);
+
+    println!("residue re-boot experiment (§45, one command):");
+    println!(
+        "  injected           : {} bytes at phys 0x{:08x} (adler 0x{:08x})",
+        capture.len(),
+        args.base,
+        adler32(capture)
+    );
+    println!(
+        "  clean boot         : stop={:?} steps={}",
+        res_a.stop, res_a.steps
+    );
+    println!(
+        "  residue boot       : stop={:?} steps={}",
+        res_b.stop, res_b.steps
+    );
+    println!(
+        "  clean decode       : {} bytes, adler 0x{:08x} (the boot pin is 0xcd8d03bf for this firmware)",
+        win_a.len(),
+        adler32(&win_a)
+    );
+    println!(
+        "  residue decode     : {} bytes, adler 0x{:08x}",
+        win_b.len(),
+        adler32(&win_b)
+    );
+    let c = compare_dumps(&win_a, &win_b);
+    println!(
+        "  matching           : {} ({}‰)",
+        c.matching_bytes, c.match_permille
+    );
+    println!(
+        "  first divergence   : {}",
+        c.first_divergence
+            .map(|i| format!("byte 0x{i:08x}"))
+            .unwrap_or_else(|| "none".into())
+    );
+    println!(
+        "  divergent blocks   : {} (1024-byte)",
+        c.divergent_blocks.len()
+    );
+    if c.first_divergence.is_none() && c.captured_len == c.reference_len {
+        println!(
+            "  REBOOT VERDICT     : RESIDUE INERT — the decode under this pre-decode content is \
+             byte-identical to the clean boot (the §21.6 item-2 answer, measured: no decode delta \
+             through this window)"
+        );
+    } else {
+        println!(
+            "  REBOOT VERDICT     : RESIDUE ACTIVE — the pre-decode content changes the decode \
+             (first divergence and the block map above localize the channels; the solve must \
+             account for them)"
+        );
     }
 }
 
@@ -249,9 +424,20 @@ fn main() {
             write_map(&args.out, "non-zero blocks (1024-byte):", &r.nonzero_blocks);
             if r.nonzero_bytes == 0 {
                 println!("VERDICT: ZERO — matches the emulator-side expectation (§18.3); residue ruled out in this window");
+                if args.reboot_residue.is_some() {
+                    println!("  reboot experiment : skipped — the capture is all-zero, the injection equals the clean state (vacuous, §45)");
+                }
                 std::process::exit(0);
             }
-            println!("VERDICT: RESIDUE PRESENT — the §21.6 item-2 answer; load it via AddressSpace::copy_in and re-run the decode compare");
+            if args.reboot_residue.is_some() {
+                println!("VERDICT: RESIDUE PRESENT — the §21.6 item-2 answer; the §45 residue re-boot experiment follows");
+                reboot_residue_experiment(&args, &capture);
+            } else {
+                println!(
+                    "VERDICT: RESIDUE PRESENT — the §21.6 item-2 answer; re-run under it (one command, §45): \
+                     dram_compare --pre <capture> --reboot-residue <flashfile.bin> [--base <phys>]"
+                );
+            }
             std::process::exit(1);
         }
         Mode::Post | Mode::Ref => {

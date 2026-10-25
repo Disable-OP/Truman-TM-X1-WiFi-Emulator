@@ -132,7 +132,7 @@ Requires a stable Rust toolchain (https://rustup.rs). No other dependencies.
 
 ```sh
 cargo build --release
-cargo test --release          # 158 tests: boot chain, entry harness, interrupt + COP0 timer delivery, key injection,
+cargo test --release          # 161 tests: boot chain, entry harness, interrupt + COP0 timer delivery, key injection,
                               # watchpoints, Q8 runtime evidence, timer program, keycode-consumer pin,
                               # perf-model regressions (lazy describe, hot-region memo),
                               # post-handoff map (exec pages, MMIO, DRAM write map),
@@ -192,6 +192,11 @@ python3 tools/fw_keycode_consumer.py firmware/*.bin
     --preset-window p2b_band.bin
 ./target/release/examples/ladder_eval firmware/*.bin \
     --value-tables candidates/foo.spvt --fingerprint 0xCAPTURED   # P3 elimination loop
+
+# Residue re-boot seam (Milestone AR / §45): the P2 RESIDUE PRESENT row as
+# one command — boot clean, boot under the residue, compare the decodes
+./target/release/examples/dram_compare --pre p2_predecode.bin \
+    --reboot-residue firmware/*.bin --base 0x01500000
 
 # Divergence→symbol map (Milestone AI / §36): the P1 DIVERGENT row as one
 # command — the first divergent byte attributed to its decode event, with

@@ -394,3 +394,151 @@ fn window_of(m: &mut Machine) -> (usize, Vec<u8>) {
     assert_eq!(m.bus.copy_out(0x0160_0000, &mut buf), total);
     (total, buf)
 }
+
+/// Milestone AR (§45): the P2 residue re-boot experiment, machine-level.
+///
+/// The decision tree's P2 RESIDUE PRESENT row ("load the residue via
+/// `AddressSpace::copy_in` before the engine start in a fresh emulator
+/// boot and re-run the decode compare") was library-only prose;
+/// `dram_compare --pre --reboot-residue` is now its one-command form.
+/// These tests pin the model statements the command reports, on the
+/// real firmware, per window class:
+/// * residue BELOW the pixel base (the P2 wide window's lower part,
+///   outside the band preset and the output window) is inert — the
+///   model's decode does not read the never-written region (the
+///   read-side complement of §18.3), and the boot pins hold under the
+///   injection (handoff step, fingerprint);
+/// * residue INSIDE the output window is fully overwritten by the
+///   engine's row semantics (§17: every programmed row is completed —
+///   decode output plus the zero-filled band tail), so the P2 primary
+///   window cannot hold surviving residue;
+/// * the driver's own chunk-size formula leaves a 6-byte input overhang
+///   past the loader's container copy — the one genuine bus-side
+///   pre-decode channel — and it is ACTIVE: the decode's final 10
+///   bytes are a function of those 6 bytes.
+#[test]
+fn residue_below_the_pixel_base_is_inert_and_the_boot_pins_hold() {
+    let Some(path) = real_firmware_path() else {
+        eprintln!("skipping: real firmware not present in firmware/");
+        return;
+    };
+    let img = firmware::load(&path).expect("load real firmware");
+
+    // Clean boot: the pinned reference (0xcd8d03bf, §34-era pin).
+    let mut a = Machine::new(MachineConfig::default(), &img);
+    a.reset();
+    let res_a = a.run(2_000_000);
+    let (_, ref_a) = window_of(&mut a);
+
+    // Residue boot: 4096 bytes of 0xA5 one MiB below the pixel base —
+    // inside the §21.6 wide P2 window (the 1 MiB below 0x01600000),
+    // outside the band preset [0x015F8000,0x01600000) and the output
+    // window, and far from the container staging (0x02088000).
+    let mut b = Machine::new(MachineConfig::default(), &img);
+    b.reset();
+    assert_eq!(b.bus.copy_in(0x0150_0000, &[0xA5u8; 4096]), 4096);
+    let res_b = b.run(2_000_000);
+    let (_, ref_b) = window_of(&mut b);
+
+    assert_eq!(ref_a, ref_b, "below-base residue cannot reach the decode");
+    assert_eq!(
+        adler32(&ref_b),
+        0xcd8d_03bf,
+        "fingerprint holds under residue"
+    );
+    assert_eq!(
+        res_b.steps, res_a.steps,
+        "the handoff pin holds (1,301,783)"
+    );
+    assert_eq!(res_a.steps, 1_301_783);
+}
+
+#[test]
+fn residue_inside_the_output_window_is_overwritten_by_the_row_semantics() {
+    let Some(path) = real_firmware_path() else {
+        eprintln!("skipping: real firmware not present in firmware/");
+        return;
+    };
+    let img = firmware::load(&path).expect("load real firmware");
+
+    let mut a = Machine::new(MachineConfig::default(), &img);
+    a.reset();
+    let _ = a.run(2_000_000);
+    let (total, ref_a) = window_of(&mut a);
+
+    // Residue boot: the WHOLE output window (the engine's programmed
+    // W×H = 79,872) is 0xA5 before the boot runs. §17's row semantics
+    // write every programmed row — the decode output plus the
+    // zero-filled band tail — so nothing survives.
+    let mut b = Machine::new(MachineConfig::default(), &img);
+    b.reset();
+    assert_eq!(b.bus.copy_in(0x0160_0000, &vec![0xA5u8; total]), total);
+    let _ = b.run(2_000_000);
+    let (_, ref_b) = window_of(&mut b);
+
+    assert_eq!(
+        ref_a, ref_b,
+        "the row semantics overwrite the full programmed window"
+    );
+    assert_eq!(adler32(&ref_b), 0xcd8d_03bf);
+    // The zero-filled band tail of the row semantics is visible in the
+    // clean window: everything past the decode's own output length is
+    // zeros (the machine's PNG-row resize, §17).
+    let decoded_len = a.engine_decode_inputs().expect("engine ran").decoded_len;
+    assert!(ref_a[decoded_len..].iter().all(|&b| b == 0));
+}
+
+#[test]
+fn the_container_tail_overhang_is_the_one_active_residue_channel() {
+    let Some(path) = real_firmware_path() else {
+        eprintln!("skipping: real firmware not present in firmware/");
+        return;
+    };
+    let img = firmware::load(&path).expect("load real firmware");
+
+    // Clean boot, plus the driver's engine program pinned from the
+    // registers themselves (external, verifiable): the bitstream base
+    // is the copied container (0x02088000) and the chunk size the
+    // driver programs (stream_len + 8 + (len&1) + 6, §17) reads 6
+    // bytes PAST the loader's copy (0x868C bytes, §13.1).
+    let mut a = Machine::new(MachineConfig::default(), &img);
+    a.reset();
+    let _ = a.run(2_000_000);
+    let (total, ref_a) = window_of(&mut a);
+    let src = ((a.decomp_reg(0x04) << 16) | a.decomp_reg(0x08)) & 0x1FFF_FFFF;
+    let ilen = a.decomp_reg(0x38) as usize;
+    assert_eq!(src, 0x0208_8000, "the bitstream base is the staging copy");
+    assert_eq!(ilen, 0x8692, "the driver's chunk-size program");
+    let container_len = 0x868Cusize;
+    let overhang = (src as usize + ilen) - (src as usize + container_len);
+    assert_eq!(
+        overhang, 6,
+        "the input window overhangs the copy by 6 bytes"
+    );
+
+    // Residue boot: 0xA5 in exactly the overhang bytes — content the
+    // loader never writes and the driver's zero-fill does not cover
+    // (§13.1 fills the band window and scratch only). The engine reads
+    // them as stream tail, and the decode's final bytes move.
+    let mut b = Machine::new(MachineConfig::default(), &img);
+    b.reset();
+    let tail_at = src as usize + container_len;
+    assert_eq!(b.bus.copy_in(tail_at as u32, &[0xA5u8; 6]), 6);
+    let _ = b.run(2_000_000);
+    let (_, ref_b) = window_of(&mut b);
+
+    assert_ne!(ref_a, ref_b, "the overhang channel is ACTIVE");
+    assert_ne!(adler32(&ref_b), 0xcd8d_03bf);
+    // The sensitivity is exactly the decode tail: block-1's content
+    // (0..75,398, §17.2) is untouched; the final bytes move with the
+    // tail input. Deterministic across a second injected boot.
+    let c = compare_dumps(&ref_a, &ref_b);
+    assert_eq!(c.first_divergence, Some(75_398));
+    assert_eq!(total - c.matching_bytes, 10);
+    let mut b2 = Machine::new(MachineConfig::default(), &img);
+    b2.reset();
+    assert_eq!(b2.bus.copy_in(tail_at as u32, &[0xA5u8; 6]), 6);
+    let _ = b2.run(2_000_000);
+    let (_, ref_b2) = window_of(&mut b2);
+    assert_eq!(ref_b, ref_b2, "the tail channel is deterministic");
+}

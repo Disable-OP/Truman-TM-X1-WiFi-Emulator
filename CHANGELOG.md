@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.34.0 — Milestone AR: the residue re-boot as one command; the tail overhang (§45)
+
+### Added
+- **`dram_compare --pre --reboot-residue <flashfile.bin>`** — the §45
+  seam: the P2 RESIDUE PRESENT decision row as one command. Boots the
+  real firmware clean and again with the capture copy_in'd at the
+  injection base before the boot chain runs, extracts both
+  decode-output windows (engine W×H at the pixel base) and compares
+  them: RESIDUE INERT (byte-identical) or RESIDUE ACTIVE (first
+  divergence + block map). Reports both boots' stop/steps, both
+  adlers (the clean boot's pin printed for the session log) and the
+  injection's own adler.
+- **`dram_compare --pre --base <phys>`** — the capture's first byte
+  for the injection (default 0x01600000; the wide P2 variant starts 1
+  MiB lower). Pre mode only, rejected without `--reboot-residue`.
+- **P2c registered** (docs/hardware-session.md): the container
+  staging tail (0x02090680, 64 bytes) at the P2 halt — the §45.3
+  overhang's capture, one `dump_image` line.
+
+### Fixed
+- The roadmap's handoff-step pin: six prose instances said
+  1,301,763 (digit transposition); the authoritative 1,301,783
+  (§28.2 and the test pins) is now consistent everywhere.
+
+### Changed
+- The P2 RESIDUE PRESENT decision-tree row and the ingestion section
+  now route through the one command (the `AddressSpace::copy_in`
+  prose remains as the mechanism note in §45.1).
+- The pre-mode RESIDUE PRESENT verdict line prints the exact
+  follow-up command when the flag is absent.
+
 ## 0.33.0 — Milestone AQ: the band-window preset as a data seam (§44)
 
 ### Added
