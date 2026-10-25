@@ -4684,3 +4684,44 @@ Result: the suite grows 176 → **179** (debug and release), fmt clean,
 clippy zero warnings, boot pins unchanged. The blocker stays
 hardware-gated exactly as registered (§51.2): P1, P2/P2b/P2c, P3 — the
 real-device session per docs/hardware-session.md.
+
+## 58. Milestone BE — the machine's determinism invariants pinned chain-wide (hardening, v0.35.3)
+
+### 58.1 The gap found
+
+Every reporting contract (the CLI tail re-run, the capture-comparison
+workflows, each step pin in the acceptance tests) assumes execution is a
+pure function of the start state — independent of how the step budget
+is *chunked* into `Machine::run` calls, whether the describe hook is on
+(`run_traced`), and how often the machine is rebuilt. The existing
+per-step unit tests (describe-on identity, §V-era) could not see a
+refactor that let hidden state leak across calls: timer accumulation,
+bus tick ordering, log rings, hash-map iteration order. Nothing pinned
+the invariants chain-wide on the real firmware.
+
+### 58.2 The pins
+
+**`tests/determinism.rs`** — three tests, full end-state equality
+(stop reason, step count, final pc, UART console bytes, register
+snapshot incl. hi/lo/pc/next_pc, instrumented-window touchmap):
+
+- **Chunk invariance**: the acceptance boot chain executed atomically
+  (`run(1_400_000)`) and in 65,537-step slices produce identical
+  outcomes — same trap step (**1,301,783** in both modes), same stop
+  reason, same pc, console, registers and touchmap.
+- **Trace invariance**: `run(2_000)` and `run_traced(2_000)` (tracer
+  capacity 4,096) end in identical states — the chain-level
+  counterpart of the per-step describe-on identity pin; the tracer saw
+  exactly 2,000 steps.
+- **Rebuild invariance**: two fresh machines running 1,000 steps each
+  produce identical results and end states — no per-instance state
+  leaks into execution.
+- **`--trace-tail` explicit count** (companion pin in
+  `tests/cli_success.rs`): `--trace-tail 5` prints exactly the
+  5-line suffix of the default 24-line window (same pinned final
+  step); `--trace-tail 0` disables the block.
+
+Result: the suite grows 179 → **183** (debug and release), fmt clean,
+clippy zero warnings, boot pins unchanged. The blocker stays
+hardware-gated exactly as registered (§51.2): P1, P2/P2b/P2c, P3 — the
+real-device session per docs/hardware-session.md.

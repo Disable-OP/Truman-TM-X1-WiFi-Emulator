@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.35.3 — Milestone BE: the machine's determinism invariants pinned chain-wide (hardening, §58)
+
+### Added
+- **`tests/determinism.rs`** — three chain-wide invariance tests on the
+  real firmware (§58.2): chunk invariance (atomic vs 65,537-step
+  slices — identical stop at the pinned 1,301,783 steps), trace
+  invariance (run_traced's describe hook does not alter the chain),
+  rebuild invariance (fresh machines are state-identical). End-state
+  equality covers stop reason, step count, final pc, UART console
+  bytes, register snapshot and touchmap.
+- **`--trace-tail` explicit count pinned** in `tests/cli_success.rs`:
+  an explicit N prints exactly N tail lines (the suffix of the default
+  24-line window); 0 disables the block. Tests 179 → 183 (debug and
+  release).
+
 ## 0.35.2 — Milestone BD: the `map` success-path and the diagnostics seam pinned (hardening, §57)
 
 ### Added

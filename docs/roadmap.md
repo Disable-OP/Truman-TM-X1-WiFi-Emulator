@@ -1,5 +1,19 @@
 # Roadmap
 
+## Milestone BE — the machine's determinism invariants pinned chain-wide ✅ (v0.35.3)
+
+- **`tests/determinism.rs` (§58.2)**: full end-state equality (stop,
+  steps, pc, console bytes, registers, touchmap) for the real boot
+  chain — atomic vs 65,537-step chunked runs (both stop at exactly
+  1,301,783), `run` vs `run_traced` (describe hook inert chain-wide),
+  and fresh rebuilds (no per-instance state leakage). Plus the
+  explicit `--trace-tail 5` / `0` contract in `tests/cli_success.rs`.
+  Suite 179 → 183 (debug and release).
+- **Unchanged**: boot pins (chain to trap 1,301,783, trap 0xA1600050,
+  fingerprint 0xcd8d03bf); fmt clean, clippy 0 warnings. Blocker stays
+  hardware-gated (P1, P2/P2b/P2c, P3; surveys closed per §51.2).
+
+
 ## Milestone BD — the `map` success-path and the diagnostics seam pinned ✅ (v0.35.2)
 
 - **`tests/cli_diag.rs` (§57.2)**: three end-to-end tests — the `map`

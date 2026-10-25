@@ -272,3 +272,34 @@ fn run_pins_boot_stop_console_tail_and_registers() {
     );
     assert!(ls.contains(&"  pc=0xb8000100 next_pc=0xb8000104"));
 }
+
+#[test]
+fn run_trace_tail_honors_an_explicit_count() {
+    let fw = firmware_path();
+    let fw = fw.to_str().unwrap();
+    // BC pinned the default 24-line tail; the explicit count must be
+    // honored likewise (§58 companion pin).
+    let o = run(&["run", fw, "--max-steps", "1000", "--trace-tail", "5"]);
+    assert_eq!(o.code, 0, "stderr: {}", o.stderr);
+    let ls = lines(&o.stdout);
+    assert!(
+        ls.contains(&"-- last 5 instructions --"),
+        "tail header: {ls:?}"
+    );
+    let tail = section(&ls, "-- last 5 instructions --", "-- registers --");
+    assert_eq!(tail.len(), 5, "five tail lines: {tail:?}");
+    // The 5-line tail is the suffix of the default 24-line window: its
+    // last line is the same pinned final step.
+    assert_eq!(
+        tail.last().expect("tail lines").trim_start(),
+        "pc=0xb80000fc  21efffff  addiu t7, t7, -1"
+    );
+    // And tail 0 disables the block entirely.
+    let o = run(&["run", fw, "--max-steps", "1000", "--trace-tail", "0"]);
+    assert_eq!(o.code, 0);
+    assert!(
+        !o.stdout.contains("-- last"),
+        "no tail block when 0: {}",
+        o.stdout
+    );
+}
