@@ -1,5 +1,33 @@
 # Roadmap
 
+## Milestone AS — the ninth fresh-evidence survey; the session state ✅ (v0.34.1)
+
+- **Six new angle families, none previously used (§46.1)**: the grep.app
+  public code corpus (`SPHE1505`/`sphe15`/`PNG_IMG_WIDTH`/`png_dec` all
+  zero — the vendor's chip name and driver symbols have no public code
+  footprint); the SPHE15xx Linux BSP sweep (none exists; mainline
+  Sunplus remains SP7021-only); the Sunplus image-coding patent sweep
+  (US7974484B2 JBIG, US8229236B2 progressive JPEG — genuine Sunplus
+  image-codec patents, neither DEFLATE-shaped, no value structures);
+  the consumer photo-frame hack corpus (a January 2026 Qiita
+  SPMF2800/ThreadX hack — different SoC family, failed for the same
+  vendor-practice reason the eighth survey inferred); the
+  receiver-community boards (SPHE1505/1506 confirmed as DVB mainboards
+  with firmware dumps circulating, but no display-engine driver
+  content); the vendor's own press record (the 2008 "Faster Photo
+  Decoding" photo-frame SoC release corroborates only the engine's
+  existence, no constants).
+- **Verdict (§46.2)**: the ninth consecutive survey returns zero new
+  evidence toward the §30.3 value-ladder constants; every offline step
+  that could be closed into code has been. The remaining work stays
+  hardware-gated exactly as registered — P1 (ladder constants via the
+  dual-gate solve), P2/P2b/P2c (residue, window preset, staging-tail
+  overhang), and the P3 readout whose expected values `dram_compare`
+  prints.
+- **Unchanged**: boot pins (handoff step 1,301,783, trap 0xA1600050,
+  fingerprint 0xcd8d03bf); 161 tests debug and release; fmt clean,
+  clippy 0 warnings.
+
 ## Milestone AR — the residue re-boot as one command; the tail overhang ✅ (v0.34.0)
 
 - **The P2 decision row's last manual step, removed (§45.1)**: "load

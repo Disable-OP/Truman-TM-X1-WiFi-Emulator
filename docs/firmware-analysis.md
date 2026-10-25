@@ -3951,3 +3951,77 @@ warns that "SPHE1506" units may ship non-Sunplus SoCs entirely
 (commodity rebranding), so the audit's chip-level identification
 (§3, §7) remains the session's ground truth for what this emulator
 models.
+
+## 46. Milestone AS — the ninth fresh-evidence survey (session record, v0.34.1)
+
+### 46.1 The survey: six new angle families, none previously used
+
+This pass deliberately avoided every query family of surveys one
+through eight (the Team-Proton regfile, the generic engine-symbol web
+searches, the CN patent, the eCos archives, the SP7021 wiki, the raw
+distinctive-constant searches) and targeted corpora the session had
+never touched.
+
+- **Public code search, new corpus** (grep.app, which indexes a large
+  GitHub text corpus independently of the search engines used before):
+  `SPHE1505` → zero hits; `sphe15` → zero; `PNG_IMG_WIDTH` → zero;
+  `png_dec` restricted to C → zero. The vendor's chip name and driver
+  symbols have no public code footprint at all. (`SPHE1506` alone was
+  answered by a bot checkpoint rather than the index; the family
+  queries around it returned nothing.)
+- **SPHE15xx Linux BSP sweep** (English and Chinese queries, GitHub and
+  the web): no BSP, no kernel tree, no driver code for SPHE1505/1506
+  exists publicly. Mainline Sunplus support remains SP7021-only (the
+  eighth survey's ARM-family data point stands unchanged).
+- **Sunplus image-coding patent sweep** (assignee-targeted, a different
+  query family from the sixth survey's single CN document): surfaced
+  US7974484B2 (JBIG adaptive-arithmetic codec, 2006) and US8229236B2
+  (progressive-JPEG decoding schedule, 2007) — genuine Sunplus
+  image-codec patents, but neither is a DEFLATE-shaped engine and
+  neither publishes a stored length/distance value structure. No
+  ladder material.
+- **The consumer photo-frame hack corpus** (Qiita, January 2026): a
+  Japanese author's ThreadX-era Sunplus photo-frame hack (SPMF2800/
+  SPMP2800, MIPS 4K, later transferred to Generalplus) — a different
+  SoC family entirely, and the hack failed for exactly the reason the
+  eighth survey inferred about the vendor's practice: no datasheet and
+  no open code exist for the consumer Sunplus lines. The author's
+  offhand "SPHE1506 is MIPS 24K" remark is consistent with this
+  session's own ISA evidence (§3, §7) but is hearsay, not a source.
+  No PNG_DEC content.
+- **The receiver-community boards** (iXBT, forum-gsmdevelopers, the
+  satellite-receiver Facebook groups): SPHE1505/1506 confirmed
+  widespread as DVB receiver mainboards (DDRII boxes, GD25Q32 flash,
+  firmware dumps circulating) — but the circulated receiver firmware
+  contains no display-engine driver sources or dumps of the PNG_DEC
+  program. The SoC's second life in receivers says nothing about the
+  engine's value ROM.
+- **The vendor's own press record**: the 2008-01-04 release "Sunplus
+  mMedia Unveils Budget Digital Photo Frame SoC — Faster Photo
+  Decoding with Outstanding Image Quality" survives in the search
+  index, but the current press archive starts at 2011 and the
+  Wayback snapshots were unreachable from this session's fetch
+  environment. Even at face value the title only corroborates the
+  hardware photo-decode engine's existence — established from the
+  firmware itself long ago — and yields no constants.
+
+### 46.2 Session state
+
+Environment recovery this round: the sandbox had rolled the working
+clone back to Milestone M and the worklog to Milestone V; a fetch
+showed origin/main at Milestone AR, the local head was a strict
+ancestor, and a `--ff-only` fast-forward advanced the clone with zero
+loss. The toolchain was reinstalled in the foreground from the
+archived official installer and rustfmt/clippy re-added (the minimal
+profile does not include them). The full gate set was re-run on the
+fast-forwarded tree before any edit: 161 tests pass in debug and
+release, fmt clean, clippy zero warnings.
+
+Verdict: the ninth consecutive fresh-evidence survey returns zero new
+evidence toward the §30.3 value-ladder constants. The remaining work
+stays hardware-gated exactly as registered: the P1 capture (59
+ladder constants via `ladder_solve`'s dual gate), the P2/P2b/P2c
+captures (residue classification, window preset, staging-tail
+overhang), and the P3 readout whose expected values `dram_compare`
+now prints. Every offline step that could be closed into code has
+been; nothing further is closable without a real-device session.

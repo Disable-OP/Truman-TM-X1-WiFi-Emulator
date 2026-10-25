@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.34.1 — Milestone AS: the ninth fresh-evidence survey (session record, §46)
+
+### Docs
+- **Ninth fresh-evidence survey (§46.1)** — six new angle families,
+  none previously used: the grep.app public code corpus (all vendor
+  symbols and chip names zero hits), the SPHE15xx Linux BSP sweep
+  (none exists), the Sunplus image-coding patent sweep (JBIG and
+  progressive-JPEG patents; no DEFLATE-shaped engine, no value
+  structures), the consumer photo-frame hack corpus (SPMF2800/ThreadX,
+  different family, same vendor-practice conclusion), the
+  receiver-community boards (SPHE1505/1506 DVB mainboards circulate
+  without display-engine content), and the vendor's 2008 photo-frame
+  SoC press release (corroborates the engine's existence only).
+- **Verdict (§46.2)**: zero new evidence toward the §30.3 value-ladder
+  constants; the blocker stays hardware-gated (P1, P2/P2b/P2c, P3 as
+  registered in docs/hardware-session.md). Session-state record of
+  this round's environment recovery (fast-forward, toolchain
+  reinstall) included.
+
 ## 0.34.0 — Milestone AR: the residue re-boot as one command; the tail overhang (§45)
 
 ### Added
