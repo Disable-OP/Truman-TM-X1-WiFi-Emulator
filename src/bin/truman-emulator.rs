@@ -51,6 +51,8 @@ enum ArgsError {
     UnknownCommand(String),
     MissingPath,
     BadOption(String),
+    /// The option is recognized but its value/spec is malformed.
+    BadValue(String),
     MissingValue(String),
 }
 
@@ -78,6 +80,10 @@ fn main() -> ExitCode {
         Err(ArgsError::MissingPath) => ExitCode::from(1),
         Err(ArgsError::BadOption(o)) => {
             eprintln!("error: unknown option `{o}`\n\n{}", usage());
+            ExitCode::from(1)
+        }
+        Err(ArgsError::BadValue(o)) => {
+            eprintln!("error: option `{o}` requires a valid value");
             ExitCode::from(1)
         }
         Err(ArgsError::MissingValue(o)) => {
@@ -172,7 +178,7 @@ fn parse_run_options(
                     .ok_or_else(|| ArgsError::MissingValue("--max-steps".into()))?;
                 opts.max_steps = v
                     .parse()
-                    .map_err(|_| ArgsError::BadOption("--max-steps".into()))?;
+                    .map_err(|_| ArgsError::BadValue("--max-steps".into()))?;
                 i += 2;
             }
             "--trace-tail" => {
@@ -181,7 +187,7 @@ fn parse_run_options(
                     .ok_or_else(|| ArgsError::MissingValue("--trace-tail".into()))?;
                 opts.trace_tail = v
                     .parse()
-                    .map_err(|_| ArgsError::BadOption("--trace-tail".into()))?;
+                    .map_err(|_| ArgsError::BadValue("--trace-tail".into()))?;
                 i += 2;
             }
             "--limit" => {
@@ -190,7 +196,7 @@ fn parse_run_options(
                     .ok_or_else(|| ArgsError::MissingValue("--limit".into()))?;
                 opts.trace_limit = v
                     .parse()
-                    .map_err(|_| ArgsError::BadOption("--limit".into()))?;
+                    .map_err(|_| ArgsError::BadValue("--limit".into()))?;
                 i += 2;
             }
             "-v" | "--verbose" => {
@@ -204,12 +210,12 @@ fn parse_run_options(
                     .ok_or_else(|| ArgsError::MissingValue("--dump".into()))?;
                 let parts: Vec<&str> = spec.splitn(3, ',').collect();
                 if parts.len() != 3 {
-                    return Err(ArgsError::BadOption(format!("--dump {spec}")));
+                    return Err(ArgsError::BadValue(format!("--dump {spec}")));
                 }
                 let phys = u32::from_str_radix(parts[0].trim_start_matches("0x"), 16)
-                    .map_err(|_| ArgsError::BadOption(format!("--dump phys {spec}")))?;
+                    .map_err(|_| ArgsError::BadValue(format!("--dump phys {spec}")))?;
                 let len = u32::from_str_radix(parts[1].trim_start_matches("0x"), 16)
-                    .map_err(|_| ArgsError::BadOption(format!("--dump len {spec}")))?;
+                    .map_err(|_| ArgsError::BadValue(format!("--dump len {spec}")))?;
                 opts.dumps.push((phys, len, PathBuf::from(parts[2])));
                 i += 2;
             }
@@ -442,7 +448,7 @@ fn parse_map_options(args: &[String]) -> Result<(MapOptions, Vec<String>), ArgsE
                 .ok_or_else(|| ArgsError::MissingValue(name.to_string()))?;
             *slot = v
                 .parse()
-                .map_err(|_| ArgsError::BadOption(name.to_string()))?;
+                .map_err(|_| ArgsError::BadValue(name.to_string()))?;
             Ok(())
         };
         match args[i].as_str() {
@@ -460,7 +466,7 @@ fn parse_map_options(args: &[String]) -> Result<(MapOptions, Vec<String>), ArgsE
                     .ok_or_else(|| ArgsError::MissingValue("--head".into()))?;
                 opts.head = v
                     .parse()
-                    .map_err(|_| ArgsError::BadOption("--head".into()))?;
+                    .map_err(|_| ArgsError::BadValue("--head".into()))?;
                 i += 2;
             }
             "--value-tables" => {

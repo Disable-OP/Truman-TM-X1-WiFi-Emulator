@@ -1,5 +1,21 @@
 # Roadmap
 
+## Milestone BB — the CLI error-path contract pinned end-to-end ✅ (v0.35.0)
+
+- **`tests/cli_errors.rs` (§55.2)**: seven end-to-end tests against the
+  real binary — nonexistent file, junk-wrong-size, junk-exact-4MiB,
+  unknown command/option, missing path, malformed value, and the two
+  stop-reason contracts on the real firmware (step limit below the
+  handoff → exit 0; CPU fault at the pinned trap → exit 2 with
+  pc/step-count in the report). Suite 165 → 172 (debug and release).
+- **One UX defect fixed (§55.2)**: malformed numeric values were
+  misreported as "unknown option"; a dedicated `BadValue` variant now
+  distinguishes them across all seven numeric/spec parse sites.
+- **Unchanged**: boot pins (handoff step 1,301,783, trap 0xA1600050,
+  fingerprint 0xcd8d03bf); fmt clean, clippy 0 warnings. Blocker stays
+  hardware-gated (P1, P2/P2b/P2c, P3; surveys closed per §51.2).
+
+
 ## Milestone BA — the README's measurable claims re-verified on a fresh sandbox ✅ (v0.34.9)
 
 - **Three claims re-measured (§54.1)**: boot chain = exactly 1,301,783

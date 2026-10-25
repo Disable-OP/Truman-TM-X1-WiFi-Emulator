@@ -4532,3 +4532,43 @@ clean; clippy zero warnings. The blocker stays hardware-gated exactly
 as registered (§51.2): P1, P2/P2b/P2c, P3 — the real-device session
 per docs/hardware-session.md, whose command lines Milestone AZ now
 guards mechanically.
+
+## 55. Milestone BB — the CLI error-path contract pinned end-to-end (hardening, v0.35.0)
+
+### 55.1 The gap found
+
+The validation layer has unit tests (wrong size, wrong prologue,
+missing banners — `src/firmware.rs`), but the task contract's "test
+invalid firmware, bounds … and step limits" has a second, observable
+layer: what the *binary* does with bad input. The main CLI's
+exit-code mapping (usage errors = 1; bounded step-limit stop = 0;
+CPU-fault stop = 2) was implemented and hand-checked in earlier
+milestones but never pinned end-to-end — a silent flip would have
+broken the stop-reason contract the tooling and scripts rely on.
+The docs' own exit-code contracts (hardware-session.md: solve
+examples `0/1/2`) made the surface contractual.
+
+### 55.2 What was done
+
+- **One UX defect found and fixed**: a malformed numeric value
+  (`run fw --max-steps abc`) was misreported as "unknown option
+  `--max-steps`" — the `BadOption` variant conflated unrecognized
+  flags with malformed values. A dedicated `BadValue` variant now
+  prints "error: option `--max-steps` requires a valid value" (no
+  usage reprint), across all seven numeric/spec parse sites
+  (`--max-steps`, `--trace-tail`, `--limit`, `--dump` spec parts,
+  `--pre-steps`/`--post-steps`, `--head`).
+- **`tests/cli_errors.rs`** — seven end-to-end contract tests against
+  the real binary: nonexistent file → clean `error:` exit 1 (no
+  panic); junk file, wrong size → exit 1; junk file, exact 4 MiB →
+  exit 1 (content gate); unknown command/option → exit 1 with usage;
+  missing path → exit 1; malformed value → exit 1 with the new
+  BadValue message; **step limit below the handoff → exit 0** (a
+  bounded run is a success; the report carries the budget);
+  **CPU fault at the pinned trap → exit 2** (the report carries
+  pc `0xa1600050` and the 1,301,783 step count — the same pins as
+  the acceptance tests).
+- Result: the suite grows 165 → **172** (debug and release), fmt
+  clean, clippy zero warnings, boot pins unchanged. The blocker
+  stays hardware-gated exactly as registered (§51.2): P1, P2/P2b/P2c,
+  P3 — the real-device session per docs/hardware-session.md.

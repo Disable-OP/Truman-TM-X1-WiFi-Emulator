@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.35.0 — Milestone BB: the CLI error-path contract pinned end-to-end (hardening, §55)
+
+### Added
+- **`tests/cli_errors.rs`** — seven end-to-end tests pinning the main
+  binary's observable error contract: clean `error:` + exit 1 for
+  nonexistent/wrong-size/exact-size-junk firmware, unknown commands,
+  unrecognized options and missing paths; the new BadValue message for
+  malformed values; and the stop-reason contracts on the real firmware
+  (bounded step-limit run → exit 0; CPU fault at the pinned trap
+  0xA1600050 after exactly 1,301,783 steps → exit 2). Tests 165 → 172
+  (debug and release).
+
+### Fixed
+- A malformed numeric option value (`--max-steps abc`) was misreported
+  as "unknown option `--max-steps`"; the new `BadValue` variant prints
+  "option `X` requires a valid value" across all seven numeric/spec
+  parse sites (`--max-steps`, `--trace-tail`, `--limit`, `--dump`,
+  `--pre-steps`/`--post-steps`, `--head`).
+
+
 ## 0.34.9 — Milestone BA: README measurable claims re-verified on a fresh sandbox (docs hygiene, §54)
 
 ### Docs
