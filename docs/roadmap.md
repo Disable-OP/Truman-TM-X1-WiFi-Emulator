@@ -1,5 +1,24 @@
 # Roadmap
 
+## Milestone AV — the twelfth survey: patents full-text, boot strings, gitee, Generalplus ✅ (v0.34.4)
+
+- **Four corpora closed or bounded (§49.1)**: Sunplus decode-engine
+  patents full-text (US 7,738,718 B2 — genuine Sunplus table-driven
+  decoder IP, but JPEG-shaped end to end; no DEFLATE value-ROM); the
+  boot-string code search (exact `zeroBoot` across public code: zero
+  repositories — the loader family has no source footprint anywhere);
+  gitee (sampled, nothing — retriable only with direct site access);
+  the Generalplus successor line (marketing-level only — no SDK,
+  register map, or value-structure content; lineage question now
+  checked, not assumed).
+- **Verdict (§49.2)**: zero new evidence toward the §30.3
+  value-ladder — the twelfth consecutive pass. Remaining angles:
+  video teardowns, CNKI theses, direct gitee crawl. The blocker stays
+  hardware-gated exactly as registered.
+- **Unchanged**: boot pins (handoff step 1,301,783, trap 0xA1600050,
+  fingerprint 0xcd8d03bf); 161 tests debug and release; fmt clean,
+  clippy 0 warnings.
+
 ## Milestone AU — the eleventh survey: four new angle families ✅ (v0.34.3)
 
 - **Four corpora none of the prior ten touched (§48.1)**: the eCos

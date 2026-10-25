@@ -4173,3 +4173,81 @@ state: environment re-recovered (local roll-back to Milestone M,
 `--ff-only` fast-forward to AT d15fafa, toolchain reinstall with
 rustfmt/clippy components); 161 tests debug and release; fmt clean;
 clippy zero warnings.
+
+## 49. Milestone AV — the twelfth survey: patents full-text, boot strings, gitee, Generalplus (session record, v0.34.4)
+
+### 49.1 The survey: four corpora, closed
+
+The eleventh survey closed four corpora (OS lineage, commerce, datasheet
+aggregators, certification) and left the patent full-text, successor-
+vendor, and code-hosting questions open. The twelfth pass targets those
+plus one never-tried technical angle: searching for the *boot strings*
+rather than the chip symbols in public code.
+
+- **Sunplus decode-engine patents, full-text (extends the ninth's
+  sweep)**: the ninth pass sampled two Sunplus image-coding patents by
+  number; the twelfth searched the full-text corpus by engine shape
+  ("Huffman decode", set-top context). The hit is genuine Sunplus
+  decode-engine IP — US 7,738,718 B2 (pub. US 2007/0147694, filed
+  2006-12-22, inventors Jyh-Kai Chang, Wen-Cheng Ho): a block decoder
+  that Huffman-decodes JPEG blocks *longitudinally* for printer output
+  (scan table of MCUR start addresses + DC values, de-zigzag, inverse
+  quantization, IDCT, rotation). The scan-table structure (per-MCUR
+  start addresses) is interesting as engineering evidence that Sunplus
+  built table-driven hardware decoders — but the patent is
+  JPEG-shaped end to end: DPCM DC values, 8×8 blocks, IDCT. No
+  DEFLATE length/distance value-ROM, no window semantics, no PNG
+  engine content. Verdict: consistent with the ninth's finding —
+  Sunplus's *patented* image-decode structures are JPEG/JBIG
+  families; the PNG_DEC's inflate machinery was never patented
+  publicly (or the application is not discoverable in the public
+  corpus).
+- **Boot-string code search (new technical angle)**: every prior code
+  search keyed on chip symbols (`SPHE1505`, `png_dec`, … — ninth
+  survey, zero hits). The twelfth pass keys on the artifact's own
+  boot banners instead: `zeroBoot` as an exact string across the
+  grep.app public-code index returns **zero** repositories. The
+  loader family visible in the wild (our `zeroBoot v1.0`, the
+  sibling's `v1.12T2`, §47.1) has no public source footprint — the
+  first-stage loader is as closed as everything else the vendor
+  ships. This also closes the residual question of whether the
+  security-research writeup's target (§47.1) might have shipped
+  loader source alongside: nothing public anywhere.
+- **Chinese code hosting (gitee) (new corpus)**: vendor forks often
+  surface on Chinese forges after leaking in the ODM channel. gitee
+  queries for the chip family, the loader string, and the boot-chain
+  phrases return nothing — the corpus is either unindexed by the
+  search engine used or genuinely empty for this platform; recorded
+  as sampled-with-no-results rather than closed-negative (the angle
+  can be retried with direct site access if a future session has the
+  budget).
+- **The Generalplus successor line (new corpus)**: Sunplus's consumer
+  business lives on in Generalplus (est. 2004, TWSE 4952 — the
+  Speech/Music, LCD, Digital-Video-Image SoC, and MCU lines). If the
+  SPHE display-engine lineage continued there, a leaked GP SDK or
+  register header could share the PNG_DEC's value-table DNA. The
+  survey finds only marketing-level material: the Image SoC line is
+  dash/wearable-camera focused (GPA7 Edge-AI family, GPDLA
+  accelerator), with no SDK, register map, or image-decode
+  value-structure content anywhere public. Verdict: the successor
+  vendor publishes nothing that touches the engine; the lineage
+  question is now checked rather than assumed open.
+
+### 49.2 What it means
+
+The twelfth consecutive survey returns **zero new evidence toward the
+§30.3 value-ladder**. The yield is four closed (or bounded) corpus
+questions and one positive-by-absence: the loader's boot strings have
+no public code footprint anywhere, and Sunplus's patented decoder
+structures are JPEG/JBIG-shaped — the inflate engine's value
+semantics were never published in any form the public web carries.
+Remaining angles for future passes: video-platform teardowns
+(Bilibili/YouTube receiver flashing and teardown footage), CNKI
+academic theses, and a direct gitee site crawl. The blocker stays
+hardware-gated exactly as registered — P1 (the 59 ladder constants
+via the dual-gate solve), P2/P2b/P2c (residue, window preset,
+staging-tail overhang), P3 (readout, printed by `dram_compare`).
+Session state: environment re-recovered (roll-back to Milestone M,
+`--ff-only` fast-forward to AU c5f983b, toolchain reinstall with
+rustfmt/clippy); 161 tests debug and release; fmt clean; clippy zero
+warnings.

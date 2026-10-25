@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.34.4 — Milestone AV: the twelfth survey — patents full-text, boot strings, gitee, Generalplus (session record, §49)
+
+### Docs
+- **The survey (§49.1)**: four corpora closed or bounded — (1) Sunplus
+  decode-engine patents full-text: US 7,738,718 B2 is genuine Sunplus
+  table-driven decoder IP (longitudinal JPEG block decoding with a
+  per-MCUR scan table) but JPEG-shaped end to end, no DEFLATE
+  value-ROM content; (2) the boot-string code search: exact `zeroBoot`
+  across the public-code index returns zero repositories — the loader
+  family has no public source footprint; (3) gitee: sampled, nothing
+  found (retriable with direct site access); (4) the Generalplus
+  successor line: marketing-level material only, no SDK or register
+  content — the lineage question is checked rather than assumed.
+- **Verdict (§49.2)**: the twelfth consecutive zero for the §30.3
+  value-ladder; the inflate engine's value semantics were never
+  published in any public form. Remaining angles: video teardowns,
+  CNKI theses, direct gitee crawl. Blocker stays hardware-gated (P1,
+  P2/P2b/P2c, P3).
+
 ## 0.34.3 — Milestone AU: the eleventh survey — four new angle families (session record, §48)
 
 ### Docs
