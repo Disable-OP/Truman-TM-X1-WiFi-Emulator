@@ -162,6 +162,16 @@ monitor surfaces (the platform heritage is eCos/RedBoot), the RedBoot
 `dump -b <addr> -l <length>` pattern would be the shape of it. Treat any
 such find as opportunistic; do not spend session time hunting for one.
 
+A public security-research writeup on a sibling 1506F receiver
+(May 2026; §47.1 of firmware-analysis.md) corroborates both the boot
+chain we reconstructed from the firmware and the low-cost UART route:
+TX pads found by multimeter profiling against ground, baud rate
+derived from the shortest pulse on a logic analyzer (PulseView), then
+minicom/picocom. That route serves the provenance item below (the last
+~10 UART lines) even when no debugger is attached, and CH341A + SOIC-8
+remains the flash-dump verification path. It does not change this
+plan: P1/P2 still need a runtime DRAM halt.
+
 ### Not applicable — flash readers
 
 An SOIC-8 SPI clip reads the flash (which we already have, SHA-pinned).

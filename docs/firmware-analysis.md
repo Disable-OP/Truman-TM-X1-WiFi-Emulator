@@ -4025,3 +4025,69 @@ captures (residue classification, window preset, staging-tail
 overhang), and the P3 readout whose expected values `dram_compare`
 now prints. Every offline step that could be closed into code has
 been; nothing further is closable without a real-device session.
+
+## 47. Milestone AT — the tenth survey: two independent corroborations (session record, v0.34.2)
+
+### 47.1 The survey: the device's home corpus, entered for the first time
+
+The ninth survey's lesson (six abstract corpora, all zero) pointed the
+tenth pass at the device's own market: the Truman TM X1 is a
+MENA-market satellite receiver, and the Arabic-language receiver
+ecosystem had never been searched. Three angle families were tried.
+
+- **The MENA receiver-firmware ecosystem (Arabic-adjacent sites, new
+  corpus)**: multiple non-affiliated firmware sites label the exact
+  device "TRUMAN TM-X1 1506HV 4M" and host its firmware family —
+  `TRUMAN TM-X1 1506HV_ SVC4 V11.09.22.bin` (mr-dish, with hardware
+  version string `DVBS-1506HV-V1.0-OTP-S0` and menu version SVB3),
+  `TM-X1-PLUS-1506HV-512M_4M-SVT1-V12.11.08_09122022.bin`
+  (khandishnetwork, for the TM X1 PLUS sibling), and the receiveroption
+  index naming the option "1506HV 4MB". The audit's "Probable: exact
+  die is SPHE1506HV" (§3) rests on our artifact's filename plus the
+  shared-platform zeroBoot banner; this ecosystem is independent of
+  that artifact and confirms the die variant, the 512M/4M memory
+  configuration, and the vendor build-train naming (SVC4/SVB3/SVT1 —
+  our artifact is SVT2). No dumps were downloaded (untrusted-source
+  rule); page metadata is the evidence.
+- **A public security-research writeup on a sibling receiver** (May
+  2026, salmanabulatif.github.io — "From Unboxing to Zero Day"): its
+  eCos-class target prints, on real UART hardware, the identical
+  stage chain our audit reconstructed from bytes — `zeroBoot v1.0 for
+  1506F`, `SPI SCS flow`, `jump to second boot!!`, `Boot form SPI
+  v1.11`, `DRAM-512M`, `copy fw to RAM`, then `LD eCos v1.16 1506f
+  20111226-V1.1, RAM_START:=0x81600000` and an LZMA module trace
+  (`system_others.c,line176: LZMA Unzip module
+  m_info.lma:=0x1b924,m_info.lma_size:=0x83a41`). Our artifact's own
+  second stage prints the same `LD eCos v1.16 1506f` banner (§6), and
+  Milestone L identified the same flags-2 LZMA software path in our
+  payload. This is the first independent live-device confirmation of
+  the boot-chain reconstruction, the loader generation
+  (20111226-V1.1), and the eCos version string — from a stranger's
+  different product on the same platform. The post's PNG/decode
+  content: none — no PNG engine, no inflate, no Adler.
+- **Adjacent finds**: a VK receiver-repair thread shows the same
+  zeroBoot loader family booting (`zeroBoot v1.12T2` — a variant of
+  our v1.0); a Facebook tool dump names `IC( SPHE1506 )` as a default
+  setting with the GD25Q64 SPI flash family; Sunplus's own UART ISP
+  user manual (2013) is publicly readable on Scribd — an official
+  flashing-tool document, peripheral-level only.
+
+### 47.2 What it means
+
+The survey's yield is **corroboration, not constants**: the tenth
+consecutive pass returns zero new evidence toward the §30.3
+value-ladder, but the §3 chip identification ("Probable
+SPHE1506HV") now has third-party, non-artifact confirmation, and the
+§4–§6 boot-chain reconstruction now has a live-device independent
+witness (same banners, same loader generation, same eCos string, and
+the sibling's `RAM_START:=0x81600000` showing the same loader family
+parameterized per product). docs/hardware-session.md gains a note
+that the writeup's low-cost UART methodology (multimeter TX
+profiling, logic-analyzer baud determination) corroborates the
+capture plan's provenance step. The blocker stays hardware-gated:
+P1 (the 59 ladder constants via the dual-gate solve), P2/P2b/P2c
+(residue, window preset, staging-tail overhang), P3 (readout, now
+printed by `dram_compare`). Session state: environment re-recovered
+(roll-back to Milestone M, `--ff-only` fast-forward to AS, toolchain
+reinstall); 161 tests debug and release; fmt clean; clippy zero
+warnings.

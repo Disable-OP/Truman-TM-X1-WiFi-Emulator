@@ -1,5 +1,33 @@
 # Roadmap
 
+## Milestone AT — the tenth survey: two independent corroborations ✅ (v0.34.2)
+
+- **The device's home corpus, entered for the first time (§47.1)**: the
+  MENA receiver-firmware ecosystem (Arabic-adjacent sites) confirms the
+  audit's "Probable SPHE1506HV" die variant independently of our
+  artifact — non-affiliated sites label the exact device "TRUMAN TM-X1
+  1506HV 4M" with hardware version `DVBS-1506HV-V1.0-OTP-S0` and host
+  the SVT1/SVC4 build trains (ours is SVT2; 512M/4M configuration
+  matches). A May 2026 public security-research writeup on a sibling
+  1506F receiver prints, on real UART hardware, the identical boot
+  chain our audit reconstructed from bytes (`zeroBoot v1.0 for 1506F`,
+  `SPI SCS flow`, `jump to second boot!!`, `LD eCos v1.16 1506f
+  20111226-V1.1, RAM_START:=0x81600000`) plus the same flags-2 LZMA
+  software path Milestone L identified — the first live-device
+  independent witness for the boot-chain reconstruction. Adjacent:
+  the zeroBoot loader family's `v1.12T2` variant in the wild, an
+  `IC( SPHE1506 )` tool default, and Sunplus's own UART ISP manual
+  publicly readable.
+- **Corroboration, not constants (§47.2)**: the tenth consecutive
+  survey returns zero new evidence toward the §30.3 value-ladder; the
+  blocker stays hardware-gated (P1, P2/P2b/P2c, P3 as registered).
+  docs/hardware-session.md gains the writeup's low-cost UART
+  methodology (multimeter TX profiling, logic-analyzer baud
+  determination) as a corroborated provenance route.
+- **Unchanged**: boot pins (handoff step 1,301,783, trap 0xA1600050,
+  fingerprint 0xcd8d03bf); 161 tests debug and release; fmt clean,
+  clippy 0 warnings.
+
 ## Milestone AS — the ninth fresh-evidence survey; the session state ✅ (v0.34.1)
 
 - **Six new angle families, none previously used (§46.1)**: the grep.app
