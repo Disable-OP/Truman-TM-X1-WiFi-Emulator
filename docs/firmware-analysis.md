@@ -3369,3 +3369,33 @@ source. No new SPHE15xx PNG_DEC driver, no `sp_gzip` release, no other
 U-Boot dump surfaced. The blocker stays hardware-gated (§22.5, §26.4,
 §30.4); `docs/hardware-session.md` remains the single unlock, and the
 capture→solve→swap→re-boot chain (§37) is its full offline preparation.
+
+## 39. Milestone AL — the CI record observed green; the second survey (v0.29.2, session record)
+
+### 39.1 The gate battery, remotely observed
+
+The GitHub Actions record for this repository was read via the API on
+2026-10-25 (authenticated read-only): **26 workflow runs in total, the
+first at 2026-10-23T22:13Z, every one concluded `success` — zero
+failures**. This covers every push since CI's creation in Milestone M
+through v0.29.1 (`112199e`, run 40159344860). Two record-keeping
+consequences:
+
+1. §38.1's byte-level conclusion about the trigger ("push CI has been
+   firing since Milestone M") is confirmed by direct observation — the
+   inference and the observation agree.
+2. Each run executes the full battery (fmt, clippy 0-warnings across
+   targets/features, `check --all-targets`, and the test suites in both
+   debug and release), so the per-milestone gate claims recorded in
+   this document carry a remote green data point, not only a local one.
+
+### 39.2 The second survey (2026-10-25, later in the day)
+
+No new SPHE15xx PNG_DEC sources, no `sp_gzip` publication, no
+value-ladder constants anywhere reachable. The Truman-related hits are
+third-party firmware distribution sites; the model variants listed
+there (e.g. X1 PLUS) are not this device (X1 WiFi), and third-party
+firmware downloads are outside this project's constraints in any case.
+The §30.4 blocker stands: the 59 value-ROM constants are hardware-gated
+(§22.5, §26.4), the capture→solve→swap→re-boot chain (§37) remains the
+single unlock, and the hardware-session protocol (§27) is unchanged.

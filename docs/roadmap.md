@@ -1,5 +1,34 @@
 # Roadmap
 
+## Milestone AL — the CI record observed green; the second survey (session record) (v0.29.2)
+
+- **The gate battery is now remotely observed, not just locally claimed**:
+  the GitHub Actions record was read via the API on 2026-10-25 — **all 26
+  push-triggered workflow runs since CI's creation (first run
+  2026-10-23T22:13Z) concluded `success`, zero failures**, including the
+  v0.29.1 commit `112199e` (run 40159344860). §38.1's byte-level
+  conclusion ("push CI has been firing since Milestone M") is thereby
+  confirmed by direct observation, and every gate claim this document
+  makes for the sampled milestones (fmt, clippy 0-warnings, check,
+  debug AND release suites) has a remote green data point behind it.
+- **The second fresh-evidence survey (2026-10-25, later in the day)**:
+  no new SPHE15xx PNG_DEC sources, no `sp_gzip` publication, no
+  value-ladder constants; the only Truman-related hits are third-party
+  firmware distribution sites (other model variants — X1 PLUS is not
+  X1 WiFi) whose downloads are out of scope for this repo and
+  disallowed by this project's own constraints anyway. The §30.4
+  blocker stays hardware-gated; `docs/hardware-session.md` remains the
+  single unlock.
+- **Environment-recovery hygiene, recorded**: this session's sandbox
+  restored a stale local snapshot (Milestone M) with the toolchain
+  gone; the clone was re-fast-forwarded from origin (0 local commits,
+  25 fetched) with zero loss — the remote remained authoritative
+  throughout, which is exactly the failure mode the push-then-verify
+  discipline is designed for. All gates re-run locally on the restored
+  state: fmt clean, clippy 0 warnings, `check --all-targets` clean, 146
+  tests debug and release — matching the remote CI verdicts run for
+  byte. No emulator-semantics change; boot pins unchanged.
+
 ## Milestone AK — the phantom trigger defect, disproven byte-level; the fresh-evidence survey ✅ (v0.29.1)
 
 - **A false defect, diagnosed and refuted the repo's own way (§38.1)**:

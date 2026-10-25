@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.29.2 — Milestone AL: the CI record observed green; the second survey (§39)
+
+### Documented
+- **CI observed green (§39.1)**: the GitHub Actions record read via the
+  API on 2026-10-25 shows **all 26 push-triggered runs since CI's
+  creation (first run 2026-10-23T22:13Z) concluded success, zero
+  failures**, including v0.29.1 (`112199e`, run 40159344860) — §38.1's
+  byte-level conclusion is confirmed by direct observation.
+- **Second fresh-evidence survey (§39.2, 2026-10-25)**: no new SPHE15xx
+  PNG_DEC sources, no `sp_gzip`, no value-ladder constants; Truman
+  third-party firmware sites concern other model variants and are out
+  of scope. The §30.4 blocker stays hardware-gated.
+- **Environment-recovery hygiene**: the sandbox restored a stale local
+  snapshot (Milestone M); the clone was re-fast-forwarded from origin
+  with zero loss and all gates re-run locally — fmt clean, clippy 0
+  warnings, `check --all-targets` clean, 146 tests debug and release,
+  matching the remote CI verdicts.
+
 ## 0.29.1 — Milestone AK: the phantom trigger defect disproven; the fresh-evidence survey (§38)
 
 ### Documented
