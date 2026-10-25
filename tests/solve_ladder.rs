@@ -11,7 +11,7 @@ use truman_emulator::inflate::{
 use truman_emulator::machine::{
     adler32, Machine, MachineConfig, ENGINE_MAX_OUT, ENGINE_PRESET_BYTES,
 };
-use truman_emulator::solve::{solve_ladder, CodeStatus, SolveError, SolveLimits};
+use truman_emulator::solve::{length_class, solve_ladder, CodeStatus, SolveError, SolveLimits};
 
 // ---------------------------------------------------------------------------
 // Stream building helpers (mirroring tests/decomp.rs: LSB-first fields,
@@ -497,4 +497,177 @@ fn real_stream_reference_decode_is_solved() {
     }
     println!("pins agreeing with RFC: {agree}/{total}");
     assert_eq!(agree, total, "the RFC truth must be recoverable exactly");
+}
+
+// ---------------------------------------------------------------------------
+// The §40.3 class prior (Milestone AO): the length-axis ordering splits
+// by class — short codes below-first, long codes above-first. Ordering
+// is a heuristic: the searched family, the candidate predicate and the
+// verified verdict are identical either way; these tests pin that.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn length_class_matches_the_reference_boundaries() {
+    // Class 0: codes 257..=264 (li 0..=7) plus the fixed-258 code 285
+    // (li 28). Classes 1..=5: the equal-extra-width groups.
+    for li in 0..=7 {
+        assert_eq!(length_class(li), 0, "li {li}");
+    }
+    assert_eq!(length_class(28), 0, "the fixed-258 code is class 0");
+    for &(li, cls) in &[
+        (8usize, 1usize),
+        (11, 1),
+        (12, 2),
+        (15, 2),
+        (16, 3),
+        (19, 3),
+        (20, 4),
+        (23, 4),
+        (24, 5),
+        (27, 5),
+    ] {
+        assert_eq!(length_class(li), cls, "li {li}");
+    }
+}
+
+/// A stream whose true ladder has exactly the §40.3 structure — a short
+/// code below RFC (li 2: 5 → 4) and a long code above RFC (li 20:
+/// 131 → 139) — and whose content makes that solution UNIQUE (a wrong
+/// length drifts the output position so the next content check dies).
+/// Both orderings must recover the same verified tables; the prior
+/// reaches it without extra attempts (measured, deterministic).
+#[test]
+fn class_prior_orders_the_spiral_but_not_the_answer() {
+    let mut truth = ValueTables::rfc1951();
+    truth.lbase[2] = 4; // short code BELOW RFC (RFC 5)
+    truth.lbase[20] = 139; // long code ABOVE RFC (RFC 131)
+
+    // m1: len sym 277 (li 20, RFC width 4), extra 3 → L = 139+3 = 142;
+    //     dist sym 4 (RFC width 1), extra 1 → D = 5+1 = 6 (RFC).
+    //     The copy source is the varied 6-byte pattern at D=6; a wrong
+    //     length leaves j inside the pattern where the trailing literal
+    //     check dies (the pattern bytes are never 0x00).
+    // m2: len sym 259 (li 2, width 0), extra 0 → L = 4;
+    //     dist sym 0 (width 0) → D = 1 (RFC).
+    let lits: Vec<u8> = b"ABCDEFGH".to_vec();
+    let ms = [
+        (277u16, 3u16, 4u8, 4u16, 1u16, 1u8),
+        (259u16, 0u16, 0u8, 0u16, 0u16, 0u8),
+    ];
+    let (stream, start_bit) = build_stream(&lits, &ms);
+
+    let mut target = Vec::new();
+    let n = inflate_engine_with(
+        &stream,
+        start_bit,
+        ENGINE_PRESET_BYTES,
+        &mut target,
+        4096,
+        &truth,
+    )
+    .expect("truth decode");
+    target.truncate(n);
+    assert_eq!(n, 154, "8 literals + 142 + 4");
+
+    let neutral_limits = SolveLimits::default();
+    let prior_limits = SolveLimits {
+        class_prior: true,
+        ..SolveLimits::default()
+    };
+    let neutral = solve_ladder(
+        &stream,
+        start_bit,
+        ENGINE_PRESET_BYTES,
+        &target,
+        &ValueTables::rfc1951(),
+        neutral_limits,
+    )
+    .expect("neutral solve");
+    let prior = solve_ladder(
+        &stream,
+        start_bit,
+        ENGINE_PRESET_BYTES,
+        &target,
+        &ValueTables::rfc1951(),
+        prior_limits,
+    )
+    .expect("prior solve");
+
+    // The headline: ordering never changes the answer.
+    assert!(neutral.verified && prior.verified, "both orders verify");
+    assert_eq!(neutral.tables, truth, "neutral recovers the truth");
+    assert_eq!(prior.tables, truth, "prior recovers the same truth");
+    assert_eq!(neutral.redecoded, target);
+    assert_eq!(prior.redecoded, target);
+
+    // Determinism under the prior: a second run, same ladder.
+    let prior2 = solve_ladder(
+        &stream,
+        start_bit,
+        ENGINE_PRESET_BYTES,
+        &target,
+        &ValueTables::rfc1951(),
+        SolveLimits {
+            class_prior: true,
+            ..SolveLimits::default()
+        },
+    )
+    .expect("prior solve 2");
+    assert_eq!(prior.tables, prior2.tables);
+
+    // The measured economics (deterministic for a fixed stream): on
+    // this unambiguous content both orders examine the identical
+    // candidate set — the prior is directional alignment with the §40.3
+    // evidence, not a search-size reduction (its decision-relevant
+    // effect is on ambiguous content, where it decides which verified
+    // answer is reported first). The bound below pins that the
+    // alignment never COSTS attempts on the structured truth.
+    assert!(
+        prior.nodes <= neutral.nodes,
+        "prior attempts {} must not exceed neutral {}",
+        prior.nodes,
+        neutral.nodes
+    );
+}
+
+/// The prior never breaks the solve contract on ambiguous content: on
+/// the recovery suite's own periodic stream (multiple verified base
+/// assignments), the prior-ordered solve still verifies and its
+/// re-decode equals the capture byte-for-byte.
+#[test]
+fn class_prior_keeps_the_contract_on_ambiguous_content() {
+    let truth = custom_ladder();
+    let lits: Vec<u8> = b"ABCDEFGHIJ".to_vec();
+    let ms = [
+        (269u16, 1u16, 2u8, 4u16, 1u16, 1u8),
+        (265u16, 0u16, 1u8, 6u16, 0u16, 2u8),
+        (269u16, 2u16, 2u8, 4u16, 0u16, 1u8),
+    ];
+    let (stream, start_bit) = build_stream(&lits, &ms);
+    let mut target = Vec::new();
+    let n = inflate_engine_with(
+        &stream,
+        start_bit,
+        ENGINE_PRESET_BYTES,
+        &mut target,
+        4096,
+        &truth,
+    )
+    .expect("truth decode");
+    target.truncate(n);
+
+    let prior = solve_ladder(
+        &stream,
+        start_bit,
+        ENGINE_PRESET_BYTES,
+        &target,
+        &ValueTables::rfc1951(),
+        SolveLimits {
+            class_prior: true,
+            ..SolveLimits::default()
+        },
+    )
+    .expect("prior solve on ambiguous content");
+    assert!(prior.verified, "the prior solve must verify");
+    assert_eq!(prior.redecoded, target, "re-decode equals the capture");
 }

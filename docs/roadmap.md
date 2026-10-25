@@ -1,5 +1,36 @@
 # Roadmap
 
+## Milestone AO — the §40.3 class prior as the solver's ordering ✅ (v0.32.0)
+
+- **The declared AM follow-up, implemented (§42)**: `length_class` ports
+  the reference's class partition; `SolveLimits::class_prior` re-orders
+  the length-axis spiral — short codes below-the-baseline first, longer
+  classes above-first (the unconditional opposite-sign structure).
+  `ladder_solve` runs prior-ordered. The prior is an ORDERING, never a
+  constraint — the §40.3 derivation kills the per-class-uniform family
+  and fixes the direction, but does not prove every non-uniform
+  assignment has short ≤ RFC, so pruning would over-claim; the family,
+  predicate, caps and verified verdict are identical either way.
+- **Invariance pinned** (3 new tests; 155 total debug and release): on
+  a stream whose §40.3-structured truth is content-UNIQUE (short 5→4,
+  long 131→139; wrong lengths die on the trailing literal check), both
+  orders recover byte-identical verified tables equal to the truth;
+  the prior is deterministic; on the recovery suite's ambiguous
+  periodic fixture the prior-ordered solve still verifies and
+  re-decodes to the capture.
+- **The measured economics, honestly (§42.3)**: identical candidate
+  sets on unambiguous content (87,034 both orders) — the prior is
+  directional alignment, not a search-size reduction. Its real effect
+  is on ambiguous periodic content (the real capture is 78 KB of
+  periodic pixel rows): it decides which verified answer is reported
+  first, biasing it toward the evidence-derived structure.
+- **Unchanged**: the §30.3 discipline (coverage bounded by caps and
+  budget, never the heuristic), the §30.4 hardware-gated blocker, the
+  boot pins; fmt clean, clippy 0 warnings, 155 tests debug and
+  release. Fifth fresh-evidence survey (2026-10-25): nothing new
+  upstream (software PNG decoders, unrelated Sunplus lines, out-of-
+  scope firmware sites).
+
 ## Milestone AN — the vector gate as code: the solve pipeline enforces the vendor's second validation ✅ (v0.31.0)
 
 - **§40.4 became executable** (§41): `src/vendor_vector.rs` extracts the

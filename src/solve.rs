@@ -32,9 +32,14 @@
 //!   content-consistent value; later occurrences check. Candidates are
 //!   ordered with the baseline (RFC) values first — the null hypothesis
 //!   this repo is framed against — then by Manhattan distance from that
-//!   point. Ordering is a heuristic only: every candidate passes the same
-//!   content predicate, and coverage is bounded by the documented caps
-//!   and the attempt budget, never by the heuristic.
+//!   point. When [`SolveLimits::class_prior`] is set, the length axis
+//!   follows the §40.3 class structure instead: short codes (class 0)
+//!   try at-or-below the baseline first, longer classes try above it
+//!   first (the unconditional opposite-sign fact — AM). Ordering is a
+//!   heuristic only: every candidate passes the same content predicate,
+//!   and coverage is bounded by the documented caps and the attempt
+//!   budget, never by the heuristic — both orders search the identical
+//!   family and (pinned by tests) recover the same verified answer.
 //! * A step whose reads run past input end is the engine's clean stop
 //!   (`OutOfInput` → break, §13): with fixed widths that boundary is
 //!   stream-determined. If the target is fully explained there, the solve
@@ -88,6 +93,17 @@ pub struct SolveLimits {
     pub spiral_radius_cap: u32,
     /// Total candidate-attempt budget before giving up.
     pub node_budget: u64,
+    /// Order the length-axis spiral by the §40.3 class prior: short
+    /// codes (class 0 — 257..=264 and the fixed-258 285) try at-or-below
+    /// the baseline first, longer classes try above the baseline first
+    /// (the unconditional opposite-sign structure, Milestone AM: the
+    /// vector needs its short-dominated decode shorter than RFC, Truman
+    /// needs its net longer, so the surplus lives on the long codes).
+    /// Ordering is a heuristic only — the candidate predicate, the caps
+    /// and the searched family are identical either way, and the solved
+    /// tables are pinned invariant in tests. Default false (the
+    /// symmetric order); `ladder_solve` enables it.
+    pub class_prior: bool,
 }
 
 impl Default for SolveLimits {
@@ -99,6 +115,7 @@ impl Default for SolveLimits {
             dscan_cap: 4096,
             spiral_radius_cap: 256,
             node_budget: 4_000_000,
+            class_prior: false,
         }
     }
 }
@@ -133,6 +150,22 @@ impl std::fmt::Display for SolveError {
 }
 
 impl std::error::Error for SolveError {}
+
+/// The §40.3 length-class of a length code index (`li = sym − 257`,
+/// 0..=28): class 0 covers codes 257..=264 plus the fixed-258 code 285;
+/// classes 1..=5 are the equal-extra-width groups (RFC widths 1..5).
+/// Matches the reference implementation's `class_of`
+/// (`tools/fw_vector_probe.py`). The §40.3 joint anchor system assigns
+/// this class structure to the true ladder: short codes at-or-below RFC,
+/// long codes above — the solver's [`SolveLimits::class_prior`] ordering
+/// encodes exactly that split.
+pub fn length_class(li: usize) -> usize {
+    if !(8..28).contains(&li) {
+        0
+    } else {
+        (li - 8) / 4 + 1
+    }
+}
 
 /// Per-code provenance in the solved ladder.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -734,13 +767,18 @@ impl<'a> Solver<'a> {
         // (d, l0 + dl). A pinned coordinate holds its value (moving
         // candidates are skipped), so the spiral degenerates to the free
         // axis. The baseline point itself is skipped (tried above).
+        // With the §40.3 class prior the length axis flips for the long
+        // classes (above first); short codes keep below-first. Ordering
+        // only — the predicate below is untouched.
+        let above_first = self.limits.class_prior && length_class(f.li) > 0;
         while f.r <= r_max {
             let r = f.r;
             let dd = f.k as i64 - r as i64;
             let d = (d0 as i64 + dd) as u32;
             let dl = r - dd.unsigned_abs() as u32;
             while f.sub <= 1 {
-                let l = if f.sub == 0 {
+                let below = f.sub == if above_first { 1 } else { 0 };
+                let l = if below {
                     l0.saturating_sub(dl)
                 } else {
                     l0 + dl

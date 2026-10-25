@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.32.0 — Milestone AO: the §40.3 class prior as the solver's ordering (§42)
+
+### Added
+- **`solve::length_class`** — the §40.3 length-class of a length code
+  (class 0 = codes 257..=264 plus the fixed-258 285; classes 1..=5 =
+  the equal-extra-width groups), matching the Python reference's
+  `class_of`.
+- **`SolveLimits::class_prior`** — the length-axis spiral follows the
+  unconditional §40.3 structure: short codes try at-or-below the RFC
+  baseline first, longer classes try above it first. Ordering only:
+  the searched family, the content predicate, the caps and the
+  verified verdict are identical either way. Default off; `ladder_solve`
+  enables it (the hardware-session solve is prior-ordered).
+
+### Documented
+- **§42.3, the measured economics**: on the pinned unambiguous stream
+  (a §40.3-structured truth: short base 5→4, long base 131→139,
+  uniquely content-forced) both orders examine the identical candidate
+  set (87,034) and recover byte-identical verified tables — the prior
+  is directional alignment with the evidence, not a search-size
+  reduction. Its decision-relevant effect is on ambiguous periodic
+  content, where it decides which verified answer is reported first.
+- **§42.5, fresh-evidence survey (2026-10-25, fifth pass)**: nothing
+  new upstream. Boot pins unchanged.
+
+### Verified
+- 155 tests debug and release (3 new: class-boundary pin, the
+  uniqueness-based invariance pin, the ambiguous-content contract);
+  fmt clean, clippy 0 warnings, `check --all-targets` clean. No
+  emulator-semantics change; the §30.4 blocker stays hardware-gated.
+
 ## 0.31.0 — Milestone AN: the vector gate as code — the solve pipeline enforces the vendor's second validation (§41)
 
 ### Added

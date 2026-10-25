@@ -3631,3 +3631,87 @@ unrelated SPN1 mission board; no `sp_gzip` publication, no value-ladder
 constants, no hardware-session reports from other owners. Truman
 third-party firmware distribution sites remain out of scope (other model
 variants; X1 PLUS is not X1 WiFi). The §30.4 blocker stays hardware-gated.
+
+## 42. Milestone AO — the §40.3 class prior as the solver's ordering (v0.32.0)
+
+### 42.1 What was built
+
+AM closed with a declared follow-up: "the §37 solver's candidate ordering
+can exploit §40.3's derived structure (short codes at-or-below RFC, long
+codes above) as its baseline prior." Milestone AO implements exactly
+that. `solve::length_class(li)` ports the reference's `class_of`
+partition (class 0 = codes 257..=264 plus the fixed-258 code 285;
+classes 1..=5 = the equal-extra-width groups), and
+`SolveLimits::class_prior` re-orders the length-axis spiral: class-0
+codes keep below-the-baseline-first, longer classes try above first.
+The default stays the symmetric order; `ladder_solve` enables the prior
+(the hardware-session solve runs prior-ordered).
+
+The prior is an ORDERING, never a constraint: the searched family, the
+per-candidate content predicate, the documented caps and the
+attempt budget are identical either way, and the verdict is in every
+case the engine's own verified re-decode. That boundary matters — the
+§40.3 derivation kills the per-class-UNIFORM family and fixes the
+opposite-sign structure, but it does not prove that every non-uniform
+assignment has short ≤ RFC (a split within the short classes plus long
+above would satisfy the same anchors), so pruning by the structure
+would over-claim the evidence. Ordering encodes exactly what the
+evidence supports: a direction.
+
+### 42.2 The invariance pin
+
+`tests/solve_ladder.rs` grows three tests (crate total 155, debug and
+release). The class-boundary test pins `length_class` against the
+reference partition. The invariance test builds a stream whose true
+ladder has exactly the §40.3 structure — short base 5 → 4, long base
+131 → 139 — and whose content makes that solution UNIQUE (any wrong
+length drifts the output position so the trailing literal check dies:
+the copy source is a varied 6-byte pattern that never contains 0x00).
+Both orderings recover byte-identical verified tables equal to the
+truth, and a second prior-ordered run is deterministic. The
+ambiguous-content test replays the recovery suite's own periodic stream
+(multiple verified assignments, the AJ fixture) under the prior: the
+solve still verifies and its re-decode equals the capture — the
+contract is untouched.
+
+### 42.3 The measured economics, honestly
+
+On the pinned unambiguous stream both orders examine the identical
+candidate set (87,034) — the prior is directional alignment with the
+evidence, not a search-size reduction. This is the honest reading of
+what a re-ordering can do: the spiral is exhausted radius-by-radius,
+and a truth at radius 8 requires reaching radius 8 under any order;
+the wrong candidates inside radii 1..7 are the same set. The prior's
+decision-relevant effect is therefore on AMBIGUOUS content — the real
+capture is 78 KB of highly periodic pixel rows, where multiple verified
+assignments exist and the solver reports the first-found one. There the
+order decides which verified answer is reported: prior-ordered, the
+first-found answer is biased toward the §40.3 structure instead of the
+below-biased default. The `prior.nodes ≤ neutral.nodes` bound is
+pinned in the test; equal counts are the expected case on unambiguous
+content, and the alignment can only remove the final below-candidate
+attempt when the truth is above at the outermost radius.
+
+### 42.4 What this does not change
+
+The §30.3 discipline is intact: coverage is bounded by the documented
+caps and the budget, never by the heuristic; unconstrained codes stay
+at the baseline and are reported `Unconstrained`; an unsolved solve is
+a typed failure with the attribution as the actionable data. The
+§30.4 blocker stays hardware-gated; the capture→solve→swap→re-boot
+pipeline is unchanged except that its solve now runs evidence-ordered.
+Boot pins unchanged (handoff step 1,301,763, trap 0xA1600050,
+fingerprint 0xcd8d03bf); no emulator-semantics change; fmt clean,
+clippy 0 warnings, `check --all-targets` clean, 155 tests debug and
+release.
+
+### 42.5 Fresh-evidence survey (2026-10-25, fifth pass)
+
+No new SPHE15xx PNG_DEC sources or value-ladder constants. The
+prominent PNG-decoder hits (PNGdec, Wuffs, Blend2D's codec) are
+software decoders — irrelevant to the hardware engine's silicon
+constants; the sunplus-plus1 (SP7021) and C3V (SP7350) ecosystems
+remain the unrelated product lines; the 1506T/1506c receiver hits are
+the same out-of-scope third-party firmware ecosystem. No `sp_gzip`
+publication, no hardware-session reports from other owners. The
+§30.4 blocker stays hardware-gated.

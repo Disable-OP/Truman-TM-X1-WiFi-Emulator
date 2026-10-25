@@ -283,6 +283,11 @@ fn main() {
 
     let limits = SolveLimits {
         node_budget: args.max_nodes,
+        // The §40.3 class prior (Milestone AO): the unconditional
+        // opposite-sign structure orders the length-axis spiral — short
+        // codes at-or-below RFC first, long codes above. Ordering only;
+        // the searched family and the verified verdict are identical.
+        class_prior: true,
         ..SolveLimits::default()
     };
     let sol = match solve_ladder(

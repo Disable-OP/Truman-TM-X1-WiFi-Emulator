@@ -182,6 +182,16 @@ The reference self-test (the solve recovering the RFC ladder from its
 own pinned output, 57/57 codes) runs as `cargo test --test
 solve_ladder`.
 
+The solve's candidate ordering carries the §40.3 class prior (Milestone
+AO, `SolveLimits::class_prior`, on by default here): the length-axis
+spiral tries at-or-below the RFC baseline first for short codes
+(class 0) and above it first for the longer classes — the unconditional
+opposite-sign structure. Ordering is a heuristic only: the searched
+family, the content predicate and the verified verdict are identical
+either way (pinned by `tests/solve_ladder.rs`), so the evidence only
+steers which verified answer is reported first on ambiguous periodic
+content — never what counts as a solution.
+
 The post-capture value swap (§35, Milestone AH) is a data file, not a
 recompile: `dram_compare --post` (and the CLI `map`) accept
 `--value-tables <file>` — a 191-byte `SPHEVTBL` container written with
