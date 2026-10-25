@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.31.0 — Milestone AN: the vector gate as code — the solve pipeline enforces the vendor's second validation (§41)
+
+### Added
+- **`src/vendor_vector.rs` — the §40.4 gate as library code**: the
+  vendor vector container is extracted from the archived SDK source and
+  validated against its own accounting (SP magic, 9 chunks, stream_len
+  0xe98, 3,744 bytes); the engine-semantics decode runs under candidate
+  tables at the three §40 start bits (320/1024/1088), reporting
+  completion, alphabet, backbone (≥990‰ hex), and the 9,216 accounting.
+- **`ladder_solve` enforcement**: every verified solve is gated before
+  `--out` is written; gate-FAIL is reported per start bit and NOT
+  written (exit 1); missing container = environment error (exit 2); no
+  skip flag — the gate is the protocol.
+- **`tests/vendor_vector.rs` (6 tests; crate total 152, debug and
+  release)**: the §40 vector-side numbers dual-pinned in Rust against
+  the Python reference — RFC over-runs +570/+377/+358, literal census
+  1,577/1,538/1,535, matches 1,439/1,403/1,400; the value-only ladder
+  (census invariant, accounting moves) and the width-family ladder
+  (stream re-aligns: 2,350 literals vs 1,538) both fail the gate.
+
+### Documented
+- **The frame/value split (§41.3)**: §19.3's literal ladder-independence
+  is a fixed-frame statement — extra-bit widths are stream-position
+  data; the gate's conditions respond to both families, and within the
+  value family the accounting alone discriminates.
+- **Fresh-evidence survey (2026-10-25, fourth pass, §41.5)**: nothing
+  new upstream (Team-Proton dormant; sunplus-plus1/SP7021 and ST SPN1
+  unrelated; no `sp_gzip` publication). Boot pins unchanged.
+
+### Verified
+- fmt clean, clippy 0 warnings, `check --all-targets` clean, 152 tests
+  debug and release. No emulator-semantics change; the §30.4 blocker
+  stays hardware-gated.
+
 ## 0.30.0 — Milestone AM: the vendor vector's structural leak; the joint anchor system; the post-capture vector gate (§40)
 
 ### Documented

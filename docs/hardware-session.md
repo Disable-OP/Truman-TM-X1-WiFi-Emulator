@@ -199,7 +199,8 @@ Exit codes: `0` identical / zero residue · `1` divergent / residue
 present (actionable data — this is a *good* outcome for the solve) ·
 `2` usage, IO or empty-overlap error.
 
-**The vector gate (§40.4, Milestone AM — mandatory second validation).**
+**The vector gate (§40.4, Milestones AM+AN — mandatory second validation,
+mechanical since AN).**
 A ladder recovered from P1 must also re-decode the vendor's own SDK test
 container (the same hardware ROM values; `tools/reference/`), which
 `sp_gzip` compressed against a *known* 9,216-byte pattern. The
@@ -207,9 +208,19 @@ recovered-ladder vector decode must be clean sparse hex text
 (`[0-9a-f]`, `\n`, `\r`, NUL only) with the pinned literal backbone
 (§40.2: ≥99% of the stream's literals are hex characters) and must
 account to the container's own 9-chunk size (§40.3). A ladder that fits
-P1 but fails the vector gate is wrong. The reference implementation of
-the check's data side (censuses, backbone, joint anchors) is offline
-and deterministic:
+P1 but fails the vector gate is wrong.
+
+**Since Milestone AN the gate runs mechanically inside `ladder_solve`
+itself** (`src/vendor_vector.rs`): every verified solve is automatically
+gated at the three candidate start bits before `--out` is written. A
+gate failure is reported per start bit (decode length, anchor delta,
+literal census, alphabet violations) and the container is NOT written
+(exit 1 — the report is the actionable data). There is no skip flag; a
+missing container is an environment error (exit 2). The reference
+implementation of the check's data side (censuses, backbone, joint
+anchors) remains offline and deterministic, and doubles as the
+independent cross-check of the Rust gate (the §40 numbers are
+dual-pinned: `tests/vendor_vector.rs` against the Python output):
 
 ```
 python3 tools/fw_vector_probe.py

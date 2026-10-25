@@ -12,6 +12,8 @@
 //! - [`machine`]  — Truman TM X1 machine composition and run loop
 //! - [`boot`]     — reset state and boot diagnostics
 //! - [`inflate`]  — RFC 1951 DEFLATE decoder (hardware engine's algorithm)
+//! - [`vendor_vector`] — the §40.4 vendor vector gate (post-capture
+//!   second validation of a recovered ladder)
 
 pub mod boot;
 pub mod cpu;
@@ -21,6 +23,7 @@ pub mod inflate;
 pub mod machine;
 pub mod memory;
 pub mod solve;
+pub mod vendor_vector;
 
 /// Emulator crate version, from Cargo.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

@@ -3553,3 +3553,81 @@ that the post-capture procedure gains the vector gate as a mandatory
 second validation, and the §37 solver's candidate ordering can exploit
 §40.3's derived structure (short codes at-or-below RFC, long codes
 above) as its baseline prior.
+
+## 41. Milestone AN — the vector gate as code: the solve pipeline enforces the vendor's second validation (v0.31.0)
+
+### 41.1 What was built
+
+Milestone AM left the §40.4 vector gate as documentation plus a Python
+reference implementation (`tools/fw_vector_probe.py`). Milestone AN turns
+it into library code the solver executes. The new module
+`src/vendor_vector.rs` extracts the vector container from the archived
+vendor source (`tools/reference/sphe-cmd_sp_png_dec.c`, the
+`ZlibBuf[16*234]` array), validates it against its own accounting (SP
+magic, chunk count 9, declared stream length 0xe98 = 3,736, array size
+3,744 — a corrupted or substituted reference is named and rejected before
+any verdict could be computed from it), and re-decodes the vector under
+candidate value tables with the engine's own semantics
+(`inflate_engine_with_traced`, 32 KiB zero preset, decode to input end)
+at the three §40 candidate start bits (320/1024/1088).
+
+The gate is enforced where the ladder is born: `ladder_solve` now runs it
+automatically on every verified solve, before `--out` is written. A
+verified-but-gate-failing solve is reported (per-start-bit lines with
+decode length, anchor delta, literal census, alphabet violations) and NOT
+written — exit 1, the same "report is the actionable data" contract as an
+unsolved divergence. A missing container is an environment error (exit
+2), never a verdict. No skip flag exists: the gate is the protocol
+(docs/hardware-session.md), and AM's wording stands mechanically — a
+ladder that fits P1 but fails the vector gate is wrong.
+
+### 41.2 The dual pin: Rust against the Python reference
+
+The new test suite (`tests/vendor_vector.rs`, 6 tests; crate total 152,
+debug and release) pins the §40 vector-side numbers in Rust, cross-checked
+against the Python reference implementation's output this session:
+container 3,744 bytes (head `53 50 00 09 00 00 0e 98`), chunks 9,
+stream_len 0xe98; RFC decode completes at every candidate start bit with
+zero invalid distances; literal census 1,577/1,538/1,535 (starts
+320/1024/1088), matches 1,439/1,403/1,400; anchor over-runs exactly
++570/+377/+358; alphabet clean and backbone ≥990‰ hex at every start bit;
+and the RFC ladder FAILS the gate overall — the accounting never hits the
+9,216 anchor, which is precisely the gate's discriminating edge.
+
+### 41.3 The frame/value split the implementation surfaced
+
+The value-only test (RFC base values shifted +1, extra-bit widths
+untouched) confirms §19.3 at fixed frame: the literal census is
+byte-identical to RFC's while the accounting moves. The width-family test
+(all widths zeroed) measures the converse: the stream RE-ALIGNS — 2,350
+literals vs the RFC 1,538 at start 1024. §19.3's "literals are
+stream-determined, ladder-independent" is therefore a fixed-frame
+statement: the widths themselves are stream-position data. The gate's
+conditions split accordingly — the alphabet and backbone checks fail fast
+under any width-touching candidate and pin the container/parse/impl
+otherwise, while within the value family the accounting alone
+discriminates. Both routes end in a gate failure for a wrong ladder.
+
+### 41.4 What this does not change
+
+The §30.3 underdetermination extends to the vector unchanged: the text
+oracle is satisfied by many ladders (the RFC ladder itself produces clean
+text at every start bit — now pinned in Rust as well as Python), and the
+distance side gains no equation from the size anchors. The §40.3 joint
+anchor sweep remains the Python reference's job (per-class uniform
+families, zero joint survivors); `fw_vector_probe.py` stays in the repo
+as the independent cross-check. The §30.4 blocker stays hardware-gated;
+`docs/hardware-session.md` remains the single unlock. Boot pins unchanged
+(handoff step 1,301,763, trap 0xA1600050, fingerprint 0xcd8d03bf); no
+emulator-semantics change; fmt clean, clippy 0 warnings,
+`check --all-targets` clean, 152 tests debug and release.
+
+### 41.5 Fresh-evidence survey (2026-10-25, fourth pass)
+
+No new SPHE15xx PNG_DEC sources; Team-Proton/linux-sunplus-15xx remains
+dormant (no new commits or issues); the sunplus-plus1 organization's
+`sp_buildroot` is the unrelated SP7021 line; ST's `x-linux-spn1` is the
+unrelated SPN1 mission board; no `sp_gzip` publication, no value-ladder
+constants, no hardware-session reports from other owners. Truman
+third-party firmware distribution sites remain out of scope (other model
+variants; X1 PLUS is not X1 WiFi). The §30.4 blocker stays hardware-gated.

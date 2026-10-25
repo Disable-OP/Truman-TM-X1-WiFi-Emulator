@@ -22,13 +22,22 @@
 //!   is the engine's own re-decode under the recovered tables
 //!   (`verified`); an unverified solve is reported, never written.
 //!
+//! A verified solve then faces the **§40.4 vendor vector gate** (Milestone
+//! AM's mandatory second validation, mechanical since Milestone AN): the
+//! recovered ladder must also re-decode the vendor's own SDK test
+//! container to clean sparse hex text with the pinned backbone and the
+//! container's own 9,216-byte accounting. A ladder that fits P1 but fails
+//! the vector gate is wrong — it is reported and NOT written
+//! (`src/vendor_vector.rs`; cross-check: `tools/fw_vector_probe.py`).
+//!
 //! Usage:
 //!   ladder_solve <flashfile.bin> <capture.bin>
 //!       [--value-tables <baseline.spvt>] [--offset <phys>] [--len <bytes>]
 //!       [--out <solved.spvt>] [--target-len <bytes>] [--max-nodes <n>]
 //!
 //! Exit codes: 0 = identical window (P1 IDENTICAL) or solved AND
-//! engine-verified; 1 = divergent but not solved (report only — the
+//! engine-verified AND vector-gate-PASS; 1 = divergent but not solved, or
+//! a verified solve that FAILS the vector gate (report only — the
 //! attribution is the actionable data; see `solve_divergence`); 2 =
 //! usage, IO or stream error.
 
@@ -41,6 +50,7 @@ use truman_emulator::machine::{
 };
 use truman_emulator::memory::AccessSize;
 use truman_emulator::solve::{solve_ladder, CodeStatus, SolveLimits};
+use truman_emulator::vendor_vector;
 
 const DEFAULT_PIXEL_BASE: u32 = 0x0160_0000;
 const ENGINE_IMG_WIDTH_REG: u32 = 0x1FFE_3828;
@@ -57,7 +67,8 @@ fn usage() -> ! {
          --out <file>        write the recovered SPHEVTBL container (verified solves only)\n  \
          --target-len <n>    decode-region length override (default: the boot's own)\n  \
          --max-nodes <n>     candidate-attempt budget (default 2000000)\n\
-         exit codes: 0 identical/verified solve, 1 divergent-unsolved (report), 2 error"
+         A verified solve must also pass the §40.4 vendor vector gate before --out.\n\
+         exit codes: 0 identical/verified+gate-PASS solve, 1 divergent-unsolved or gate-FAIL (report), 2 error"
     );
     std::process::exit(2);
 }
@@ -324,6 +335,38 @@ fn main() {
         adler32(&window)
     );
 
+    // The §40.4 vendor vector gate (Milestone AM's mandatory second
+    // validation, mechanical since Milestone AN): the recovered ladder
+    // must also re-decode the vendor's own SDK test container cleanly.
+    let container = match vendor_vector::reference_container() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!(
+                "error: the vendor vector container is unavailable — the gate \
+                 cannot run ({e})"
+            );
+            std::process::exit(2);
+        }
+    };
+    let (gate_reports, gate_pass) = vendor_vector::vector_gate(&container.stream, &sol.tables);
+    for report in &gate_reports {
+        println!("vector gate: {report}");
+    }
+    if !gate_pass {
+        println!(
+            "verdict: the recovered ladder fits P1 but FAILS the vector gate (§40.4) — \
+             a ladder that fits P1 but fails the vendor vector is wrong. NOT written. \
+             The per-start-bit report above is the actionable data."
+        );
+        std::process::exit(1);
+    }
+    let passing_start = gate_reports
+        .iter()
+        .find(|r| r.pass())
+        .map(|r| r.start_bit)
+        .unwrap_or_default();
+    println!("vector gate: PASS (start={passing_start}) — the joint P1+vector verdict holds.");
+
     match &args.out {
         Some(p) => {
             let enc = sol.tables.to_bytes();
@@ -332,7 +375,7 @@ fn main() {
                 std::process::exit(2);
             });
             println!(
-                "wrote {} ({} bytes, SPHEVTBL) — verify with: \
+                "wrote {} ({} bytes, SPHEVTBL, vector gate PASS) — verify with: \
                  dram_compare --post <flash> <capture> --value-tables {}",
                 p.display(),
                 enc.len(),

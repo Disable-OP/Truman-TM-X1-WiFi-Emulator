@@ -1,5 +1,39 @@
 # Roadmap
 
+## Milestone AN — the vector gate as code: the solve pipeline enforces the vendor's second validation ✅ (v0.31.0)
+
+- **§40.4 became executable** (§41): `src/vendor_vector.rs` extracts the
+  vendor vector from the archived SDK source, validates it against its
+  own accounting (SP magic, 9 chunks, stream_len 0xe98, 3,744 bytes —
+  corruption is named and rejected before any verdict), and re-decodes
+  it under candidate tables with the engine's own semantics at the
+  three §40 start bits. `ladder_solve` now gates every verified solve
+  automatically before `--out`; gate-FAIL is reported per start bit and
+  NOT written (exit 1); there is no skip flag. AM's sentence — a ladder
+  that fits P1 but fails the vector gate is wrong — is now mechanical.
+- **The §40 numbers are dual-pinned** (`tests/vendor_vector.rs`, 6
+  tests; crate total 152 debug and release): the Rust gate reproduces
+  the Python reference exactly — RFC over-runs +570/+377/+358 at
+  320/1024/1088, literal census 1,577/1,538/1,535, matches
+  1,439/1,403/1,400, clean alphabet and ≥990‰ hex backbone at every
+  start bit, and the RFC ladder fails the accounting condition (the
+  gate's discriminating edge is real).
+- **The frame/value split, measured (§41.3)**: a value-only ladder
+  (bases +1, widths fixed) leaves the literal census byte-identical
+  while the accounting moves; a width-family ladder (all widths zero)
+  re-aligns the stream — 2,350 literals vs the RFC 1,538 at start 1024.
+  §19.3's ladder-independence is a fixed-frame statement; the widths
+  are stream-position data. The gate fails wrong ladders through both
+  routes.
+- **What this does not change**: the §30.3 underdetermination extends
+  to the vector (the RFC ladder produces clean text — now pinned in
+  Rust too); the §40.3 joint anchor sweep remains
+  `tools/fw_vector_probe.py`'s job (independent cross-check); the
+  §30.4 blocker stays hardware-gated; boot pins unchanged (handoff step
+  1,301,763, trap 0xA1600050, fingerprint 0xcd8d03bf); fmt clean,
+  clippy 0 warnings, 152 tests debug and release. Fourth fresh-evidence
+  survey (2026-10-25): nothing new upstream.
+
 ## Milestone AM — the vendor vector's structural leak: the pattern backbone, the joint anchor system, the post-capture vector gate ✅ (v0.30.0)
 
 - **The SDK test container is a richer oracle than any session had used
