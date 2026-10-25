@@ -1,5 +1,54 @@
 # Changelog
 
+## 0.29.0 — Milestone AJ: the capture→ladder solver; the P1 solve, mechanical (§37)
+
+### Added
+- `solve::solve_ladder` (src/solve.rs): the inversion from one true
+  decode output to the engine's value ladder. The search frame is the
+  §30.2 evidence (the RFC frame parses canonically — the extra-bit
+  widths are stream data, the 29+30 bases are the silicon unknowns),
+  which makes the bit-level parse base-independent and the decode's own
+  output length a linear equation in the bases (`SumGuard`: exact stream
+  accounting walked once; every pin passes a global feasibility interval
+  check). Per match the target's own periodicity (the live-window copy
+  semantics, §13.6) is the only oracle; baseline-first candidate
+  ordering, then a Manhattan-distance spiral; caps and budget are typed
+  (`SolveLimits`/`SolveError`), never silent partial answers. The
+  verification IS the engine: the recovered tables re-decode the stream
+  through `inflate_engine_with_traced`, and that byte-comparison is the
+  reported `verified`. Unexercised codes keep the baseline values and
+  are reported `CodeStatus::Unconstrained`.
+- `examples/ladder_solve.rs`: the P1 DIVERGENT row's solve as one
+  command — boots, compares (the `dram_compare --post` semantics),
+  routes through the pre-registered P1 tree (identical → the
+  capture-point row; non-zero band → the §26.4 row), solves, verifies,
+  and writes the `SPHEVTBL` container (verified solves only) for the
+  §35 `--value-tables` seam. Exit 0 identical/verified, 1
+  divergent-unsolved (the `solve_divergence` attribution is the
+  actionable data), 2 usage-IO-stream.
+- `examples/pixel_dump.rs --value-tables <f>`: the candidate-ladder
+  boot dump — the capture generator the hardware session's own smoke
+  test used.
+- `tests/solve_ladder.rs` (+9 = 146 total): the synthetic bases-only
+  ladder recovered from its own output (verified, deterministic, the
+  RFC width frame pinned by construction); an impossible target typed
+  `NoSolution`; a zero budget typed `BudgetExhausted`; the
+  real-firmware gates — the reference solve recovers the RFC ladder
+  exactly (57/57 exercised codes, 9,267 attempts for 9,267 matches,
+  ~16 ms release), the event census re-derives §36.2's pins, the
+  fingerprint `0xcd8d03bf` re-verifies after band fill, and the
+  machine-path replay under the solved tables is byte-exact.
+- `docs/hardware-session.md`: the solve step added to the ingestion
+  procedure (the capture→verdict distance is now zero commands deep:
+  capture, solve, swap, re-boot).
+
+### Verified
+- 146 tests, debug and release, green; fmt/clippy clean; boot pins
+  unchanged (handoff step 1,301,763, trap at 0xA1600050, fingerprint
+  `0xcd8d03bf`). No emulator-semantics change: the decode path is
+  untouched (the solver shares its parse); the blocker stays the 59
+  value-ROM constants (§30.4), data-gated.
+
 ## 0.28.0 — Milestone AI: the divergence→symbol map; the P1 solve, fed (§36)
 
 ### Added

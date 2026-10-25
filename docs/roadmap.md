@@ -1,5 +1,43 @@
 # Roadmap
 
+## Milestone AJ — the capture→ladder solver: the P1 solve, mechanical ✅ (v0.29.0)
+
+- **The hardware session's last manual step is a command (§37)**:
+  `solve::solve_ladder` inverts one true decode output into the engine's
+  value ladder, and `examples/ladder_solve.rs` routes it through the
+  pre-registered P1 tree (identical → capture-point row; non-zero band →
+  the §26.4 row), verifies the recovered ladder by the engine's own
+  re-decode, and writes the `SPHEVTBL` container (verified solves only)
+  for the §35 `--value-tables` seam. `pixel_dump` gains
+  `--value-tables` (the candidate-ladder capture generator).
+- **The search frame is §30.2's own evidence**: the RFC frame parses
+  canonically, so the extra-bit widths are stream data and the unknowns
+  are exactly the 59 base values. The bit-level parse is therefore
+  base-independent (a wrong base can only fail a content check, never
+  move the parse), and the decode's own output length is a LINEAR
+  equation in the bases — `SumGuard` walks the fixed parse once and
+  gives every pin a global feasibility interval check. On the pinned
+  reference decode the solve commits every match on its first candidate:
+  **9,267 attempts for 9,267 matches, 57/57 exercised codes pinned
+  agreeing with RFC byte-for-byte, ~16 ms release** (§37.2).
+- **Per match, the target's own periodicity is the only oracle**: the
+  copy must reproduce `target[j..j+L]` from `src(j−D)` — the engine's
+  live-window semantics. Baseline-first candidate ordering (the null
+  hypothesis), then a spiral by Manhattan distance; every candidate
+  passes the same predicate; caps and the attempt budget are typed
+  errors (`SolveLimits`/`SolveError`), never silent partial answers.
+  The envelope is stated honestly: baseline-at-truth solves are linear;
+  larger deviations spend the budget and fail typed — the P3
+  fingerprint is the session's cheap first read, and a budget failure
+  with a differing fingerprint is itself recorded information (§37.2).
+- **No semantics change**: 146 tests (+9: the synthetic bases-only
+  solve, the typed failures, the real-firmware gates incl. the census
+  and the exact-RFC agreement), debug and release, green; fmt/clippy
+  clean; boot pins unchanged (handoff step 1,301,763, trap at
+  0xA1600050, fingerprint `0xcd8d03bf`). Fresh evidence survey: nothing
+  new beyond §34.5/§35.2/§36.4 (sp_gzip remains unpublished; no source
+  uploads a value ladder).
+
 ## Milestone AI — the divergence→symbol map: the P1 solve, fed ✅ (v0.28.0)
 
 - **The P1 DIVERGENT row is executable end-to-end (§36)**: the

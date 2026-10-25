@@ -324,15 +324,15 @@ pub static ENGINE_VALUE_TABLES: ValueTables = ValueTables {
 };
 
 /// Canonical Huffman decode table built from per-symbol code lengths.
-struct Huffman {
+pub(crate) struct Huffman {
     /// (length, code) -> symbol
     map: std::collections::HashMap<(u8, u16), u16>,
-    max_len: u8,
+    pub(crate) max_len: u8,
 }
 
 impl Huffman {
     /// Build from code lengths; `None` entries (length 0) are unused symbols.
-    fn new(lengths: &[u8]) -> Option<Huffman> {
+    pub(crate) fn new(lengths: &[u8]) -> Option<Huffman> {
         let max_len = *lengths.iter().max()?;
         if max_len == 0 {
             return None;
@@ -367,19 +367,77 @@ impl Huffman {
         Some(Huffman { map, max_len })
     }
 
-    fn decode(&self, code: u16, len: u8) -> Option<u16> {
+    pub(crate) fn decode(&self, code: u16, len: u8) -> Option<u16> {
         self.map.get(&(len, code)).copied()
     }
 }
 
-struct BitReader<'a> {
+pub(crate) struct BitReader<'a> {
     data: &'a [u8],
-    pos: usize,
+    pub(crate) pos: usize,
+}
+
+/// The result of decoding a Huffman symbol at a position without
+/// consuming, with the engine's two failure modes distinguished (§37).
+pub(crate) enum PeekSym {
+    /// A symbol resolved; `(symbol, code length)`.
+    Hit(u16, u8),
+    /// A needed bit lies past input end — the engine clean-stops here.
+    Exhausted,
+    /// Complete input scanned, no symbol — a hard decode error.
+    BadCode,
 }
 
 impl<'a> BitReader<'a> {
-    fn new(data: &'a [u8]) -> Self {
+    pub(crate) fn new(data: &'a [u8]) -> Self {
         BitReader { data, pos: 0 }
+    }
+
+    /// Peek `n` bits LSB-first at `pos` without consuming (the solver reads
+    /// candidate extra-bit fields at hypothetical widths). Zeros past input
+    /// end, mirroring the engine's FIFO behavior (§13).
+    pub(crate) fn peek(&self, pos: usize, n: u8) -> u32 {
+        let mut v = 0u32;
+        for i in 0..n {
+            let at = pos + i as usize;
+            let byte = match self.data.get(at >> 3) {
+                Some(&b) => b,
+                None => 0, // past input end: the engine's FIFO reads zeros
+            };
+            v |= (((byte >> (at & 7)) & 1) as u32) << i;
+        }
+        v
+    }
+
+    /// Decode one Huffman symbol starting at `pos` without consuming;
+    /// returns the symbol and its code length (the solver decodes at
+    /// hypothetical positions when branching on extra-bit widths).
+    /// Returns `None` when the bits at `pos` resolve to no symbol.
+    pub(crate) fn peek_symbol(&self, h: &Huffman, pos: usize) -> Option<(u16, u8)> {
+        match self.peek_symbol_state(h, pos) {
+            PeekSym::Hit(sym, len) => Some((sym, len)),
+            _ => None,
+        }
+    }
+
+    /// [`Self::peek_symbol`] with the engine's exhaustion semantics made
+    /// explicit: the engine's `bit()` fails with `OutOfInput` (a clean
+    /// stop) the moment a needed bit lies past input end, while a code
+    /// that scans complete input without resolving is a hard `BadCode`.
+    pub(crate) fn peek_symbol_state(&self, h: &Huffman, pos: usize) -> PeekSym {
+        let mut code: u16 = 0;
+        for len in 1..=h.max_len {
+            let at = pos + len as usize - 1;
+            let Some(&byte) = self.data.get(at >> 3) else {
+                return PeekSym::Exhausted;
+            };
+            let b = ((byte >> (at & 7)) & 1) as u16;
+            code = (code << 1) | b;
+            if let Some(sym) = h.decode(code, len) {
+                return PeekSym::Hit(sym, len);
+            }
+        }
+        PeekSym::BadCode
     }
 
     fn bit(&mut self) -> Result<u8, InflateError> {
@@ -393,7 +451,7 @@ impl<'a> BitReader<'a> {
     }
 
     /// Read `n` bits LSB-first (deflate extra bits / header fields).
-    fn bits(&mut self, n: u8) -> Result<u32, InflateError> {
+    pub(crate) fn bits(&mut self, n: u8) -> Result<u32, InflateError> {
         let mut v = 0u32;
         for i in 0..n {
             v |= (self.bit()? as u32) << i;
@@ -402,7 +460,7 @@ impl<'a> BitReader<'a> {
     }
 
     /// Decode one Huffman symbol. Codes are packed MSB-of-code-first.
-    fn decode(&mut self, h: &Huffman, table: &'static str) -> Result<u16, InflateError> {
+    pub(crate) fn decode(&mut self, h: &Huffman, table: &'static str) -> Result<u16, InflateError> {
         let mut code: u16 = 0;
         for len in 1..=h.max_len {
             let b = self.bit()? as u16;
@@ -631,21 +689,19 @@ pub enum DecodeEventKind {
     },
 }
 
-/// [`inflate_engine_with`] that additionally records a per-symbol
-/// [`DecodeEvent`] trace. The decode itself is byte-identical (same call
-/// path — the trace is a passive observer), pinned by `tests/solve.rs`
-/// against the machine's own decode output.
-pub fn inflate_engine_with_traced(
-    data: &[u8],
-    start_bit: usize,
-    preset_len: usize,
-    out: &mut Vec<u8>,
-    max_out: usize,
-    tables: &ValueTables,
-    mut events: Option<&mut Vec<DecodeEvent>>,
-) -> Result<usize, InflateError> {
-    out.clear();
-    // Parse the dynamic block header from bit 0 to rebuild the tables.
+/// A parsed dynamic-block header (RFC 1951 §3.2.3): the two decode tables
+/// and the bit position where the symbol stream starts.
+///
+/// The engine's frame is RFC-canonical (§30.2) — the header is stream
+/// data, not ladder-reachable — so the solver shares this parse with the
+/// decode path (one code path; both consumers pinned against each other).
+pub(crate) struct DynHeader {
+    pub lit_h: Huffman,
+    pub dist_h: Huffman,
+}
+
+/// Parse the dynamic block header from bit 0 of `data`.
+pub(crate) fn parse_dynamic_header(data: &[u8]) -> Result<DynHeader, InflateError> {
     let mut reader = BitReader::new(data);
     let bfinal = reader.bit()?;
     let btype = reader.bits(2)?;
@@ -690,6 +746,28 @@ pub fn inflate_engine_with_traced(
     let lit_h = Huffman::new(&lens[..hlit]).ok_or(InflateError::BadBlock { bit: reader.pos })?;
     let dist_h = Huffman::new(&lens[hlit..]).ok_or(InflateError::BadBlock { bit: reader.pos })?;
     let _ = bfinal;
+    Ok(DynHeader { lit_h, dist_h })
+}
+
+/// [`inflate_engine_with`] that additionally records a per-symbol
+/// [`DecodeEvent`] trace. The decode itself is byte-identical (same call
+/// path — the trace is a passive observer), pinned by `tests/solve.rs`
+/// against the machine's own decode output.
+pub fn inflate_engine_with_traced(
+    data: &[u8],
+    start_bit: usize,
+    preset_len: usize,
+    out: &mut Vec<u8>,
+    max_out: usize,
+    tables: &ValueTables,
+    mut events: Option<&mut Vec<DecodeEvent>>,
+) -> Result<usize, InflateError> {
+    out.clear();
+    // Parse the dynamic block header from bit 0 to rebuild the tables.
+    let hdr = parse_dynamic_header(data)?;
+    let lit_h = &hdr.lit_h;
+    let dist_h = &hdr.dist_h;
+    let mut reader = BitReader::new(data);
 
     // Jump to the engine's programmed symbol start and decode to input end.
     // The hardware stops when its input is exhausted; the final symbol may
@@ -710,7 +788,7 @@ pub fn inflate_engine_with_traced(
         };
         let step = (|| -> Result<(), InflateError> {
             let out_start = out.len();
-            let sym = reader.decode(&lit_h, "literal/length")?;
+            let sym = reader.decode(lit_h, "literal/length")?;
             match sym {
                 0..=255 => {
                     push(&mut window, out, sym as u8, max_out)?;
@@ -750,7 +828,7 @@ pub fn inflate_engine_with_traced(
                         0
                     };
                     let length = tables.lbase[li] + ebits;
-                    let dsym = reader.decode(&dist_h, "distance")? as usize;
+                    let dsym = reader.decode(dist_h, "distance")? as usize;
                     if dsym >= 30 {
                         return Err(InflateError::BadCode {
                             bit: reader.pos,

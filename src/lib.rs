@@ -20,6 +20,7 @@ pub mod firmware;
 pub mod inflate;
 pub mod machine;
 pub mod memory;
+pub mod solve;
 
 /// Emulator crate version, from Cargo.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

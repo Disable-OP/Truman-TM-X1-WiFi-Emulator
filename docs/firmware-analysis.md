@@ -3200,3 +3200,112 @@ SDK mirrors, Sunplus toolchains, Truman dumps) found nothing beyond
 §34.5/§35.2: the vendor compressor remains unpublished, no source
 uploads a value ladder, and the same-SoC second-container option
 remains owner-gated and unexercised (§32.3).
+
+## 37. Milestone AJ — the capture→ladder solver: the P1 solve, mechanical (v0.29.0)
+
+The hardware-session decision tree's last manual step is now a command.
+`solve::solve_ladder` (src/solve.rs) inverts one true decode output — a P1
+capture's decode region — into the engine's value ladder, and
+`examples/ladder_solve.rs` wraps it as the session's one-command solve:
+boot, compare (the `dram_compare --post` semantics), route through the
+pre-registered P1 tree (identical → the capture-point suspicion row;
+non-zero band → the §26.4 length-Δ row), then solve, verify by the
+engine's own re-decode, and write the recovered `SPHEVTBL` container
+(verified solves only) for the §35 `--value-tables` seam.
+
+### 37.1 The search frame is evidence, and it collapses the problem
+
+The search's single structural assumption is §30.2's own reading of the
+vendor's test container: **the RFC frame parses canonically** — the bit
+accounting (block header, Huffman codes, extra-bit widths) is stream
+data, and the silicon unknowns are exactly the 29+30 base values (the
+§30.4 "59-constant" blocker). Two consequences the solver exploits:
+
+* **The bit-level parse is base-independent.** Symbol positions depend
+  only on the code lengths and the (now fixed) extra-bit widths, so the
+  entire symbol sequence is a deterministic function of the stream. A
+  wrong base can never move the parse — it can only fail a content
+  check. The search is a sequence of per-code base commitments with
+  deferred contradictions, not a joint structure search; a Huffman code
+  that scans complete input without resolving (a `BadCode`) refutes the
+  whole target, not a branch.
+* **The decode's own output length is a linear equation in the bases.**
+  `Σ count[k]·base[k] = target.len() − literals − Σ extra` (the counts
+  and the extra values are fixed stream data — `SumGuard::new` walks the
+  fixed parse once). Every base pin passes a global feasibility interval
+  check against that equation, which is what makes the search linear in
+  practice: on the pinned reference decode the solve commits every match
+  on its first candidate (9,267 attempts for 9,267 matches).
+
+Per match, the length `L` and distance `D` must satisfy the target's own
+periodicity — `target[j+i] == src(j+i−D)` for all `i < L`, with `src(x)`
+the zero preset for `x < 0` and `target[x]` otherwise — the engine's
+live-window copy semantics (§13.6), made exact by the output invariant.
+A code's first occurrence commits its base from the smallest
+content-consistent value; later occurrences check, and a contradiction
+backtracks to the enclosing choice (the rewind is the plain
+innermost-frame order — the output position couples every earlier length
+into each check, so conflict-directed backjumping has no sound blame
+here; the sound global pruning is the sum constraint). Candidate order
+puts the baseline (RFC) values first — the null hypothesis this repo is
+framed against — then a spiral by Manhattan distance around that point,
+with every candidate passing the same content predicate. Ordering is a
+heuristic; coverage is bounded by the documented caps ([`SolveLimits`]:
+length ≥ 1 (the engine model's own floor — RFC's ≥ 3 is a ladder
+property, not a decoder one), ≤ 258; distance ≤ 32768; the per-
+occurrence distance scan; the spiral radius; the attempt budget) and a
+cap or budget hit is a typed error (`SolveError`), never a silent
+partial answer.
+
+The final tables re-decode the stream through the real engine path
+(`inflate_engine_with_traced`), and that byte-comparison is the reported
+verdict (`verified`): the solver reports, and the harness writes, only
+ladders the engine itself reproduces the capture with. Codes the stream
+never exercises (or exercises only at the input-exhaustion boundary,
+where the copy never runs) keep the baseline values and are reported as
+`CodeStatus::Unconstrained` — they cannot have moved this decode.
+
+### 37.2 What the reference decode's own solve pins (new structural data)
+
+Solving the pinned reference decode from its own output (the RFC truth)
+recovers the ladder exactly: **57/57 exercised codes pinned, all agreeing
+with the RFC values byte-for-byte**, 2 distance codes unconstrained (the
+stream never exercises them), in 9,267 candidate attempts (~16 ms
+release, one attempt per match). The event census re-derives §36.2's
+pins exactly (25,031 events, 9,267 matches, 75,408 bytes, the
+`0xcd8d03bf` fingerprint after band fill). This is the solve's
+self-test: the machinery that will recover the hardware ladder from a
+P1 capture demonstrably recovers a known ladder from a known output.
+
+The envelope is stated honestly: a capture whose true ladder sits at or
+near the baseline solves as linearly as the self-test (the baseline
+candidate commits first at every match); captures requiring larger
+deviations spend the budget on the deferred-contradiction search and
+fail typed (`NoSolution`/`BudgetExhausted`) with the caps as knobs. The
+P3 fingerprint experiment (§34.4) is the session's cheap first read: a
+matching fingerprint means the ladder IS the baseline and no solve is
+needed; a differing one feeds the solve, and a budget failure there is
+itself recorded information (the deviation is outside the enumerated
+family — the §36 attribution names where).
+
+### 37.3 Verification without hardware
+
+9 new tests (`tests/solve_ladder.rs`): the synthetic bases-only ladder
+hand-encoded at the RFC extra-bit widths is recovered from its own
+output (verified re-decode, the width frame pinned RFC by construction,
+deterministic across solves); an impossible (corrupted) target is typed
+`NoSolution`; a zero attempt budget is typed `BudgetExhausted`, never a
+wrong answer; and the real-firmware gates above (the reference solve,
+the census, the fingerprint, the exact-RFC agreement, the machine-path
+replay). The container round-trips through `ValueTables::to_bytes`, so a
+solved ladder is data for the §35 seam without a recompile. 146 tests,
+debug and release, green; fmt/clippy clean; boot pins unchanged
+(handoff step 1,301,763, trap at 0xA1600050, fingerprint `0xcd8d03bf`).
+
+**No emulator-semantics change**: the decode path is untouched (the
+solver shares its parse via the same code); the pixel_dump harness gains
+`--value-tables` (a candidate-ladder boot dump — the capture generator
+the session's own smoke test used). The milestone claims no boot
+progress — the blocker stays the 59 value-ROM constants (§30.4),
+data-gated — but the capture→verdict distance is now zero commands
+deep: capture, solve, swap, re-boot.

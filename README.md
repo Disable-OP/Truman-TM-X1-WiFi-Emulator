@@ -132,11 +132,12 @@ Requires a stable Rust toolchain (https://rustup.rs). No other dependencies.
 
 ```sh
 cargo build --release
-cargo test --release          # 135 tests: boot chain, entry harness, interrupt + COP0 timer delivery, key injection,
+cargo test --release          # 146 tests: boot chain, entry harness, interrupt + COP0 timer delivery, key injection,
                               # watchpoints, Q8 runtime evidence, timer program, keycode-consumer pin,
                               # perf-model regressions (lazy describe, hot-region memo),
                               # post-handoff map (exec pages, MMIO, DRAM write map),
-                              # value-table file seam (round-trip, rejections, file-loaded decode pins)
+                              # value-table file seam (round-trip, rejections, file-loaded decode pins),
+                              # divergence→symbol attribution, the capture→ladder solver (§36-§37)
 cargo build --release --example bench
 ./target/release/examples/bench firmware/*.bin   # throughput harness (Milestones V+Z): ~25.4 M instr/s
                                                   # on the deterministic boot chain (17.5x over 0.17.0)
@@ -203,6 +204,7 @@ fault/unknown instruction.
 | `src/memory.rs` | Address space: kseg0/kseg1 translation, RAM/ROM/device regions, physical-range watchpoints |
 | `src/devices.rs` | Device models: UART, timer, SPI controller, DDR PHY/controller, interrupt controller, param RAM, mirror window |
 | `src/machine.rs` | Machine composition (memory map = documented hypotheses) + run loop + IRQ injection API |
+| `src/solve.rs` | The capture→ladder solver (§37): one true decode output → the recovered value ladder, verified by the engine's own re-decode |
 | `src/firmware.rs`, `src/boot.rs` | Image identification/validation, reset/diagnostics |
 | `src/bin/truman-emulator.rs` | CLI frontend (`inspect` / `run` / `trace` / `map`) |
 | `tests/boot.rs`, `tests/interrupt.rs` | Integration tests: real-firmware boot chain, interrupt injection |

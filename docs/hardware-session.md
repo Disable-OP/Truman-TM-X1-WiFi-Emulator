@@ -160,6 +160,28 @@ Exit codes: `0` identical (the P1 IDENTICAL row applies — suspect the
 capture point first) · `1` divergent or size-Δ (the attribution report
 is the actionable data) · `2` usage, IO or replay-integrity error.
 
+The solve itself is now one command (§37, Milestone AJ) — it routes
+through the P1 tree (identical → the capture-point row; non-zero band →
+the §26.4 row), runs the inversion, verifies the recovered ladder by the
+engine's own re-decode, and writes the `SPHEVTBL` container the §35 seam
+consumes:
+
+```
+cargo run --release --example ladder_solve -- \
+    firmware/<flashfile>.bin p1_pixel.bin --out recovered.spvt
+# then the post-capture boot under the recovered ladder:
+truman-emulator map firmware/<flashfile>.bin --value-tables recovered.spvt
+```
+
+Exit codes: `0` identical window (P1 IDENTICAL) or solved AND
+engine-verified · `1` divergent but unsolved (the attribution from
+`solve_divergence` is the actionable data; a budget failure with a
+differing P3 fingerprint is recorded information — the deviation is
+outside the enumerated family, §37.2) · `2` usage, IO or stream error.
+The reference self-test (the solve recovering the RFC ladder from its
+own pinned output, 57/57 codes) runs as `cargo test --test
+solve_ladder`.
+
 The post-capture value swap (§35, Milestone AH) is a data file, not a
 recompile: `dram_compare --post` (and the CLI `map`) accept
 `--value-tables <file>` — a 191-byte `SPHEVTBL` container written with
