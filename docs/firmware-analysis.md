@@ -4572,3 +4572,73 @@ examples `0/1/2`) made the surface contractual.
   clean, clippy zero warnings, boot pins unchanged. The blocker
   stays hardware-gated exactly as registered (§51.2): P1, P2/P2b/P2c,
   P3 — the real-device session per docs/hardware-session.md.
+
+## 56. Milestone BC — the success-path output contract pinned; the trace head misreport fixed (hardening, v0.35.1)
+
+### 56.1 The defect found
+
+Continuing the CLI contract arc (AZ: usage/dispatch, BB: error paths and
+stop reasons), the success-path **reports** were still unpinned — a
+formatter change could not fail any test. The first probe caught a real
+one: `trace fw --max-steps 40 --limit 10` printed
+`-- first 40 instructions --`. Root cause, in `Tracer`
+(src/machine.rs): it was a **ring buffer** keeping the *last* `capacity`
+reports, while `cmd_trace` created it with `capacity = --limit` and ran
+`--max-steps` steps through it, then printed the header with
+`tracer.total()` (everything seen) and drained the ring (the last
+`capacity` steps). With the defaults (`--limit 100`, `--max-steps 1000`)
+the command printed 100 instructions under the heading "first 1000" —
+none of them from the first thousand's front; `--limit` capped nothing
+observable. A consumer audit showed the defect was confined to
+`cmd_trace`: the run tail sizes its ring to `tail_steps + 8` and runs
+exactly that many; the map head traces `min(head, budget) ≤ capacity`
+steps; the entry oracle sizes the tracer to its budget. The capacity-0
+edge was also broken in the old code (`pop_front` on an empty deque is a
+no-op, so the ring grew unbounded).
+
+### 56.2 The fix
+
+`Tracer` is now a **head tracer**: it records the *first* `capacity`
+reports; later reports only bump the seen-total (`total()` keeps its
+"everything seen" meaning for the stop report). `cmd_trace` now drains
+first and prints the drained length — `--first N` states what is
+printed. `--limit N` now does exactly what the usage line (pinned by
+the AZ tests) promises: "print first N traced instructions". No
+documented example needed changing; README's
+`trace --max-steps 2000 --limit 120` became truthful by the fix, and
+`--max-steps` still bounds execution independently of the head cap.
+
+### 56.3 The success-path pins
+
+**`tests/cli_success.rs`** — four end-to-end tests against the real
+binary, all deterministic (fixed start state):
+
+- `inspect`: exactly the eight report lines — `file`/`size`
+  (4194304 bytes)/`sha256` (the README anchor
+  5ca012b2…)/`kind`/`soc` plus the three `note` lines (zeroBoot v1.0,
+  Boot form SPI v1.13, SPHE15 descriptor at 0x38b000).
+- `trace --max-steps 5`: the two boot diagnostics verbatim (reset
+  pc=0xbfc00000, stack top 0xbffc0e00), the stop report (executed 5,
+  final pc=0xbfc00014), the first five decoded instructions verbatim
+  (addiu/lui/ori from the reset vector, landing k0=0x5553504e), the
+  all-empty window map (19 modeled windows, fixed order), and the
+  register footer (pc/next_pc).
+- `trace` head honesty: `--max-steps 300` prints exactly 100 steps and
+  still reports "executed 300"; the head is prefix-stable (its first
+  five lines equal the 5-step trace); `--max-steps 40 --limit 10`
+  prints exactly 10. This is the §56.1 regression pin.
+- `run --max-steps 1000`: boot diagnostics, stop report, final
+  pc=0xb8000100, the UART banner content (zeroBoot v1.0 for 1506F,
+  SPI SCS flow), the uart window's exact access line (4 distinct
+  offsets 0x0000/0x0004/0x0014/0x0018), the default 24-instruction
+  tail block with its last line pinned, and the register footer.
+
+Result: the suite grows 172 → **176** (debug and release), fmt clean,
+clippy zero warnings, boot pins unchanged (handoff 1,301,783, trap
+0xA1600050, fingerprint 0xcd8d03bf). One docs miss surfaced and fixed
+honestly: the README's `cargo test` claim still read "161 tests" —
+stale since Milestone BB (172) — the audit tool prints the claim but
+did not fail on it; it now reads 176 and the claim block names the CLI
+contract tests (§53–§56). The blocker stays hardware-gated
+exactly as registered (§51.2): P1, P2/P2b/P2c, P3 — the real-device
+session per docs/hardware-session.md.

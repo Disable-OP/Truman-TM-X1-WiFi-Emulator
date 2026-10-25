@@ -1655,7 +1655,15 @@ pub struct HandoffMap {
     pub head: Vec<crate::cpu::StepReport>,
 }
 
-/// Ring-buffer instruction tracer.
+/// Head instruction tracer.
+///
+/// Records the **first** `capacity` reports it sees; later reports only
+/// bump the seen-total. This is the contract the CLI documents for
+/// `trace --limit N` ("print first N traced instructions") and it matches
+/// every other consumer: the run tail and the map head always trace at
+/// most `capacity` steps, and the entry oracle sizes the tracer to its
+/// budget. (It used to be a ring that kept the *last* `capacity` reports
+/// while the CLI labelled them "first" — a misreport, §56.)
 pub struct Tracer {
     buf: std::collections::VecDeque<StepReport>,
     capacity: usize,
@@ -1663,7 +1671,7 @@ pub struct Tracer {
 }
 
 impl Tracer {
-    /// Create a tracer holding at most `capacity` reports.
+    /// Create a tracer recording at most the first `capacity` reports.
     pub fn new(capacity: usize) -> Self {
         Self {
             buf: std::collections::VecDeque::with_capacity(capacity.min(1 << 20)),
@@ -1674,10 +1682,9 @@ impl Tracer {
 
     fn push(&mut self, r: StepReport) {
         self.pushed += 1;
-        if self.buf.len() == self.capacity {
-            self.buf.pop_front();
+        if self.buf.len() < self.capacity {
+            self.buf.push_back(r);
         }
-        self.buf.push_back(r);
     }
 
     /// Total instructions seen.

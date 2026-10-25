@@ -1,5 +1,27 @@
 # Roadmap
 
+## Milestone BC — the success-path output contract pinned; the trace head misreport fixed ✅ (v0.35.1)
+
+- **One reporting defect found and fixed (§56.1)**: `Tracer` was a ring
+  buffer keeping the *last* `--limit` reports while `trace` labelled its
+  output "first N instructions" and printed the seen-total in the
+  heading — with defaults, 100 tail steps printed under "first 1000";
+  `--limit` capped nothing observable. Tracer is now a head tracer
+  (first-N capture) and `trace` prints the drained length; the run tail,
+  map head and entry oracle were audited and are unaffected.
+- **`tests/cli_success.rs` (§56.3)**: four end-to-end success-path
+  contract tests — the eight `inspect` lines (SHA anchor + three notes),
+  the 5-step trace verbatim (boot diagnostics, first five decodes,
+  all-empty window map, register footer), the head-honesty regression
+  pin (300→100 with prefix stability; 40/10), and the 1000-step `run`
+  report (boot/stop/final-pc, UART banner, uart window offsets, the
+  24-instruction tail, register footer). Suite 172 → 176 (debug and
+  release).
+- **Unchanged**: boot pins (handoff step 1,301,783, trap 0xA1600050,
+  fingerprint 0xcd8d03bf); fmt clean, clippy 0 warnings. Blocker stays
+  hardware-gated (P1, P2/P2b/P2c, P3; surveys closed per §51.2).
+
+
 ## Milestone BB — the CLI error-path contract pinned end-to-end ✅ (v0.35.0)
 
 - **`tests/cli_errors.rs` (§55.2)**: seven end-to-end tests against the

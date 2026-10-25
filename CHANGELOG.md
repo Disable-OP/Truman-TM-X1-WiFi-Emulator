@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.35.1 — Milestone BC: the success-path output contract pinned; the trace head misreport fixed (hardening, §56)
+
+### Fixed
+- **`trace` head misreport (§56.1)**: the tracer was a ring buffer, so a
+  run longer than `--limit` printed the *last* N instructions under the
+  heading "first N" (with defaults: 100 tail steps under "first 1000"),
+  and `--limit` capped nothing observable. `Tracer` is now a head tracer
+  (records the first `capacity` reports; later reports only bump the
+  seen-total) and `trace` prints the drained length. Consumer audit:
+  run tail, map head and entry oracle never overflow their tracers —
+  unaffected. README's `--limit 120` example is now truthful.
+
+### Added
+- **`tests/cli_success.rs`** — four end-to-end success-path contract
+  tests (§56.3): the eight `inspect` report lines verbatim (SHA-256
+  anchor, kind/soc, three notes); the 5-step trace (boot diagnostics,
+  first five decoded instructions, all-empty 19-window map, register
+  footer, k0=0x5553504e); the trace head-honesty regression pin
+  (executed 300 → printed 100, prefix-stable; explicit --limit 10);
+  and the 1000-step run report (stop/final-pc pins, UART banner
+  content, uart window access line, 24-instruction tail, register
+  footer). Tests 172 → 176 (debug and release).
+
 ## 0.35.0 — Milestone BB: the CLI error-path contract pinned end-to-end (hardening, §55)
 
 ### Added

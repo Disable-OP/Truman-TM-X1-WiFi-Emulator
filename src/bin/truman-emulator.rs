@@ -408,9 +408,10 @@ fn cmd_trace(args: &[String]) -> Result<ExitCode, ArgsError> {
             println!();
         }
     }
-    println!("-- first {} instructions --", tracer.total());
-    for r in tracer.drain() {
-        print_step(&r);
+    let head = tracer.drain();
+    println!("-- first {} instructions --", head.len());
+    for r in &head {
+        print_step(r);
     }
     print_touchmap(&result);
     print_state(&machine);
