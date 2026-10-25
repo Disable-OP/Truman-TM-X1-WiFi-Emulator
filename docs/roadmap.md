@@ -1,5 +1,35 @@
 # Roadmap
 
+## Milestone AP — the P3 readout closed in code; the sixth survey (session record) ✅ (v0.32.1)
+
+- **The cheapest oracle's last manual step, removed (§43.1)**: the P3
+  probe readout's half order (probe address 0 = HIGH 16-bit half,
+  address 1 = LOW half) was prose-only; `machine::adler32_probe_halves`
+  is now the split in code, pinned by test (RFC reference fingerprint
+  `0xcd8d03bf` → `(0xcd8d, 0x03bf)`, the standard zlib vectors, and a
+  79,872-byte round trip — the P1 window's own size), and
+  `dram_compare --post/--ref` print the expected two `mdw` values under
+  the reference adler line. `ladder_eval --fingerprint` remains the
+  elimination loop; no emulator-semantics change (the probe window
+  stays deliberately unmodeled, §34.2's registered caveat).
+- **The sixth fresh-evidence survey (2026-10-25, §43.4)**: new angles
+  (vendor symbol names, literal MMIO constants, Chinese-language
+  hardware-PNG sources) — a generic Chinese PNG-hardware patent
+  (CN116760996A, not Sunplus), ArtInChip's decoder docs (different
+  vendor), no `sp_gzip`, no value-ladder constants. The §30.4 blocker
+  stays hardware-gated.
+- **CI observed green through AO (§43.2)**: every workflow run of the
+  v0.29–v0.32 line concluded success, read from the public run list;
+  gates re-run locally on the restored clone: fmt clean, clippy 0
+  warnings, 156 tests debug and release (+1: the probe-halves pin).
+- **Environment-recovery hygiene re-recorded (§43.3)**: stale snapshot
+  restored again (this time Milestone K); remote remained authoritative
+  (fetch → ancestry → `--ff-only`); `scripts/push_safe.sh` recreated
+  from its documented design after the snapshot restore dropped it.
+  Boot pins unchanged (handoff step 1,301,763, trap 0xA1600050,
+  fingerprint 0xcd8d03bf).
+
+
 ## Milestone AO — the §40.3 class prior as the solver's ordering ✅ (v0.32.0)
 
 - **The declared AM follow-up, implemented (§42)**: `length_class` ports

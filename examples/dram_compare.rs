@@ -20,7 +20,10 @@
 //!   dram_compare --ref <reference.bin> <capture.bin>
 //!
 //! Post/Ref reports also print the reference's Adler-32 — the
-//! emulator-side fingerprint for the P3 probe-window read (§34.2).
+//! emulator-side fingerprint for the P3 probe-window read (§34.2) —
+//! together with the expected two-probe-readout halves (addr 0 = high,
+//! addr 1 = low; Milestone AP), so the session's four debugger
+//! operations have their expected values printed, not derived by hand.
 //! Options:
 //!   --out <map.txt>   write the 1024-byte block map to a file
 //!   --offset <phys>   post mode: pixel base override (default 0x01600000)
@@ -34,7 +37,9 @@
 use std::path::PathBuf;
 
 use truman_emulator::firmware;
-use truman_emulator::machine::{adler32, classify_residue, compare_dumps, Machine, MachineConfig};
+use truman_emulator::machine::{
+    adler32, adler32_probe_halves, classify_residue, compare_dumps, Machine, MachineConfig,
+};
 use truman_emulator::memory::AccessSize;
 
 const DEFAULT_PIXEL_BASE: u32 = 0x0160_0000;
@@ -291,7 +296,17 @@ fn main() {
             // Milestone AG (§34.2/P3): the vendor probe window exposes the
             // decode's Adler-32 as two 16-bit halves; this line is the
             // emulator-side fingerprint to compare a P3 probe read against.
-            println!("  reference adler-32 : 0x{:08x}", adler32(&reference));
+            let ref_adler = adler32(&reference);
+            println!("  reference adler-32 : 0x{:08x}", ref_adler);
+            // Milestone AP: the §34.2 half order in code — probe address 0
+            // reads the high half, address 1 the low half. These are the
+            // two `mdw` values the session's four debugger operations
+            // should produce when the emulator's decode IS the device's.
+            let (hi, lo) = adler32_probe_halves(ref_adler);
+            println!(
+                "  expected probe     : addr0 (high) = 0x{:04x}, addr1 (low) = 0x{:04x}",
+                hi, lo
+            );
             println!("  captured           : {} bytes", c.captured_len);
             println!("  compared           : {} bytes", c.compared_len);
             println!(

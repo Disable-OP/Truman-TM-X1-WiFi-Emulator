@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.32.1 — Milestone AP: the P3 readout closed in code; the sixth survey (§43)
+
+### Added
+- **`machine::adler32_probe_halves`** — the §34.2/P3 probe-window split
+  of an Adler-32 into the two 16-bit register values the debugger
+  collects (probe address 0 = high half, 1 = low half), with the half
+  order pinned by test against the RFC reference fingerprint and the
+  standard zlib vectors (156th test).
+- **`dram_compare --post/--ref` expected-probe line** — the report now
+  prints `addr0 (high) = 0x…, addr1 (low) = 0x…` under the reference
+  adler, so the session's four debugger operations have their expected
+  values printed, not derived by hand (§43.1).
+
+### Documented
+- **§43 session record**: the P3 readout closed in code; the CI record
+  observed green through Milestone AO; environment-recovery hygiene
+  re-recorded; the sixth fresh-evidence survey (2026-10-25, new
+  angles — vendor symbols, MMIO constants, Chinese-language sources):
+  nothing new upstream; the §30.4 blocker stays hardware-gated. Boot
+  pins unchanged.
+- `docs/hardware-session.md` P3 row names the printed expected-probe
+  values and the code-level half order.
+
 ## 0.32.0 — Milestone AO: the §40.3 class prior as the solver's ordering (§42)
 
 ### Added

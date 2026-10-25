@@ -59,7 +59,7 @@ mdw 0xBFFE387C                   # -> low half; adler = (hi<<16)|lo
 |---|---|
 | cost | four debugger operations — no capture file |
 | precondition | the same halt window as P1 |
-| compare against | the pinned emulator fingerprint `0xcd8d03bf` (or the `dram_compare --post` report line "reference adler-32") |
+| compare against | the pinned emulator fingerprint `0xcd8d03bf` (or the `dram_compare --post` report line "reference adler-32" and its **expected probe** line — `addr0 (high) = 0x…, addr1 (low) = 0x…` — the two `mdw` values printed for you, Milestone AP / §43.1; `machine::adler32_probe_halves` is the split in code, half order pinned by test) |
 | **caveat (registered)** | whether the engine accumulates Adler-32 over a `zlib_mode=1` **raw** decode is **unverified** — the vendor readout is shown in PNG image mode only, and the emulator deliberately does not model an accumulator (§34.2). A zero/stuck/implausible readout is the documented "does not accumulate" outcome, not a capture error |
 
 A matching fingerprint would mean the emulator's decode IS the device's

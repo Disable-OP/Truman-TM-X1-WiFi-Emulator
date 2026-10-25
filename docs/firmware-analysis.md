@@ -3715,3 +3715,69 @@ remain the unrelated product lines; the 1506T/1506c receiver hits are
 the same out-of-scope third-party firmware ecosystem. No `sp_gzip`
 publication, no hardware-session reports from other owners. The
 §30.4 blocker stays hardware-gated.
+
+## 43. Milestone AP — the P3 readout closed in code; the sixth survey (session record, v0.32.1)
+
+### 43.1 What was built
+
+The hardware session's cheapest oracle (P3, §34.2) had its offline half
+mechanical since Milestone AH (`ladder_eval --fingerprint`), but its
+*readout* was prose: the vendor's two-register probe sequence yields a
+raw pair — probe address 0 = the **high** 16-bit half, address 1 = the
+**low** half — and assembling `(hi << 16) | lo` was the operator's
+mental step, with the half order documented only in text. Milestone AP
+closes that in code: `machine::adler32_probe_halves` is the split, its
+half order pinned by test against the RFC reference fingerprint
+(`0xcd8d03bf` → `(0xcd8d, 0x03bf)`, plus the standard zlib vectors and
+a 79,872-byte round trip — the P1 window's own size), and
+`dram_compare --post/--ref` now print the expected probe readout —
+`addr0 (high) = 0x…, addr1 (low) = 0x…` — directly under the reference
+adler line. The session's four debugger operations (`mww`/`mdw` pairs
+at 0xBFFE3878/0xBFFE387C) therefore have their expected values printed,
+not derived by hand; a readout can still be fed to
+`ladder_eval --fingerprint` for the candidate-elimination loop. No
+emulator semantics change: the probe window remains unmodeled by
+deliberate choice (§34.2's registered caveat — whether the silicon
+accumulates Adler-32 over a `zlib_mode=1` decode is unverified until a
+real readout exists).
+
+### 43.2 The CI record observed green through AO
+
+The GitHub Actions record was read from the public run list on
+2026-10-25: every workflow run for the current history — through
+Milestone AO's commit `afde406` — concluded `success`, including the
+AO push itself; no failures, no in-flight runs at observation time.
+Combined with AL's API-level observation (26/26 since CI's creation),
+the remote gate battery has been observed green for every push of the
+v0.29–v0.32 line. All gates were also re-run locally on this session's
+restored clone: fmt clean, clippy 0 warnings, `check --all-targets`
+clean, 156 tests debug and release.
+
+### 43.3 Environment-recovery hygiene, recorded again
+
+This session's sandbox restored a stale local snapshot (Milestone K,
+with fileMode-only working-tree noise); the clone was re-fast-forwarded
+from origin with zero loss — the remote remained authoritative
+throughout, the same failure mode AL recorded, handled by the same
+discipline (fetch, ancestry check, `--ff-only`, never a rewrite). The
+reusable `scripts/push_safe.sh` from the AN session did not survive the
+snapshot restore and was recreated from its documented design
+(stdin-fed base64 credential → 0600 temp file → `GIT_ASKPASS` → push →
+`git ls-remote` verification → shred).
+
+### 43.4 Fresh-evidence survey (2026-10-25, sixth pass)
+
+New query angles against the same wall: SPHE1506/`sp_gzip` register
+and publication searches, the vendor symbol names (`SPHEVTBL`,
+`sphe-cmd_sp_png_dec`, `ZlibBuf`), the literal MMIO constants
+(`0xBFFE3800`, `PNG_PROBE_ADDR`, `0xA1600000`), and Chinese-language
+hardware-PNG-decode sources. Results: a generic Chinese PNG-hardware
+patent (CN116760996A — dictionary/line caches and defilter architecture,
+not Sunplus, no value-ROM constants), ArtInChip's PNG module
+documentation (a different vendor's decoder, same algorithm class), and
+CAST IP-core marketing material — none of it SPHE15xx, none of it the
+59 value-ladder constants. No `sp_gzip` publication, no other owner's
+hardware-session report. The §30.4 blocker stays hardware-gated;
+`docs/hardware-session.md` remains the single unlock. Boot pins
+unchanged (handoff step 1,301,763, trap 0xA1600050, fingerprint
+0xcd8d03bf); fmt clean, clippy 0 warnings, 156 tests debug and release.

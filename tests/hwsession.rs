@@ -3,7 +3,9 @@
 //! test that proves the reference extraction feeds the comparator.
 
 use truman_emulator::firmware;
-use truman_emulator::machine::{adler32, classify_residue, compare_dumps, Machine, MachineConfig};
+use truman_emulator::machine::{
+    adler32, adler32_probe_halves, classify_residue, compare_dumps, Machine, MachineConfig,
+};
 
 #[test]
 fn adler32_matches_the_standard_zlib_vectors() {
@@ -19,6 +21,30 @@ fn adler32_matches_the_standard_zlib_vectors() {
     assert_eq!(v, adler32(&data));
     let hi = (v >> 16) as u16;
     let lo = v as u16;
+    assert_eq!(((hi as u32) << 16) | lo as u32, v);
+}
+
+#[test]
+fn probe_halves_pin_the_342_readout_order_and_round_trip() {
+    // Milestone AP: the §34.2/P3 half order in code. The vendor drivers'
+    // end-of-image branch (and the Truman loader's handler, §12) reads
+    // the decode's Adler-32 as two 16-bit probe values — probe address 0
+    // returns the HIGH half, probe address 1 the LOW half. The RFC
+    // reference decode's pinned fingerprint therefore reads out as
+    // (0xcd8d, 0x03bf) — the pair the session's two `mdw 0xBFFE387C`
+    // operations should produce when the emulator's decode IS the
+    // device's decode.
+    assert_eq!(adler32_probe_halves(0xcd8d_03bf), (0xcd8d, 0x03bf));
+    // The zlib test vectors split the same way, high-first.
+    assert_eq!(adler32_probe_halves(0x024d_0127), (0x024d, 0x0127));
+    assert_eq!(adler32_probe_halves(0x11e6_0398), (0x11e6, 0x0398));
+    assert_eq!(adler32_probe_halves(0x0000_0001), (0x0000, 0x0001));
+    // Round trip: the inverse assembly is the `--fingerprint` operand —
+    // for every adler the pair reassembles to it, and for every slice
+    // the assembled pair of the computed adler equals the computed adler.
+    let data: Vec<u8> = (0..=255u8).cycle().take(79_872).collect();
+    let v = adler32(&data);
+    let (hi, lo) = adler32_probe_halves(v);
     assert_eq!(((hi as u32) << 16) | lo as u32, v);
 }
 

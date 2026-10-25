@@ -1420,6 +1420,25 @@ pub fn adler32(data: &[u8]) -> u32 {
     (b << 16) | a
 }
 
+/// The §34.2/P3 probe-window split of an Adler-32: the two 16-bit
+/// register values the debugger collects at the halt window.
+///
+/// The vendor drivers' end-of-image branch (and the Truman loader's own
+/// handler, §12) reads the decode's Adler-32 through the probe window as
+/// two 16-bit halves — probe address 0 returns the **high** half, probe
+/// address 1 the **low** half — so the session's raw readout is the pair
+/// `(mdw @0xBFFE387C after addr 0, mdw @0xBFFE387C after addr 1)`. This
+/// function is the assembly step in code, with the half order pinned by
+/// test (`tests/hwsession.rs`): the RFC reference fingerprint
+/// `0xcd8d03bf` reads out as `(0xcd8d, 0x03bf)`.
+///
+/// The inverse assembly (`(hi << 16) | lo`) is the `--fingerprint`
+/// argument of `ladder_eval` and the comparison operand against
+/// [`adler32`] of the reference window.
+pub fn adler32_probe_halves(adler: u32) -> (u16, u16) {
+    ((adler >> 16) as u16, adler as u16)
+}
+
 /// Per-4KiB-page executed-instruction histogram (Milestone AD, §32).
 /// Recorded by [`Machine::run_observed`]: the executed-code map of a run
 /// window without storing per-step records. Only instructions that
