@@ -1,5 +1,19 @@
 # Roadmap
 
+## Milestone AY — documentation cross-reference audit tooling + README SHA-256 anchor restored ✅ (v0.34.7)
+
+- **Mechanical audit committed (`tools/xref_audit.py`, §52.1)**: all §
+  references resolve (38 + 21 + 4 across the three docs, zero
+  dangling), path mentions exist, version pins consistent. The one
+  gap found and fixed: the README lost the firmware SHA-256 anchor —
+  restored (`5ca012b2…28f0`, re-verified against the committed file).
+- **No code changed (§52.2)**: 161 tests debug and release; fmt
+  clean, clippy 0 warnings; boot pins unchanged.
+- **Blocker stays hardware-gated (§52.3)**: P1, P2/P2b/P2c, P3 — the
+  real-device session per docs/hardware-session.md. Surveys: named
+  leads only (§51.2).
+
+
 ## Milestone AX — the fourteenth survey: die-marking, Russian platforms, DVB wikis — all registered angles closed ✅ (v0.34.6)
 
 - **The last three registered angles executed (§51.1)**: die-marking

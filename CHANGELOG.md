@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.34.7 — Milestone AY: documentation cross-reference audit tooling + the README SHA-256 anchor restored (docs hygiene, §52)
+
+### Added
+- **`tools/xref_audit.py`**: a reproducible cross-reference audit — every
+  `§N` mention across all three docs must resolve to a `## N.` heading;
+  every `docs/*.md` / `tests/*.rs` mention must exist; CHANGELOG and
+  roadmap latest versions must match `Cargo.toml`; the README firmware
+  anchor must be present. Audit result on the committed tree: 51
+  headers, 38 distinct § references, zero dangling; 21 refs in
+  hardware-session.md and 4 in architecture.md, zero dangling;
+  versions consistent.
+- **README firmware anchor restored** (§52.1): the README now pins the
+  dump's SHA-256
+  `5ca012b28e2a70e322a48d513d2a3011a0778a7afa7ecd53e4aad102c2cd28f0`
+  next to its `firmware/` link — the anchor had been present in
+  `docs/firmware-analysis.md` §1 all along but had gone missing from
+  the project's front door; a reader can again verify the committed
+  dump without opening the audit.
+
+
 ## 0.34.6 — Milestone AX: the fourteenth survey — die-marking databases, Russian-language platforms, DVB-community hardware wikis (session record, §51)
 
 ### Docs

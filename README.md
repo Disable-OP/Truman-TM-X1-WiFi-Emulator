@@ -2,7 +2,11 @@
 
 A portable Rust emulator for the **Truman TM X1 WiFi** satellite TV receiver,
 built against the real firmware dump in [`firmware/`](firmware/) (Sunplus
-SPHE150x SoC, little-endian **MIPS32r2**, 4 MiB SPI NOR flash).
+SPHE150x SoC, little-endian **MIPS32r2**, 4 MiB SPI NOR flash). The dump is
+pinned by SHA-256
+`5ca012b28e2a70e322a48d513d2a3011a0778a7afa7ecd53e4aad102c2cd28f0`
+(`1506HV_512M_4M_SVT2_TRUMAN_TM_X1_WIFI_Internal_flashfile_20220902.bin`,
+the audit anchor of `docs/firmware-analysis.md` §1).
 
 The project's method: every emulated component is derived from **evidence in
 the firmware itself** (static disassembly + dynamic execution traces), and

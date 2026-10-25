@@ -4408,3 +4408,41 @@ angles: none registered — every angle family proposed across
 surveys one through thirteen has now been executed. Future passes
 may re-open only on a named lead (new document, new dump, new
 tooling leak), not on re-sampling closed corpora.
+
+## 52. Milestone AY — documentation cross-reference audit tooling; the README anchor restored (docs hygiene, v0.34.7)
+
+### 52.1 The gap found
+
+With the survey series closed (§51.2 — no registered angles remain),
+this pass turned to closable non-survey gaps. A cross-reference audit
+script (`tools/xref_audit.py`) checked all three docs mechanically:
+every `§N` mention against the `## N.` heading set, every
+`docs/*.md` and `tests/*.rs` mention against the tree, and the
+version pins (Cargo vs CHANGELOG vs roadmap). Results: 51 section
+headers; 38 distinct § references in firmware-analysis.md with zero
+dangling; 21 refs in hardware-session.md and 4 in architecture.md,
+zero dangling; versions consistent. One genuine gap surfaced: the
+README described the committed dump and linked `firmware/` but no
+longer carried the **SHA-256 anchor** — the audit's own §1 pin
+(`5ca012b2…28f0`) had never been lost from the docs, only from the
+front door.
+
+### 52.2 What was done
+
+- The README now pins the dump's SHA-256 and filename next to the
+  firmware link; the committed file hashes to exactly the §1 pin
+  (re-verified with `sha256sum` before the edit).
+- The audit script itself is committed as `tools/xref_audit.py`
+  (repo-relative paths), so the check is reproducible by any future
+  loop or CI run rather than living only in session scratch space.
+- No code, no tests, no claims changed: 161 tests debug and release,
+  fmt clean, clippy zero warnings, boot pins unchanged.
+
+### 52.3 State
+
+The blocker stays hardware-gated exactly as registered (§51.2):
+P1 (the 59 ladder constants via the dual-gate solve), P2/P2b/P2c
+(residue, window preset, staging-tail overhang), P3 (readout,
+printed by `dram_compare`). Future passes: named leads only for
+surveys; non-survey passes continue the hygiene sweep (this audit
+now covers §/path/version integrity mechanically).
