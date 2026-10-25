@@ -38,7 +38,9 @@
 use std::path::PathBuf;
 
 use truman_emulator::firmware;
-use truman_emulator::inflate::{inflate_engine_with_traced, DecodeEvent, DecodeEventKind};
+use truman_emulator::inflate::{
+    inflate_engine_with_traced, inflate_engine_with_traced_preset, DecodeEvent, DecodeEventKind,
+};
 use truman_emulator::machine::{
     adler32, attribute_divergence, compare_dumps, Machine, MachineConfig, ENGINE_MAX_OUT,
     ENGINE_PRESET_BYTES,
@@ -287,15 +289,32 @@ fn main() {
     });
     let mut replay = Vec::new();
     let mut events: Vec<DecodeEvent> = Vec::new();
-    let replay_res = inflate_engine_with_traced(
-        &inputs.stream,
-        inputs.start_bit,
-        ENGINE_PRESET_BYTES,
-        &mut replay,
-        ENGINE_MAX_OUT,
-        &config.value_tables,
-        Some(&mut events),
-    );
+    // The §36 replay uses the exact preset the boot's decode used (§44):
+    // empty = the documented zero fill; non-empty = the loaded
+    // `MachineConfig::preset_window` content, byte-for-byte. Either way
+    // the replay must be byte-identical to the boot decode or the
+    // integrity gate below refuses to attribute.
+    let replay_res = if inputs.preset_window.is_empty() {
+        inflate_engine_with_traced(
+            &inputs.stream,
+            inputs.start_bit,
+            ENGINE_PRESET_BYTES,
+            &mut replay,
+            ENGINE_MAX_OUT,
+            &config.value_tables,
+            Some(&mut events),
+        )
+    } else {
+        inflate_engine_with_traced_preset(
+            &inputs.stream,
+            inputs.start_bit,
+            &inputs.preset_window,
+            &mut replay,
+            ENGINE_MAX_OUT,
+            &config.value_tables,
+            Some(&mut events),
+        )
+    };
     let decoded_len = replay_res.unwrap_or_else(|e| {
         eprintln!("error: replay decode failed: {e}");
         std::process::exit(2);

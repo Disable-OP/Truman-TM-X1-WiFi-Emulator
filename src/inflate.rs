@@ -637,6 +637,20 @@ pub fn inflate_engine_with(
     inflate_engine_with_traced(data, start_bit, preset_len, out, max_out, tables, None)
 }
 
+/// [`inflate_engine_with`] with the preset window's **content** given
+/// directly — the untraced half of the band-window seam (§44; see
+/// [`inflate_engine_with_traced_preset`] for the semantics).
+pub fn inflate_engine_with_preset(
+    data: &[u8],
+    start_bit: usize,
+    preset: &[u8],
+    out: &mut Vec<u8>,
+    max_out: usize,
+    tables: &ValueTables,
+) -> Result<usize, InflateError> {
+    inflate_engine_with_traced_preset(data, start_bit, preset, out, max_out, tables, None)
+}
+
 /// One decoded symbol and the output span it produced (§36).
 ///
 /// The event list of a decode is the mechanical half of the P1 DIVERGENT
@@ -760,6 +774,28 @@ pub fn inflate_engine_with_traced(
     out: &mut Vec<u8>,
     max_out: usize,
     tables: &ValueTables,
+    events: Option<&mut Vec<DecodeEvent>>,
+) -> Result<usize, InflateError> {
+    let zero_preset = vec![0u8; preset_len];
+    inflate_engine_with_traced_preset(data, start_bit, &zero_preset, out, max_out, tables, events)
+}
+
+/// [`inflate_engine_with_traced`] with the preset window's **content**
+/// given directly instead of its zero-filled length — the band-window
+/// seam (§44): the §13/§18.3 model zero-fills the 32 KiB band buffer
+/// before the decode, and that assumption is exactly what the hardware
+/// session's §21.6 item-2 experiment varies. The preset slice's length
+/// is the preset length; its bytes are the window contents logically
+/// ahead of the output, which far-back matches (dist > output position)
+/// copy from. All-zero content is byte-identical to
+/// [`inflate_engine_with_traced`] (pinned by `tests/hwsession.rs`).
+pub fn inflate_engine_with_traced_preset(
+    data: &[u8],
+    start_bit: usize,
+    preset: &[u8],
+    out: &mut Vec<u8>,
+    max_out: usize,
+    tables: &ValueTables,
     mut events: Option<&mut Vec<DecodeEvent>>,
 ) -> Result<usize, InflateError> {
     out.clear();
@@ -775,7 +811,7 @@ pub fn inflate_engine_with_traced(
     // out-of-input condition terminates the decode cleanly with the output
     // produced so far.
     reader.pos = start_bit;
-    let mut window: Vec<u8> = vec![0u8; preset_len];
+    let mut window: Vec<u8> = preset.to_vec();
     loop {
         if (reader.pos >> 3) >= data.len() {
             break;

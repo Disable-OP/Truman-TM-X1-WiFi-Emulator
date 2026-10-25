@@ -1,5 +1,40 @@
 # Roadmap
 
+## Milestone AQ — the band-window preset as a data seam ✅ (v0.33.0)
+
+- **The last hardcoded decode input became a value (§44)**: the engine's
+  LZ window — the vendor band buffer at 0x02040000, 32 KiB, zero-filled
+  by the driver (§13), preset with zeros in the model (§18.3) — was a
+  constant; `inflate_engine_with_preset` /
+  `inflate_engine_with_traced_preset` take the preset CONTENT,
+  `MachineConfig::preset_window` carries it, and
+  `dram_compare --post --preset-window <file>` loads it. All-zero
+  content is byte-identical to the zero-fill API (pinned): every boot
+  pin holds by construction. The §35 pattern applied to the window
+  dimension.
+- **Pinned** (2 new tests; 158 total debug and release): the library
+  test replays the §19.1 head's far-back geometry (len 5 / d=223) —
+  zero content identical to the `preset_len` API, 0xA5 content changes
+  exactly the far-back bytes (values only; the symbol sequence, output
+  length and literal bytes are preset-independent). The machine test
+  boots the real firmware: all-zero preset file transparent (same stop,
+  steps, decode length, 0xcd8d03bf fingerprint); 0xA5 preset moves the
+  head's preset bytes to `A5 A5` deterministically;
+  `EngineDecodeInputs` carries the preset so the §36 replay is
+  byte-exact under the seam (`solve_divergence` consumes it), and the
+  zero-preset replay provably differs.
+- **The capture plan's gap closed (P2b)**: the LZ window's pre-decode
+  content lives in the band buffer — a window P2's pixel capture does
+  NOT cover; hardware-session.md now registers the P2b dump (0xA2040000,
+  32 KiB, at the P2 halt) plus a free post-decode P1b cross-check, and
+  the §21.6 item-2 ingestion is one flag. The solver's family is
+  unchanged (a preset-conditional family would multiply the search
+  without a new anchor); the §30.4 blocker stays hardware-gated.
+- **Unchanged**: boot pins (handoff step 1,301,763, trap 0xA1600050,
+  fingerprint 0xcd8d03bf); fmt clean, clippy 0 warnings. Seventh
+  fresh-evidence survey (2026-10-25, §44.4): nothing new upstream.
+
+
 ## Milestone AP — the P3 readout closed in code; the sixth survey (session record) ✅ (v0.32.1)
 
 - **The cheapest oracle's last manual step, removed (§43.1)**: the P3

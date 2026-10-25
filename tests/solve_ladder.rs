@@ -6,7 +6,8 @@ use std::collections::BTreeSet;
 
 use truman_emulator::firmware;
 use truman_emulator::inflate::{
-    inflate_engine_with, inflate_engine_with_traced, ValueTables, ENGINE_VALUE_TABLES,
+    inflate_engine_with, inflate_engine_with_preset, inflate_engine_with_traced, ValueTables,
+    ENGINE_VALUE_TABLES,
 };
 use truman_emulator::machine::{
     adler32, Machine, MachineConfig, ENGINE_MAX_OUT, ENGINE_PRESET_BYTES,
@@ -670,4 +671,70 @@ fn class_prior_keeps_the_contract_on_ambiguous_content() {
     .expect("prior solve on ambiguous content");
     assert!(prior.verified, "the prior solve must verify");
     assert_eq!(prior.redecoded, target, "re-decode equals the capture");
+}
+
+// ---------------------------------------------------------------------------
+// Milestone AQ (§44): the band-window preset CONTENT seam
+// ---------------------------------------------------------------------------
+
+/// The §44 seam: a far-back match (dist > output position) copies from
+/// the preset window's CONTENT, not from the output — so the same stream
+/// decodes differently under a different preset content, and identically
+/// under zero content and the preset_len API. The symbol sequence (and
+/// hence the output length) is preset-independent: the preset changes
+/// copied VALUES only.
+#[test]
+fn preset_window_content_is_the_far_back_match_source() {
+    // len 5 → length code 259 (base 5, 0 extra); d 223 → distance code
+    // 15 (base 193, 5 extra, extra=30) — the §19.1 head's own geometry
+    // (dc=15/d=223), reaching 222 bytes into the 32 KiB preset.
+    let (stream, start_bit) = build_stream(&[0x11], &[(259, 5, 0, 15, 30, 5)]);
+
+    let mut zero = Vec::new();
+    let n0 = inflate_engine_with(
+        &stream,
+        start_bit,
+        ENGINE_PRESET_BYTES,
+        &mut zero,
+        ENGINE_MAX_OUT,
+        &ENGINE_VALUE_TABLES,
+    )
+    .expect("zero preset decode");
+
+    let mut zero_content = Vec::new();
+    let n0c = inflate_engine_with_preset(
+        &stream,
+        start_bit,
+        &vec![0u8; ENGINE_PRESET_BYTES],
+        &mut zero_content,
+        ENGINE_MAX_OUT,
+        &ENGINE_VALUE_TABLES,
+    )
+    .expect("zero-content preset decode");
+    assert_eq!(n0, n0c);
+    assert_eq!(zero, zero_content, "zero content == preset_len API");
+
+    // Output shape: one literal, then the 5 far-back bytes.
+    assert_eq!(n0, 6, "literal + 5 far-back bytes");
+    assert_eq!(zero[0], 0x11);
+    assert_eq!(&zero[1..6], &[0u8; 5], "far-back copies yield zeros");
+
+    // A5 preset: the same symbols, but the far-back copies bring 0xA5.
+    let mut a5 = Vec::new();
+    let n5 = inflate_engine_with_preset(
+        &stream,
+        start_bit,
+        &vec![0xA5u8; ENGINE_PRESET_BYTES],
+        &mut a5,
+        ENGINE_MAX_OUT,
+        &ENGINE_VALUE_TABLES,
+    )
+    .expect("A5 preset decode");
+    assert_eq!(n5, n0, "the symbol sequence is preset-independent");
+    assert_eq!(a5[0], 0x11, "the literal is untouched");
+    assert_eq!(&a5[1..6], &[0xA5u8; 5], "far-back copies yield A5");
+    // The preset changes copied values ONLY — the output length and the
+    // literal byte are identical between the two presets.
+    assert_eq!(a5.len(), zero.len());
+    assert_eq!(a5[0], zero[0]);
 }

@@ -132,7 +132,7 @@ Requires a stable Rust toolchain (https://rustup.rs). No other dependencies.
 
 ```sh
 cargo build --release
-cargo test --release          # 156 tests: boot chain, entry harness, interrupt + COP0 timer delivery, key injection,
+cargo test --release          # 158 tests: boot chain, entry harness, interrupt + COP0 timer delivery, key injection,
                               # watchpoints, Q8 runtime evidence, timer program, keycode-consumer pin,
                               # perf-model regressions (lazy describe, hot-region memo),
                               # post-handoff map (exec pages, MMIO, DRAM write map),
@@ -185,6 +185,11 @@ python3 tools/fw_keycode_consumer.py firmware/*.bin
 ./target/release/examples/dram_compare --post firmware/*.bin p1_pixel.bin \
     --value-tables recovered.spvt
 ./target/release/truman-emulator map firmware/*.bin --value-tables recovered.spvt
+
+# Band-window seam (Milestone AQ / §44): the engine's LZ window CONTENT as a
+# data file — the §21.6 item-2 experiment is a flag, not a recompile
+./target/release/examples/dram_compare --post firmware/*.bin p1_pixel.bin \
+    --preset-window p2b_band.bin
 ./target/release/examples/ladder_eval firmware/*.bin \
     --value-tables candidates/foo.spvt --fingerprint 0xCAPTURED   # P3 elimination loop
 

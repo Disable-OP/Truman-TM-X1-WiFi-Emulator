@@ -5,6 +5,7 @@
 use truman_emulator::firmware;
 use truman_emulator::machine::{
     adler32, adler32_probe_halves, classify_residue, compare_dumps, Machine, MachineConfig,
+    ENGINE_MAX_OUT, ENGINE_PRESET_BYTES,
 };
 
 #[test]
@@ -251,4 +252,145 @@ fn real_firmware_reference_feeds_the_comparator() {
     let fingerprint = adler32(&reference);
     assert_eq!(fingerprint, 0xcd8d_03bf, "reference decode fingerprint");
     eprintln!("reference adler-32: {fingerprint:#010x}");
+}
+
+/// Milestone AQ (§44): the band-window preset seam, machine-level.
+///
+/// The §13/§18.3 model zero-fills the 32 KiB band window before the
+/// decode; far-back matches (458 sites, 3.98% of block-1 per §18.3
+/// consequence 4) copy from it. The seam makes the window CONTENT a
+/// config value, so the §21.6 item-2 experiment is a file, not a
+/// recompile. Pinned here:
+/// * an all-zero preset file is byte-transparent — the boot (stop,
+///   steps), the decode length and the reference fingerprint are the
+///   default boot's;
+/// * an 0xA5 preset changes exactly the far-back copies (the §19.1
+///   head's preset match brings 0xA5A5 instead of 0x0000), leaves the
+///   decode length and the literal bytes untouched, and is
+///   deterministic across boots;
+/// * `EngineDecodeInputs` carries the preset content and the §36
+///   replay under `inflate_engine_with_traced_preset` is byte-exact.
+#[test]
+fn band_window_preset_seam_is_transparent_at_zero_and_effective_under_a5() {
+    let Some(path) = real_firmware_path() else {
+        eprintln!("skipping: real firmware not present in firmware/");
+        return;
+    };
+    let img = firmware::load(&path).expect("load real firmware");
+
+    // The default boot: reference stop, fingerprint 0xcd8d03bf, decode
+    // length 75_408 (all pinned by the existing suite).
+    let mut def = Machine::new(MachineConfig::default(), &img);
+    def.reset();
+    let def_res = def.run(2_000_000);
+
+    // (a) An all-zero preset FILE: the seam is transparent.
+    let cfg0 = MachineConfig {
+        preset_window: Some(vec![0u8; ENGINE_PRESET_BYTES]),
+        ..Default::default()
+    };
+    let mut m0 = Machine::new(cfg0, &img);
+    m0.reset();
+    let res0 = m0.run(2_000_000);
+    assert_eq!(res0.stop, def_res.stop, "zero preset: same stop");
+    assert_eq!(res0.steps, def_res.steps, "zero preset: same steps");
+    let (total, ref0) = window_of(&mut m0);
+    let mut win_def = vec![0u8; total];
+    def.bus.copy_out(0x0160_0000, &mut win_def);
+    assert_eq!(adler32(&ref0), 0xcd8d_03bf, "zero preset: same fingerprint");
+    assert_eq!(ref0, win_def, "zero preset: byte-identical window");
+
+    // (b) An 0xA5 preset: the far-back copies change, the rest does not.
+    let cfg5 = MachineConfig {
+        preset_window: Some(vec![0xA5u8; ENGINE_PRESET_BYTES]),
+        ..Default::default()
+    };
+    let mut m5 = Machine::new(cfg5.clone(), &img);
+    m5.reset();
+    let _ = m5.run(2_000_000);
+    let (_, ref5) = window_of(&mut m5);
+    let inputs = m5.engine_decode_inputs().expect("engine ran");
+    assert_eq!(
+        inputs.decoded_len, 75_408,
+        "the symbol sequence is preset-independent (same decode length)"
+    );
+    assert_eq!(
+        &ref5[..2],
+        &[0x60, 0x81],
+        "the two head literals are preset-independent"
+    );
+    assert_eq!(
+        &ref5[2..4],
+        &[0xA5, 0xA5],
+        "the §19.1 head's preset match now copies 0xA5"
+    );
+    assert_ne!(
+        adler32(&ref5),
+        0xcd8d_03bf,
+        "the A5 window is not the zero-window decode"
+    );
+
+    // Determinism: a second A5 boot is byte-identical.
+    let mut m5b = Machine::new(cfg5.clone(), &img);
+    m5b.reset();
+    let _ = m5b.run(2_000_000);
+    let (_, ref5b) = window_of(&mut m5b);
+    assert_eq!(ref5, ref5b, "the A5-preset boot is deterministic");
+
+    // (c) The §36 replay under the seam: the carried preset replays
+    // byte-exact; the zero-preset replay must NOT match (it would
+    // silently reproduce the default decode).
+    let mut replay = Vec::new();
+    let n = truman_emulator::inflate::inflate_engine_with_traced_preset(
+        &inputs.stream,
+        inputs.start_bit,
+        &inputs.preset_window,
+        &mut replay,
+        ENGINE_MAX_OUT,
+        &cfg5.value_tables,
+        None,
+    )
+    .expect("A5 replay succeeds");
+    assert_eq!(n, inputs.decoded_len, "replay length == boot decode length");
+    assert_eq!(
+        &replay[..],
+        &ref5[..inputs.decoded_len],
+        "replay under the carried preset is byte-identical to the boot"
+    );
+    assert_eq!(inputs.preset_window.len(), ENGINE_PRESET_BYTES);
+    assert!(inputs.preset_window.iter().all(|&b| b == 0xA5));
+    let mut replay0 = Vec::new();
+    let n0 = truman_emulator::inflate::inflate_engine_with_traced(
+        &inputs.stream,
+        inputs.start_bit,
+        ENGINE_PRESET_BYTES,
+        &mut replay0,
+        ENGINE_MAX_OUT,
+        &cfg5.value_tables,
+        None,
+    )
+    .expect("zero replay succeeds");
+    assert_eq!(n0, n, "same length under either preset");
+    assert_ne!(
+        &replay0[..],
+        &ref5[..inputs.decoded_len],
+        "the zero-preset replay differs (the seam is effective)"
+    );
+}
+
+/// The engine pixel window (W×H from the engine's registers) of a
+/// booted machine, per the dram_compare --post extraction.
+fn window_of(m: &mut Machine) -> (usize, Vec<u8>) {
+    let w = m
+        .bus
+        .peek_phys(0x1FFE_3828, truman_emulator::memory::AccessSize::Word)
+        .unwrap_or(0x400);
+    let h = m
+        .bus
+        .peek_phys(0x1FFE_382C, truman_emulator::memory::AccessSize::Word)
+        .unwrap_or(78);
+    let total = (w as usize) * (h as usize);
+    let mut buf = vec![0u8; total];
+    assert_eq!(m.bus.copy_out(0x0160_0000, &mut buf), total);
+    (total, buf)
 }

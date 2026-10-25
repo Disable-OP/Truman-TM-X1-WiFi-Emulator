@@ -24,12 +24,24 @@
 //! together with the expected two-probe-readout halves (addr 0 = high,
 //! addr 1 = low; Milestone AP), so the session's four debugger
 //! operations have their expected values printed, not derived by hand.
+//!
+//! Post mode's `--preset-window` is the §44 band-window seam (the
+//! sibling of `--value-tables`): the engine's far-back matches copy
+//! from the 32 KiB window ahead of the output, which the model
+//! zero-fills (§13/§18.3). A real device's pre-decode band capture (the
+//! P2b experiment, §21.6 item 2) is a file here, not a recompile — the
+//! run reports the preset's adler so the window under test is recorded
+//! with the verdict.
+//!
 //! Options:
 //!   --out <map.txt>   write the 1024-byte block map to a file
 //!   --offset <phys>   post mode: pixel base override (default 0x01600000)
 //!   --len <bytes>     post mode: reference length override (default W*H)
 //!   --value-tables <f> post mode: engine value ladder from a file (§35,
 //!                     the post-capture swap as data, no recompile)
+//!   --preset-window <f> post mode: band-window preset CONTENT from a
+//!                     file (§44; exactly 0x8000 bytes, or a larger
+//!                     dump's tail)
 //!
 //! Exit codes: 0 = identical / zero residue; 1 = divergent / non-zero
 //! residue (actionable data); 2 = usage, IO or empty-overlap error.
@@ -57,6 +69,8 @@ fn usage() -> ! {
          --offset <phys>   post mode: pixel base override (default 0x01600000)\n  \
          --len <bytes>     post mode: reference length override (default W*H)\n  \
          --value-tables <f> post mode: engine value ladder from a file (§35)\n\
+         --preset-window <f> post mode: band-window preset content from a\n\
+                           file (§44; 0x8000 bytes or a larger dump's tail)\n\
          exit codes: 0 identical/zero residue, 1 divergent/non-zero, 2 error"
     );
     std::process::exit(2);
@@ -74,6 +88,9 @@ struct Args {
     /// and Ref do not run the engine decode, so a value there is a usage
     /// error (rejected in parse_args).
     value_tables: Option<PathBuf>,
+    /// The `--preset-window` file, when given (§44). Post mode only, same
+    /// rejection rule as `value_tables`.
+    preset_window: Option<PathBuf>,
 }
 
 enum Mode {
@@ -89,6 +106,7 @@ fn parse_args() -> Args {
     let mut offset = DEFAULT_PIXEL_BASE;
     let mut len_override = None;
     let mut value_tables: Option<PathBuf> = None;
+    let mut preset_window: Option<PathBuf> = None;
     let a: Vec<String> = std::env::args().collect();
     let mut i = 1;
     while i < a.len() {
@@ -121,6 +139,13 @@ fn parse_args() -> Args {
                 i += 1;
                 value_tables = a.get(i).map(PathBuf::from);
                 if value_tables.is_none() {
+                    usage();
+                }
+            }
+            "--preset-window" => {
+                i += 1;
+                preset_window = a.get(i).map(PathBuf::from);
+                if preset_window.is_none() {
                     usage();
                 }
             }
@@ -161,6 +186,10 @@ fn parse_args() -> Args {
         eprintln!("error: --value-tables applies to --post only (pre/ref modes do not decode)");
         usage();
     }
+    if preset_window.is_some() && !matches!(mode, Some(Mode::Post)) {
+        eprintln!("error: --preset-window applies to --post only (pre/ref modes do not decode)");
+        usage();
+    }
     Args {
         mode: mode.unwrap(),
         flash,
@@ -170,6 +199,7 @@ fn parse_args() -> Args {
         offset,
         len_override,
         value_tables,
+        preset_window,
     }
 }
 
@@ -254,6 +284,52 @@ fn main() {
                             vt_path.display()
                         );
                         config.value_tables = tables;
+                    }
+                    if let Some(pw_path) = &args.preset_window {
+                        let raw = std::fs::read(pw_path).unwrap_or_else(|e| {
+                            eprintln!(
+                                "error: cannot read preset window {}: {e}",
+                                pw_path.display()
+                            );
+                            std::process::exit(2);
+                        });
+                        // The band window is the 32 KiB immediately ahead
+                        // of the decode output (§13). A capture of exactly
+                        // that window is used as-is; a larger dump (the P2b
+                        // band capture may be taken wide) contributes its
+                        // TAIL; anything shorter cannot be anchored and is
+                        // a named error, not a guess.
+                        if raw.len() < truman_emulator::machine::ENGINE_PRESET_BYTES {
+                            eprintln!(
+                                "error: preset window {} is {} bytes; the band window is \
+                                 0x{:x} — capture [0x015F8000,0x01600000) or pass the tail \
+                                 of a larger dump",
+                                pw_path.display(),
+                                raw.len(),
+                                truman_emulator::machine::ENGINE_PRESET_BYTES
+                            );
+                            std::process::exit(2);
+                        }
+                        let preset = if raw.len() == truman_emulator::machine::ENGINE_PRESET_BYTES {
+                            raw
+                        } else {
+                            println!(
+                                "preset window: using the last 0x{:x} bytes of {} (the band \
+                                 window immediately before the pixel base)",
+                                truman_emulator::machine::ENGINE_PRESET_BYTES,
+                                pw_path.display()
+                            );
+                            raw[raw.len() - truman_emulator::machine::ENGINE_PRESET_BYTES..]
+                                .to_vec()
+                        };
+                        println!(
+                            "preset window: {} (0x{:x} bytes, non-default band fill, adler \
+                             0x{:08x}, §44)",
+                            pw_path.display(),
+                            preset.len(),
+                            adler32(&preset)
+                        );
+                        config.preset_window = Some(preset);
                     }
                     let mut m = Machine::new(config, &img);
                     m.reset();

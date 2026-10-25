@@ -142,6 +142,7 @@ fn main() {
         last_stream: None,
         last_start_bit: None,
         last_decoded_len: None,
+        last_preset: None,
         input_len: 0,
         pending: Rc::new(Cell::new(false)),
     }));

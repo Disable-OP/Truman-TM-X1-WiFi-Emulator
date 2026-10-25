@@ -954,6 +954,12 @@ pub struct EngineShared {
     /// programmed W×H (§17). Window bytes at or above this index are the
     /// zero-filled band region, not decode output.
     pub last_decoded_len: Option<usize>,
+    /// The band-window preset content the last serviced decode used
+    /// (§44): `None` = the documented zero fill ([`crate::machine::
+    /// ENGINE_PRESET_BYTES`], §13/§18.3 — the default); `Some(v)` = the
+    /// `MachineConfig::preset_window` seam value, byte-for-byte. Captured
+    /// at service time so the §36 replay is exact under any preset.
+    pub last_preset: Option<Vec<u8>>,
     /// How many bytes of source to feed the decoder.
     pub input_len: u32,
     /// Borrow-free request hint (Milestone Z, §28): set when a start
@@ -976,6 +982,7 @@ impl EngineShared {
             last_stream: None,
             last_start_bit: None,
             last_decoded_len: None,
+            last_preset: None,
             input_len: 0,
             pending: std::rc::Rc::new(std::cell::Cell::new(false)),
         }))

@@ -125,6 +125,18 @@ pub struct MachineConfig {
     /// `dram_compare --post --value-tables`, `map --value-tables` and
     /// `ladder_eval` — not a recompile.
     pub value_tables: crate::inflate::ValueTables,
+    /// The engine decode's band-window preset **content** (§44) — the
+    /// data-level seam for the §13/§18.3 zero-fill assumption, exactly as
+    /// `value_tables` is the seam for the RFC ladder. `None` (the
+    /// default) = the documented zero fill of [`ENGINE_PRESET_BYTES`]
+    /// (§13: the driver zero-fills the band buffer; §18.3 consequence 4
+    /// bounds the far-back-match exposure at 3.98% of block-1); `Some(v)`
+    /// = the far-back matches copy from `v`'s bytes instead. The hardware
+    /// session's §21.6 item-2 experiment is a file here, not a recompile:
+    /// `dram_compare --post --preset-window <band.bin>`. Captured at
+    /// service time into [`EngineDecodeInputs::preset_window`] so the
+    /// §36 replay stays byte-exact under any preset.
+    pub preset_window: Option<Vec<u8>>,
 }
 
 impl Default for MachineConfig {
@@ -159,6 +171,7 @@ impl Default for MachineConfig {
             win_300_size: 0x0010_0000,
             handoff_entry: DEFAULT_HANDOFF_ENTRY,
             value_tables: crate::inflate::ValueTables::rfc1951(),
+            preset_window: None,
         }
     }
 }
@@ -531,6 +544,7 @@ impl Machine {
             let mut sh = self.decomp.borrow_mut();
             sh.last_stream = Some(src_bytes.clone());
             sh.last_start_bit = Some(start_bit as u32);
+            sh.last_preset = self.config.preset_window.clone();
         }
         let mut out = Vec::new();
         // The value ladder is the named seam for the hardware session
@@ -538,15 +552,28 @@ impl Machine {
         // from [`MachineConfig::value_tables`] — RFC by default, a loaded
         // file's ladder after the `--value-tables` swap — so the
         // post-capture decode is a one-command operation, not a recompile.
+        // The band-window preset is the sibling seam (§44): zero-filled
+        // by default (§13/§18.3), a loaded file's content after the
+        // `--preset-window` swap.
         let tables = self.config.value_tables.clone();
-        let res = crate::inflate::inflate_engine_with(
-            &src_bytes,
-            start_bit,
-            ENGINE_PRESET_BYTES,
-            &mut out,
-            ENGINE_MAX_OUT,
-            &tables,
-        );
+        let res = match &self.config.preset_window {
+            Some(p) => crate::inflate::inflate_engine_with_preset(
+                &src_bytes,
+                start_bit,
+                p,
+                &mut out,
+                ENGINE_MAX_OUT,
+                &tables,
+            ),
+            None => crate::inflate::inflate_engine_with(
+                &src_bytes,
+                start_bit,
+                ENGINE_PRESET_BYTES,
+                &mut out,
+                ENGINE_MAX_OUT,
+                &tables,
+            ),
+        };
         match res {
             Ok(n) => {
                 // PNG row semantics (§17): the engine is a PNG decoder
@@ -637,6 +664,7 @@ impl Machine {
             stream: sh.last_stream.as_ref()?.clone(),
             start_bit: sh.last_start_bit? as usize,
             decoded_len: sh.last_decoded_len?,
+            preset_window: sh.last_preset.clone().unwrap_or_default(),
         })
     }
 
@@ -1173,6 +1201,15 @@ pub struct EngineDecodeInputs {
     /// bytes at or above this index are the zero-filled band region
     /// (§17), not decode output.
     pub decoded_len: usize,
+    /// The band-window preset content the decode used (§44): empty = the
+    /// documented default zero fill of [`ENGINE_PRESET_BYTES`] (§13/
+    /// §18.3); non-empty = the [`MachineConfig::preset_window`] seam
+    /// value, byte-for-byte. Carried so a replay with
+    /// [`crate::inflate::inflate_engine_with_traced_preset`] is exact
+    /// under any preset — the §36 replay contract holds for the seam too
+    /// (pinned by `tests/solve.rs` in the default case, and by
+    /// `tests/hwsession.rs` under a loaded preset).
+    pub preset_window: Vec<u8>,
 }
 
 /// The mechanical half of the P1 DIVERGENT row (§36): which decode event

@@ -36,6 +36,29 @@ P2 must be captured on a **separate cold boot** from P1: P2 is a
 capture-at-reset, P1 is a capture-at-handoff, and you cannot rewind the
 hardware between them.
 
+### P2b — the band buffer at the P2 halt (the LZ window's own content, Milestone AQ / §44)
+
+The engine's LZ window is the **band buffer** at phys `0x02040000`
+(kseg1 `0xA2040000`), 32 KiB = 32 rows (`PNG_BW_EXT_ADDR_M/L`,
+§17's register table) — the region the driver zero-fills before
+starting (§13) and the model presets with zeros (§18.3). P2's pixel
+window does NOT cover it; the §21.6 item-2 hypothesis ("hardware-side
+residue") lives in THIS window: if the real device's pre-decode band
+content is not zeros, the engine's far-back matches copy residue and
+the true decode differs from any zero-preset decode.
+
+| item | value |
+|---|---|
+| window | phys `0x02040000`, 32,768 bytes (the band buffer; `PNG_BW_*` programmed window) |
+| when | the same P2 cold-boot halt, BEFORE the payload decompress stage starts (pre-decode content) |
+| expectation | all-zero per the driver's own fill (§13); anything else is the §21.6 item-2 answer with the actual bytes in hand |
+| ingestion | `dram_compare --post <flash> <capture> --preset-window p2b_band.bin` — the window content is a data seam (§44), the run reports the preset's adler and the byte-level delta it produces |
+
+A second dump of the same window at the P1 halt (post-decode, the
+window's final state) is one more `dump_image` line and gives the
+session the engine's window trace end-state for cross-checking; the
+pre-decode P2b dump is the one the seam consumes.
+
 ### P3 — the probe-window fingerprint (the cheap oracle, Milestone AG)
 
 Vendor-named in §34.2: the PNG_DEC probe window
@@ -99,7 +122,13 @@ Notes for the session (all to be confirmed on hardware, none assumed):
   device answers);
 * halt before dumping; a running CPU may be mid-scanline in the engine;
 * P2: reset, halt as early as possible, dump the same window (and the
-  extra 1 MiB below) as `p2_predecode.bin`;
+  extra 1 MiB below) as `p2_predecode.bin`; at the same halt dump the
+  band buffer as `p2b_band.bin` (`dump_image /tmp/p2b_band.bin
+  0xA2040000 32768`) — the LZ window's pre-decode content, the P2b
+  experiment's input (Milestone AQ / §44);
+* P1b: at the P1 halt, after the pixel dump, dump the band buffer again
+  (`dump_image /tmp/p1_band.bin 0xA2040000 32768`) — the window's
+  post-decode end state, a free cross-check record;
 * if the EJTAG DMA facility is available on this core it allows memory
   access without halting — prefer halting anyway for P1 so the capture
   point is exact.

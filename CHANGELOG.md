@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.33.0 — Milestone AQ: the band-window preset as a data seam (§44)
+
+### Added
+- **`inflate::inflate_engine_with_preset` /
+  `inflate::inflate_engine_with_traced_preset`** — the engine decode
+  with the preset window's CONTENT given directly (the §35 pattern
+  applied to the window dimension). All-zero content is byte-identical
+  to the zero-fill `preset_len` API (pinned).
+- **`MachineConfig::preset_window`** — the band-window seam at machine
+  level: `None` = the documented §13/§18.3 zero fill (default), `Some`
+  = far-back matches copy from the given bytes. Captured at service
+  time into `EngineDecodeInputs::preset_window`, so the §36 replay
+  (`solve_divergence`) stays byte-exact under any preset.
+- **`dram_compare --post --preset-window <file>`** — the P2b ingestion:
+  exactly 0x8000 bytes used as-is, a larger dump contributes its tail
+  (printed), shorter is a named error. The run reports the preset's
+  adler so the window under test is recorded with the verdict.
+
+### Documented
+- **§44**: the seam, the pins, what it does not change (the solver's
+  family stays zero-window; the §30.4 blocker stays hardware-gated),
+  and the seventh fresh-evidence survey (2026-10-25): nothing new
+  upstream. Boot pins unchanged.
+- **docs/hardware-session.md**: the P2b experiment registered (the band
+  buffer at the P2 halt — the LZ window's pre-decode content, a window
+  P2's pixel capture does not cover), plus the P1b post-decode
+  cross-check dump line in the capture plan.
+
 ## 0.32.1 — Milestone AP: the P3 readout closed in code; the sixth survey (§43)
 
 ### Added

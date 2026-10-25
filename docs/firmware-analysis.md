@@ -3781,3 +3781,74 @@ hardware-session report. The §30.4 blocker stays hardware-gated;
 `docs/hardware-session.md` remains the single unlock. Boot pins
 unchanged (handoff step 1,301,763, trap 0xA1600050, fingerprint
 0xcd8d03bf); fmt clean, clippy 0 warnings, 156 tests debug and release.
+
+## 44. Milestone AQ — the band-window preset as a data seam (v0.33.0)
+
+### 44.1 The assumption the seam exposes
+
+The engine model's LZ window is the vendor's band buffer — phys
+`0x02040000`, 32 KiB = 32 rows (`PNG_BW_EXT_ADDR_M/L`, §17's register
+table) — which the driver zero-fills before starting (§13), and the
+emulator presets with 32 KiB of zeros (`ENGINE_PRESET_BYTES`). Far-back
+matches (`dist > output position`) copy from that preset: §18.3
+consequence 4 bounds the exposure on the real stream at **458 matches
+copying 3,001 bytes = 3.98%** of block-1 — including the §19.1
+executable head's own third event (the `d=223` match whose copied
+`00 00` completes the jumped-to first instruction word). That zero fill
+was the last hardcoded decode input: the value ladder became a data
+seam in Milestone AH (§35), but the window content was a constant.
+Milestone AQ makes it a value: `inflate_engine_with_preset` /
+`inflate_engine_with_traced_preset` take the preset CONTENT (the slice
+is the window; its length is the preset length), `MachineConfig::
+preset_window` carries it through the machine's decode, and
+`dram_compare --post --preset-window <file>` loads it — the §35
+pattern applied to the window dimension. All-zero content is
+byte-identical to the zero-fill API (pinned), so every existing boot
+pin holds by construction.
+
+### 44.2 The pins
+
+Three new tests (crate total 158, debug and release). The library test
+builds the §19.1 head's own geometry (len 5 via code 259, `d=223` via
+code 15 extra 30) with the synthetic stream builder: zero content is
+byte-identical to the `preset_len` API; 0xA5 content changes exactly
+the five far-back bytes (0xA5 not 0x00) and nothing else — the literal
+bytes and the output length are preset-independent, because the preset
+changes copied VALUES only, never the symbol sequence. The machine
+test boots the real firmware three ways: an all-zero preset file is
+transparent (same stop, same step count, same 75,408-byte decode, the
+0xcd8d03bf fingerprint); an 0xA5 preset moves the head's preset bytes
+to `A5 A5` (the jumped-to first instruction word changes), leaves the
+decode length at 75,408, and is deterministic across boots; and
+`EngineDecodeInputs` now carries the preset content actually used, so
+the §36 replay under `inflate_engine_with_traced_preset` is
+byte-exact — while the zero-preset replay of the same stream provably
+differs (the seam is effective, not decorative). `solve_divergence`'s
+replay consumes the carried preset, keeping the §36 integrity gate
+honest under any window.
+
+### 44.3 What this does not change
+
+The solver's family is unchanged: the §37/§42 inversion is defined
+under the documented model (zero band window), and a preset-conditional
+solve family would multiply the search without a new anchor — the
+seam is a compare-side instrument until a real band capture exists.
+The §30.4 blocker stays hardware-gated; what the seam changes is the
+COST of the §21.6 item-2 answer arriving: the P2b experiment
+(docs/hardware-session.md, Milestone AQ) dumps the band buffer at the
+P2 halt — a window P2's pixel capture does NOT cover, and a line the
+capture plan previously missed entirely — and ingestion is one flag
+with the preset's adler recorded in the run output. Boot pins
+unchanged (handoff step 1,301,763, trap 0xA1600050, fingerprint
+0xcd8d03bf); fmt clean, clippy 0 warnings, 158 tests debug and release.
+
+### 44.4 Fresh-evidence survey (2026-10-25, seventh pass)
+
+New angles: SPHE1506 SDK dump/leak queries, the device name plus
+hack-forum terms, SPHE15 datasheet searches, and the owner's GitHub
+profile (one public repo — this emulator; no sibling dumps). Results:
+the same out-of-scope 1506T/1506c/GX6605S receiver-firmware ecosystem
+(dish/vendor sites, boot-logo tools, RS232 loaders — no SDK source, no
+PNG_DEC documentation), a SPHE15 welding-glove datasheet (the constant
+false positive), and nothing about `sp_gzip` or the value-ladder
+constants. The §30.4 blocker stays hardware-gated.
