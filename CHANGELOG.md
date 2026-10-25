@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.34.8 — Milestone AZ: the CLI surface pinned as a test (docs hygiene, §53)
+
+### Added
+- **`tests/cli_surface.rs`** — four drift-guard tests (§53.2):
+  (1) `--help` must list every subcommand and flag the dispatcher
+  implements, both directions; (2) `--version` must carry
+  `CARGO_PKG_VERSION`; (3) every `--flag` the hardware-session handoff
+  doc attaches to `dram_compare`, `solve_divergence`, `ladder_solve`
+  or `ladder_eval` must exist in that example's parser (fenced
+  invocations joined across `\` continuations; cargo's own flags
+  excluded); (4) every `--flag` on README `truman-emulator` lines must
+  appear in the usage text.
+- **Result (§53.2)**: zero drift on the committed tree — the handoff
+  doc's command lines are now mechanically guarded against future
+  renames/removals. Tests 161 → 165 (debug and release).
+
+
 ## 0.34.7 — Milestone AY: documentation cross-reference audit tooling + the README SHA-256 anchor restored (docs hygiene, §52)
 
 ### Added

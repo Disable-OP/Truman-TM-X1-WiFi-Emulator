@@ -4446,3 +4446,49 @@ P1 (the 59 ladder constants via the dual-gate solve), P2/P2b/P2c
 printed by `dram_compare`). Future passes: named leads only for
 surveys; non-survey passes continue the hygiene sweep (this audit
 now covers §/path/version integrity mechanically).
+
+## 53. Milestone AZ — the CLI surface pinned as a test (docs-hygiene, v0.34.8)
+
+### 53.1 The gap found
+
+The hardware-session handoff (docs/hardware-session.md) documents exact
+command lines for the real-device ingestion: `dram_compare`
+(--post/--pre/--ref, --out, --offset/--len, --value-tables,
+--preset-window, --reboot-residue, --base), `solve_divergence`,
+`ladder_solve`, `ladder_eval`, and the main CLI's `map
+--value-tables`. If any of those flags were renamed, or an example's
+parser dropped one, the doc would silently stop matching the tooling —
+and the drift would surface exactly during the real-device session,
+the one moment the pipeline cannot afford friction. The previous pass
+(§52) made the docs' internal integrity mechanical; the docs-to-tooling
+edge was still checked by hand.
+
+### 53.2 What was built
+
+`tests/cli_surface.rs` — four drift-guard tests, zero new dependencies:
+
+1. **usage ↔ dispatch**: the built binary's `--help` must list all four
+   subcommands (inspect/run/trace/map), all seven `--` flags, and the
+   `-v` short flag — and any later flag removal or usage-text edit that
+   stops matching the dispatcher fails CI.
+2. **version pin**: `--version` must print the package version
+   (`CARGO_PKG_VERSION`), so the binary and Cargo.toml cannot diverge.
+3. **handoff doc ↔ example parsers**: every `--flag` the handoff doc
+   attaches to an example invocation must be a declared string literal
+   in that example's source. Fenced `cargo run … -- example …`
+   invocations are joined across `\` continuations and only the part
+   after the `--` separator is scanned, so cargo's own flags
+   (`--release`, `--example`) are not misattributed (the scanner's own
+   false-positive mode, caught and fixed during development — the
+   test's first run failed on exactly those two tokens, demonstrating
+   the guard detects).
+4. **README ↔ usage**: every `--flag` on README lines invoking
+   `truman-emulator` must appear in the usage text.
+
+Result on the committed tree: **zero drift** — all documented flags
+exist, both directions clean. The suite grows 161 → 165 (debug and
+release), fmt clean, clippy zero warnings, boot pins unchanged. The
+blocker stays hardware-gated exactly as registered (§51.2, §52.3):
+P1, P2/P2b/P2c, P3 — the real-device session per
+docs/hardware-session.md, whose command lines this milestone now
+guards.

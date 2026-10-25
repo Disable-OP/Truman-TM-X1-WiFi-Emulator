@@ -1,5 +1,24 @@
 # Roadmap
 
+## Milestone AZ — the CLI surface pinned as a test ✅ (v0.34.8)
+
+- **`tests/cli_surface.rs` (§53.2)**: four drift-guard tests — usage ↔
+  dispatch (4 subcommands, 7 flags, `-v`), version pin
+  (`CARGO_PKG_VERSION`), handoff-doc ↔ example parsers (every `--flag`
+  the doc attaches to `dram_compare`/`solve_divergence`/`ladder_solve`/
+  `ladder_eval` must be declared in that example's source; fenced
+  invocations joined across continuations, cargo's own flags excluded —
+  the scanner's false-positive mode was itself caught on the first run,
+  demonstrating detection), README ↔ usage. Zero drift on the
+  committed tree; the suite grows 161 → 165 (debug and release).
+- **Why (§53.1)**: the real-device session cannot afford command
+  drift — the handoff doc's command lines are now mechanically guarded
+  in both directions.
+- **Unchanged**: boot pins (handoff step 1,301,783, trap 0xA1600050,
+  fingerprint 0xcd8d03bf); fmt clean, clippy 0 warnings. Blocker stays
+  hardware-gated (P1, P2/P2b/P2c, P3; surveys closed per §51.2).
+
+
 ## Milestone AY — documentation cross-reference audit tooling + README SHA-256 anchor restored ✅ (v0.34.7)
 
 - **Mechanical audit committed (`tools/xref_audit.py`, §52.1)**: all §
