@@ -4091,3 +4091,85 @@ printed by `dram_compare`). Session state: environment re-recovered
 (roll-back to Milestone M, `--ff-only` fast-forward to AS, toolchain
 reinstall); 161 tests debug and release; fmt clean; clippy zero
 warnings.
+
+## 48. Milestone AU — the eleventh survey: four new angle families (session record, v0.34.3)
+
+### 48.1 The survey: the OS-lineage, commerce, datasheet-aggregator, and certification corpora
+
+The tenth survey entered the device's home corpus (MENA receiver
+ecosystem) and returned two independent corroborations. The eleventh
+pass targets four corpora none of the prior ten touched: the open
+source OS-lineage (eCos upstream and its forks), the Chinese
+commerce/ODM corpus, the datasheet-aggregator corpus, and the
+certification/regulatory corpus. Three were tried to completion within
+this session's research budget; the fourth (FCC internal photos of a
+Sunplus-based US-market set-top) was sampled and closed as
+inapplicable.
+
+- **The eCos upstream and fork lineage (new corpus, technical)**: our
+  second stage prints `LD eCos v1.16 1506f` (§6) — the only OS name
+  the artifact itself reveals. If Sunplus had ever upstreamed an
+  SPHE15xx hardware-abstraction layer, the public eCos tree would
+  carry the platform's register surface. The upstream platform list
+  (sourceware documentation, release 3.0 and the 1.2.1 reference)
+  includes exactly one Sunplus architecture: **SPCE** — the 16-bit
+  μ'nSP audio-SoC family (e.g. SPCE3200), a different lineage from
+  the MIPS-based SPHE home-entertainment die; no SPHE15xx HAL exists
+  upstream. GitHub's eCos forks (dalmas/ecos, ConorOG/ecos,
+  eblot/ecos — sampled via search) are generic upstream clones or
+  ARM-focused compiler-modernization trees; none carries a Sunplus
+  set-top platform. Verdict: the vendor's `eCos v1.16 1506f` string
+  corresponds to **no upstream eCos line** — an internal vendor fork,
+  consistent with §47.1's live-device witness (a sibling product
+  printing the same fork generation) and with the vendor's
+  closed-source practice on every other component. Zero new evidence;
+  the lineage question is now documented rather than assumed.
+- **The Chinese commerce/ODM corpus (new corpus, independent
+  witness)**: an Alibaba product listing (Shenzhen Epro, IPHD S800
+  DVB-T2/Linux box) states `Chipest: SUNPLUS1506G` and, in the same
+  feature table, `Photo: JPEG,BMP,PNG`. This is the first
+  **marketing-level** (non-firmware, non-forensic) independent
+  witness that the SPHE1506 sibling's photo stack includes PNG decode
+  — corroborating from the commerce side what the audit found inside
+  the payload (§20: the PNG_DEC driver and its zlib-mode program) and
+  what the eighth survey inferred about the platform family. No
+  constants, no register surface — but the corpus class (ODM trade
+  listings) had never been sampled before, and it names the same
+  die-family string independently of any firmware artifact.
+- **The datasheet-aggregator corpus (new corpus, closed negative)**:
+  the public datasheet aggregators (alldatasheet and peers) carry no
+  SPHE1505/SPHE1506 entry at all — the queries return only unrelated
+  parts (a 300 V diode, an N-channel MOSFET sharing the "1505/1506"
+  numerals). One Sunplus SPHE part *is* distributed with a datasheet
+  link (SPHE8368-C, an ARM Cortex-A55 automotive IVI SoC, on a
+  Chinese IC-trader site), which bounds the corpus's behavior: it
+  does host Sunplus SPHE datasheets where they exist — the 1506
+  family's absence is therefore a property of the vendor's release
+  practice, not of the aggregator. Consistent with AT's finding that
+  the only official Sunplus document ever released for this platform
+  is the UART ISP manual (peripheral-level, no engine content).
+- **The certification corpus (sampled, inapplicable)**: the device is
+  MENA-market and carries no FCC filing; the Sunplus grantee code on
+  fccid.io (WF9) covers a 2008 2.4 GHz console transceiver only. The
+  official sunplus.com product index lists Automotive, Acoustic,
+  Plus1, IP, and Media Player lines with no SPHE1506 anywhere — the
+  DVB set-top line is absent from the current public catalog (ODM
+  channel only). Both checked and closed.
+
+### 48.2 What it means
+
+The eleventh consecutive survey returns **zero new evidence toward
+the §30.3 value-ladder** — the 59 length/distance value-ROM constants
+remain recoverable only by the registered hardware session (P1 via
+the dual-gate solve, P2/P2b/P2c residue and window rows, P3 readout
+whose expected values `dram_compare` prints). The yield is again
+corroboration plus one closed lineage question: the `eCos v1.16
+1506f` banner is now *documented* as a vendor-internal fork (no
+upstream SPHE HAL exists to be found), and the SPHE1506G PNG capability
+has a commerce-side independent witness. Every offline step that can
+be closed into code has been; the remaining work stays hardware-gated
+exactly as registered in §34.2 and docs/hardware-session.md. Session
+state: environment re-recovered (local roll-back to Milestone M,
+`--ff-only` fast-forward to AT d15fafa, toolchain reinstall with
+rustfmt/clippy components); 161 tests debug and release; fmt clean;
+clippy zero warnings.

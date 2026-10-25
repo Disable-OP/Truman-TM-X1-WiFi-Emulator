@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.34.3 — Milestone AU: the eleventh survey — four new angle families (session record, §48)
+
+### Docs
+- **The survey (§48.1)**: four corpora the prior ten passes never
+  touched, tried to completion — (1) the eCos upstream/fork lineage:
+  upstream supports exactly one Sunplus architecture (SPCE, the 16-bit
+  μ'nSP audio SoC family), no SPHE15xx HAL exists upstream, and the
+  GitHub eCos forks are generic clones — the artifact's `LD eCos v1.16
+  1506f` banner is now documented as a vendor-internal fork; (2) the
+  Chinese commerce/ODM corpus: an Alibaba listing states
+  `Chipest: SUNPLUS1506G` / `Photo: JPEG,BMP,PNG` — the first
+  marketing-level independent witness for the sibling die's PNG photo
+  stack; (3) the datasheet-aggregator corpus: zero SPHE1505/1506
+  entries while other SPHE datasheets *are* hosted — the absence is
+  vendor release practice; (4) the certification corpus: no FCC filing
+  (MENA-market device), and the official sunplus.com index carries no
+  SPHE1506 (the DVB STB line is ODM-channel only).
+- **Verdict (§48.2)**: the eleventh consecutive zero for the §30.3
+  value-ladder; corroboration plus one closed lineage question. The
+  blocker stays hardware-gated exactly as registered — P1 (dual-gate
+  solve), P2/P2b/P2c, P3 (readout printed by `dram_compare`).
+
 ## 0.34.2 — Milestone AT: the tenth survey — two independent corroborations (session record, §47)
 
 ### Docs
