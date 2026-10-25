@@ -1,5 +1,24 @@
 # Roadmap
 
+## Milestone AW — the thirteenth survey: loader-tool corpus, gitee direct, the academic line ✅ (v0.34.5)
+
+- **Three registered angles executed (§50.1)**: the RS232 loader-tool
+  corpus (`Sunplus Loader Tool V1.5.0.8`, family list including 1505,
+  `All Chunk Done!!!` chunk protocol; RT809F footage naming the exact
+  **1506Hv 4MB Built in Wi-Fi** variant — our die + memory config as a
+  repairable common platform); gitee closed by direct access (zero);
+  the Chinese academic PNG-decode genre confirmed generic (Verilog
+  theses, no Sunplus content); plus a generation-boundary data point —
+  the 2011 SPHE1500/1510 sibling spec lists `JPEG、GIF、TIF、BMP` with
+  **no PNG**, so PNG entered the low-cost family's photo pipeline
+  between that generation and the 1506's.
+- **Verdict (§50.2)**: zero new evidence toward the §30.3 value-ladder —
+  the thirteenth consecutive pass; corroboration plus closed corpora.
+  Blocker stays hardware-gated exactly as registered.
+- **Unchanged**: boot pins (handoff step 1,301,783, trap 0xA1600050,
+  fingerprint 0xcd8d03bf); 161 tests debug and release; fmt clean,
+  clippy 0 warnings.
+
 ## Milestone AV — the twelfth survey: patents full-text, boot strings, gitee, Generalplus ✅ (v0.34.4)
 
 - **Four corpora closed or bounded (§49.1)**: Sunplus decode-engine

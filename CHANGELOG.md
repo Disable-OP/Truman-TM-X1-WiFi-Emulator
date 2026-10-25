@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.34.5 — Milestone AW: the thirteenth survey — loader-tool corpus, gitee direct, the academic PNG-decode line (session record, §50)
+
+### Docs
+- **The survey (§50.1)**: three registered angles executed — (1) the
+  RS232 loader-tool corpus: `Sunplus Loader Tool V1.5.0.8` names the
+  family (1506G/T/C, 1507G, 1506F/A, 1503, 1505, 1512, 1502) with a
+  chunked transfer protocol, and RT809F repair footage names the exact
+  `1506Hv 4MB Built in Wi-Fi` variant; (2) gitee closed by direct
+  access — zero SPHE1506 matches; (3) the Chinese academic PNG-decode
+  genre (Verilog theses, LZ77+Huffman lookup-table articles) confirmed
+  generic, no Sunplus content; plus a contrast data point: the 2011
+  SPHE1500/1510 sibling spec has **no PNG** in its photo-format list,
+  placing PNG's addition to the family between the 1500/1510 and 1506
+  generations.
+- **Verdict (§50.2)**: the thirteenth consecutive zero for the §30.3
+  value-ladder. Blocker stays hardware-gated (P1, P2/P2b/P2c, P3).
+
 ## 0.34.4 — Milestone AV: the twelfth survey — patents full-text, boot strings, gitee, Generalplus (session record, §49)
 
 ### Docs

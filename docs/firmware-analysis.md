@@ -4251,3 +4251,74 @@ Session state: environment re-recovered (roll-back to Milestone M,
 `--ff-only` fast-forward to AU c5f983b, toolchain reinstall with
 rustfmt/clippy); 161 tests debug and release; fmt clean; clippy zero
 warnings.
+
+## 50. Milestone AW — the thirteenth survey: the loader-tool corpus, gitee direct, the academic PNG-decode line (session record, v0.34.5)
+
+### 50.1 The survey: three angle families
+
+The twelfth survey left three registered angles open: video-platform
+teardowns, CNKI theses, and a direct gitee crawl. The thirteenth pass
+executes all three.
+
+- **The RS232 loader-tool corpus (new corpus, corroboration)**: the
+  repair-ecosystem pages for the platform family name the flashing
+  channel's own artifacts — `Sunplus Loader Tool V1.5.0.8` (an
+  RS232 serial loader supporting the family list "1506G, 1506T,
+  1506C, 1507G, 1506F, 1506A, 1503, 1505, 1512, 1502", completion
+  message `All Chunk Done!!!` — a chunked transfer protocol, zero
+  install, single executable) and the RT809F SPI-programmer route
+  with video tutorials. One tutorial title names the *exact* die
+  variant and memory configuration as our audit: "How to Solve Red
+  Light Problem of **1506Hv 4MB Built in Wi-Fi** || 1506Hv Upgrade
+  With Programmer Rt809F" — the 1506HV/4M/WiFi combination
+  circulating as a repairable common platform, independent of any
+  firmware artifact. A firmware post's platform metadata adds
+  build-train detail (software `SunPlus DK-V1.01`, hidden menu codes
+  `1502 / 1506 / 1512`, remote type `1506`). No constants, no
+  register surface — but the loader-tool corpus (never sampled
+  before) independently bounds the family from the *repair channel*
+  side, complementing the tenth's firmware-site corpus and the
+  eleventh's commerce corpus.
+- **Gitee, direct (closed)**: the twelfth pass recorded gitee as
+  "sampled-with-no-results". Direct code search on the site now
+  confirms: `SPHE1506` returns zero (the result page itself states
+  "0" matches). The Chinese code-hosting corpus is closed — the
+  vendor fork and the loader family have no footprint there either.
+- **The Chinese academic PNG-decode line (new corpus, closed for our
+  purpose)**: Chinese degree-thesis indexes do contain PNG hardware
+  decoders as a research genre — e.g. a Verilog implementation
+  thesis ("PNG Decoder 硬件加速器的设计", PngSuite-validated) and
+  tutorial articles walking the LZ77+Huffman lookup-table
+  acceleration problem for phone-class chips. None is Sunplus-
+  affiliated; none carries value-table constants; CNKI's own corpus
+  is access-gated and surfaces no SPHE-specific thesis through open
+  search. Recorded as a genre that exists without touching our
+  engine's vendor-specific semantics.
+- **A contrast data point (the 1500/1510 sibling spec)**: a 2011
+  forum thread publishes the SPHE1500/1510 high-definition
+  platform's product spec — its photo-format list is `JPEG、GIF、
+  TIF、BMP`: **no PNG**. The 1506 generation's photo stack (per the
+  eleventh survey's Alibaba witness: `JPEG,BMP,PNG`) therefore marks
+  a generation boundary — PNG decode was *added* to the low-cost
+  family's photo pipeline somewhere between the 1500/1510 (2011) and
+  the 1506 (later) generations. This is platform-history context for
+  the PNG_DEC driver's presence in our payload (§20), not a
+  constant; recorded for the audit's completeness.
+
+### 50.2 What it means
+
+The thirteenth consecutive survey returns **zero new evidence toward
+the §30.3 value-ladder**. The yield is one new corpus bounded from the
+repair-channel side (loader tool, exact-variant RT809F footage), one
+corpus closed by direct access (gitee), one academic genre confirmed
+generic, and one generation-boundary data point (1500/1510 without
+PNG → 1506 with PNG). The blocker stays hardware-gated exactly as
+registered — P1 (the 59 ladder constants via the dual-gate solve),
+P2/P2b/P2c (residue, window preset, staging-tail overhang), P3
+(readout, printed by `dram_compare`). Session state: environment
+re-recovered (roll-back to Milestone M, `--ff-only` fast-forward to AV
+fb7e365, toolchain reinstall with rustfmt/clippy, push_safe.sh
+rebuilt); 161 tests debug and release; fmt clean; clippy zero
+warnings. Remaining survey angles for future passes: die-marking
+databases, Russian-language video platforms, DVB-community hardware
+wikis.
