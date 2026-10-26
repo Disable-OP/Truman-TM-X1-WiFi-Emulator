@@ -5286,3 +5286,74 @@ warnings, xref audit clean. Boot pins unchanged (handoff jr v0 at
 0xcd8d03bf). The blocker stays hardware-gated exactly as registered
 (§51.2): P1, P2/P2b/P2c, P3 — the real-device session per
 docs/hardware-session.md.
+
+## 69. Milestone BP — verification round: the Internet Archive corpus probed; the §32 owner-decision record names its first concrete candidate (research + verification, v0.37.8)
+
+### 69.1 A corpus type no earlier pass touched — and what it surfaced
+
+Twelve-plus survey passes closed GitHub (code, repos, forks, owner
+corpus, ecosystem), the eCos tree, patents, gitee, datasheet
+aggregators, commerce, certification, and the receiver forums — but
+the Internet Archive (archive.org items and the Wayback Machine) was
+never queried. Four seed searches this round: `SPHE1506`,
+`SPHE15xx`, `SPHE1505` return zero items; `sunplus SPHE` returns
+only SPHE8202 DVD-era audio items (the older, unrelated family).
+
+`sunplus 1506` returns two items, neither ever enumerated before:
+
+- **`ipfox-iptv-1506-g`** (mediatype software): a single payload,
+  `IPFOX_IPTV_1506G.bin`, **7,397,376 bytes** — a Sunplus **1506G**
+  IPTV-box firmware image, same 1506 family as this artifact's
+  1506HV, at a size consistent with the family's ~8 MiB flash scale
+  (the BM sibling's partition table).
+- **`sunplus-90-1506-c-1512-08-2020`** (mediatype data): a single
+  347,593-byte ZIP sourced from the misrsat.com satellite community;
+  naming consistent with a 1506C receiver accessory pack — far too
+  small to be a full flash container.
+
+Constraint boundary, honored: §32 records that a second same-family
+SP container would over-determine the 59 ladder constants one
+container leaves structurally underdetermined (§30.3) — and that
+obtaining one means downloading third-party firmware, which this
+project's constraints prohibit ("the option is recorded here for the
+owner's decision and deliberately not exercised"). Both items were
+therefore enumerated at **metadata level only** (identifiers,
+titles, descriptions, file names, byte sizes) — zero payload bytes
+downloaded, mirroring the metadata-level enumeration practice used
+for the sibling repositories (§66.1). The probe upgrades the §32
+record from an abstract possibility to a **named, precisely-sized
+candidate**: should the owner ever elect to exercise the option,
+archive.org item `ipfox-iptv-1506-g`, file `IPFOX_IPTV_1506G.bin`,
+7,397,376 bytes, is the first concrete target. Metadata alone
+carries no engine evidence (the 59 constants are byte values, not
+catalog entries), so nothing is claimed from it beyond existence and
+relevance.
+
+Wayback side-probe: inconclusive at tool level — the CDX endpoint
+returned empty even for the control query (no filter), so the
+emptiness reflects this sandbox's access to the endpoint, not the
+corpus; recorded bounded-unavailable per the §61.1 precedent for
+honest tool-level bounds.
+
+Verdict: zero downloads; one named candidate added to the
+owner-decision record; the blocker stays hardware-gated (P1 per
+docs/hardware-session.md) and the third-party-firmware path stays
+closed to the project.
+
+### 69.2 Claims and gates re-verified in a fresh sandbox
+
+`claims_audit.py` end-to-end on this session's rebuilt environment:
+boot chain stops at exactly **1,301,783** steps on 0xa1600050, exit
+2; banner sample **19/19 in order**; bench **25.86 M instr/s** —
+inside the restated 24–26 band (seventh consecutive in-band
+fresh-sandbox measurement: 25.72, 25.55, 25.66, 24.26-under-load,
+25.46, 25.66, 25.86). CI status of f53856f (BO, the predecessor)
+verified `completed, success` — the verify-the-predecessor chain
+stays unbroken.
+
+Result: 198 tests (debug and release), fmt clean, clippy zero
+warnings, xref audit clean. Boot pins unchanged (handoff jr v0 at
+1,301,763; trap 0xa1600050 at 1,301,783, exit 2; fingerprint
+0xcd8d03bf). The blocker stays hardware-gated exactly as registered
+(§51.2): P1, P2/P2b/P2c, P3 — the real-device session per
+docs/hardware-session.md.

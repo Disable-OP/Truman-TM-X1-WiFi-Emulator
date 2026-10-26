@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.37.8 — Milestone BP: verification round (research + verification, §69)
+
+- The Internet Archive corpus probed (never touched by earlier
+  passes): one named candidate added to the §32 owner-decision
+  record — archive.org `ipfox-iptv-1506-g` (1506G family firmware
+  image, 7,397,376 B), enumerated at metadata level only, zero
+  payload bytes downloaded (project constraint). No engine evidence
+  claimed from metadata.
+- Claims re-verified in a fresh sandbox: boot pin 1,301,783 / trap /
+  exit 2, banner 19/19, bench 25.86 in the 24–26 band; CI of f53856f
+  success. No code changes.
+
 ## 0.37.7 — Milestone BO: verification round (research + verification, §68)
 
 - The temporal delta of the public engine universe is empty: five

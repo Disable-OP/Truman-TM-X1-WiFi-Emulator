@@ -1,5 +1,21 @@
 # Roadmap
 
+## Milestone BP — the Internet Archive corpus probed; §32 names its first concrete candidate ✅ (v0.37.8)
+
+- **Never-probed corpus (§69.1)**: archive.org seed searches — zero
+  for the exact chip names; two unenumerated items under
+  `sunplus 1506`: `ipfox-iptv-1506-g` (IPFOX_IPTV_1506G.bin,
+  7,397,376 B — same-family 1506G firmware image, ~8 MiB scale) and
+  a 347 KB misrsat ZIP (accessory pack, not a container). **Metadata
+  level only — zero payload bytes downloaded** per the §32 owner
+  decision; the record upgrades from abstract to a named,
+  precisely-sized first candidate. Wayback CDX bounded-unavailable
+  (control query also empty — tool-level, not corpus-level).
+- **Claims re-verified fresh (§69.2)**: 1,301,783/trap/exit 2 PASS,
+  banner 19/19, bench 25.86 inside 24–26 (seventh consecutive
+  in-band); CI of f53856f completed/success. Boot pins unchanged;
+  blocker stays hardware-gated (§51.2).
+
 ## Milestone BO — verification round: the temporal delta closed; claims fresh-verified ✅ (v0.37.7)
 
 - **First delta-form probe (§68.1)**: five authenticated temporal
