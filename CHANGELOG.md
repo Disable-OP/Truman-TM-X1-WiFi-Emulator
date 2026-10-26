@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.37.1 — Milestone BI: the claims audit as one command; the CI workflow pinned (docs hygiene + hardening, §62)
+
+### Added
+- **`tools/claims_audit.py`** — the three README claims re-measured as
+  one command: boot-chain pin (1,301,783 steps, trap 0xa1600050, exit 2)
+  and banner-in-order (ordered subsequence vs the README's console
+  sample) are hard gates; bench throughput is advisory. Captures bytes
+  and splits on `\n` only — the device CR artifacts (§54) shred the
+  console prefix under text-mode capture or `str.splitlines()`.
+- **`tests/ci_workflow.rs`** — the first mechanical reader of
+  `.github/workflows/ci.yml`: the `branches: [main]` push filter and
+  the five gate lines are pinned against drift. (A suspected corrupted
+  filter was refuted at byte level; §62.2 records the method.)
+
+### Changed
+- README bench band restated: "≈25 M instr/s (machine-dependent;
+  24–26 measured across sandbox rebuilds and under load)" — the
+  previous 25.4–25.6 band understated the observed spread (24.26 under
+  audit load this sandbox).
+
+Tests 195 → 196 (debug and release).
 ## 0.37.0 — Milestone BH: the stray-token seam closed (hardening, §61)
 
 ### Changed

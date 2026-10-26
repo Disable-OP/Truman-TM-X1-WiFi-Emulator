@@ -136,7 +136,7 @@ Requires a stable Rust toolchain (https://rustup.rs). No other dependencies.
 
 ```sh
 cargo build --release
-cargo test --release          # 195 tests: boot chain, entry harness, interrupt + COP0 timer delivery, key injection,
+cargo test --release          # 196 tests: boot chain, entry harness, interrupt + COP0 timer delivery, key injection,
                               # watchpoints, Q8 runtime evidence, timer program, keycode-consumer pin,
                               # perf-model regressions (lazy describe, hot-region memo),
                               # post-handoff map (exec pages, MMIO, DRAM write map),
@@ -146,7 +146,7 @@ cargo test --release          # 195 tests: boot chain, entry harness, interrupt 
                               # the §40.3 class-prior solve ordering (§42),
                               # CLI surface/error/success/diag contracts, determinism, cross-flag + stray-token rejection (§53-§61)
 cargo build --release --example bench
-./target/release/examples/bench firmware/*.bin   # throughput harness (Milestones V+Z): ≈25 M instr/s (machine-dependent; 25.4–25.6 measured across sandbox rebuilds)
+./target/release/examples/bench firmware/*.bin   # throughput harness (Milestones V+Z): ≈25 M instr/s (machine-dependent; 24–26 measured across sandbox rebuilds and under load)
                                                   # on the deterministic boot chain (17.5x over 0.17.0)
 
 # Identify a firmware image
@@ -161,6 +161,10 @@ cargo build --release --example bench
 # Physical-window dump after a run (Milestone BD / §57): the boot window's
 # first 0x40 bytes, byte-for-byte against the image head
 ./target/release/truman-emulator run firmware/*.bin --max-steps 100 --dump 0x1fc00000,0x40,boot_head.bin
+
+# One-command re-audit of the three README claims (Milestone BI / §62):
+# boot-chain pin and banner-in-order are hard gates, bench is advisory
+python3 tools/claims_audit.py
 
 # Map the post-handoff horizon (executed pages, MMIO record, console;
 # Milestone AD / §32) — today the RFC decode dies at entry+0x50; post-capture

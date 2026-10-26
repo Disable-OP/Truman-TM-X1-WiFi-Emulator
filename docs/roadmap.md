@@ -1,5 +1,22 @@
 # Roadmap
 
+## Milestone BI — the README claims audit as one command; the CI workflow pinned as a test ✅ (v0.37.1)
+
+- **`tools/claims_audit.py` (§62.1)**: the BA/BF-style claims
+  re-verification as one committed command — boot-chain pin and
+  banner-in-order as hard gates (bytes-captured, CR-artifact-safe,
+  ordered-subsequence vs the README sample), bench advisory. Fresh
+  measurement: 1,301,783 steps / trap 0xa1600050 / exit 2 (pin holds
+  post-BG/BH), banner 19/19, bench 24.3–25.7 observed — README band
+  restated to 24–26.
+- **CI workflow pinned (§62.2)**: a suspected corrupted push filter was
+  refuted at byte level (the committed filter is the well-formed
+  `[main]`; 49 successful runs on main verified via the runs API), but
+  the file had no mechanical reader — `tests/ci_workflow.rs` now pins
+  the filter and the five gate lines. Suite 195 → 196 (debug and
+  release). Boot pins unchanged; blocker stays hardware-gated (§51.2).
+
+
 ## Milestone BH — the stray-token seam closed: nothing received is silently dropped ✅ (v0.37.0)
 
 - **Named-lead probes (§61.1)**: the artifact owner's other GitHub

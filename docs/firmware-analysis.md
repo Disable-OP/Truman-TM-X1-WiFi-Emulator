@@ -4887,3 +4887,58 @@ Result: fmt clean, clippy zero warnings, boot pins unchanged (chain to
 trap 1,301,783, trap 0xa1600050, fingerprint 0xcd8d03bf). The blocker
 stays hardware-gated exactly as registered (§51.2): P1, P2/P2b/P2c, P3
 — the real-device session per docs/hardware-session.md.
+
+## 62. Milestone BI — the README claims audit as one command; the CI workflow pinned as a test (docs hygiene + hardening, v0.37.1)
+
+### 62.1 The claims audit tool (`tools/claims_audit.py`)
+
+BA (§54) and BF (§59.2) re-verified the README's measurable claims by
+hand with ad-hoc commands — honest but unreproducible. The audit is now
+one committed command covering the three claims: the boot-chain pin and
+the banner-in-order check are **hard gates** (exit 1 on miss), the
+bench throughput is **advisory** (reported and compared to the README
+band; a miss warns without failing, per the band's own
+machine-dependent wording).
+
+Two implementation lessons are recorded in the tool itself:
+
+- **The §54 CR family reaches tooling**: the device stream's CR
+  artifacts mean a console line reaches the run report as
+  `  | \rzeroBoot ...` — capturing subprocess output in text mode
+  (universal newlines) or splitting with `str.splitlines()` breaks the
+  embedded `\r` into a line break and shreds the report's `  | `
+  prefix away from its content. The tool captures **bytes** and splits
+  on `\n` only, stripping the `\r` artifacts explicitly.
+- The banner check is an **ordered subsequence** against the README's
+  console sample (elision and blank lines skipped, trailing
+  whitespace/CR normalized), so a re-ordered or dropped banner line
+  fails even though each line exists.
+
+Fresh re-measurement on the current HEAD (post-BG/BH, this sandbox):
+the boot chain stops at exactly **1,301,783** steps on 0xa1600050 with
+exit 2 (pin holds through the two CLI-hardening rounds, which touched
+only the argument surface); the banner sample matches **19/19 in
+order**; the bench measured 25.67/25.34/25.01 M instr/s across direct
+runs and 24.26 under audit load — the README band is restated from
+"25.4–25.6 across sandbox rebuilds" to **"24–26 across sandbox rebuilds
+and under load"**, which the observed spread makes the honest wording.
+
+### 62.2 The CI workflow pinned as a test — and one refuted suspicion
+
+A display-layer artifact made the workflow's push filter *appear*
+corrupted (`branches: ain]` instead of `[main]`) in tool output. The
+suspicion was investigated to byte level and **refuted**: the committed
+filter is the well-formed `branches: [main]` (byte dump: `0x5b 0x6d …`
+= `[main]`), consistent with the workflow's 49 successful runs on main
+pushes (verified via the runs API, latest two on the BG/BH SHAs). The
+investigation's durable finding stands regardless: **nothing in the
+repo mechanically read the workflow file** — a renamed gate or a
+drifted filter would have gone unnoticed. `tests/ci_workflow.rs` now
+pins the contractual surface: the main-branch push filter and the five
+gate lines (fmt --check; clippy at `-D warnings`; tests in debug AND
+release; check --all-targets).
+
+Result: the suite grows 195 → **196** (debug and release), fmt clean,
+clippy zero warnings, boot pins unchanged. The blocker stays
+hardware-gated exactly as registered (§51.2): P1, P2/P2b/P2c, P3 — the
+real-device session per docs/hardware-session.md.
