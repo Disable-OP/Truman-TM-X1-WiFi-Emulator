@@ -1,5 +1,19 @@
 # Roadmap
 
+## Milestone BO — verification round: the temporal delta closed; claims fresh-verified ✅ (v0.37.7)
+
+- **First delta-form probe (§68.1)**: five authenticated temporal
+  searches (created-after / pushed-after at the project's start) on
+  the engine seeds return total:0 across the board — the
+  two-repository universe (§51.2) is not merely snapshot-complete
+  (§65.1) but *staying* complete. Zero closed corpora re-sampled
+  (timestamp-keyed queries are a dimension no prior pass used).
+  §51.2 closure survives its sixth named-lead probe.
+- **Claims re-verified fresh (§68.2)**: 1,301,783/trap/exit 2 PASS,
+  banner 19/19, bench 25.66 inside 24–26 (sixth consecutive
+  in-band); CI of 3e562e4 completed/success. Boot pins unchanged;
+  blocker stays hardware-gated (§51.2).
+
 ## Milestone BN — verification round: the source repository's community surface and ref-graph bounded; claims fresh-verified ✅ (v0.37.6)
 
 - **Three bounded probes (§67.1)**: upstream issues/PRs = 0/0 ever

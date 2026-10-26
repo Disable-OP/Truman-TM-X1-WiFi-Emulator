@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.37.7 — Milestone BO: verification round (research + verification, §68)
+
+- The temporal delta of the public engine universe is empty: five
+  authenticated created-after/pushed-after searches on the engine
+  seeds return total:0. §51.2 closure now rests on both enumeration
+  and its ongoing delta. No code changes.
+- Claims re-verified in a fresh sandbox: boot pin 1,301,783 / trap /
+  exit 2, banner 19/19, bench 25.66 in the 24–26 band; CI of 3e562e4
+  success.
+
 ## 0.37.6 — Milestone BN: verification round (research + verification, §67)
 
 - The task's own source repository bounded: zero issues and zero PRs

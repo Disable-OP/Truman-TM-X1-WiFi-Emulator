@@ -5239,3 +5239,50 @@ unchanged (handoff jr v0 at 1,301,763; trap 0xa1600050 at 1,301,783,
 exit 2; fingerprint 0xcd8d03bf). The blocker stays hardware-gated
 exactly as registered (§51.2): P1, P2/P2b/P2c, P3 — the real-device
 session per docs/hardware-session.md.
+
+## 68. Milestone BO — verification round: the temporal delta closed; claims re-verified fresh (research + verification, v0.37.7)
+
+### 68.1 The delta probe: no new public content since the project began
+
+Every prior enumeration of the public engine universe (§61, §65, §66,
+§67) is a snapshot. This round adds a different query shape —
+temporal, not enumerative — which asks whether ANY new public
+repository matching the engine seeds has been created or pushed to
+since the project began. Five authenticated searches against the
+GitHub repository index (`sphe15xx`, `sphe1506`, `SPHE1505` with
+created-after filters; `sphe15xx`, `sphe1506`, `sunplus png_dec`
+with pushed-after filters at the project's start date) return
+total:0 across the board.
+
+The delta is empty. The two-repository universe (§51.2) is not
+merely complete at snapshot time — it is complete and *staying*
+complete as of this round, and the closure now rests on both an
+enumeration (§65.1) and its ongoing temporal delta (this section).
+Deliberately no closed corpus was re-sampled: the queries key on
+repository creation/push timestamps, a dimension no earlier pass
+used, so nothing here is a rediscovery of the §65.1 kind.
+
+Verdict: zero leads; the §51.2 closure survives its sixth named-lead
+probe and first delta-form probe. The blocker stays hardware-gated
+(P1 per docs/hardware-session.md).
+
+### 68.2 Claims and gates re-verified in a fresh sandbox
+
+`claims_audit.py` end-to-end on this session's rebuilt environment
+(rustc 1.99.1 via the official installer after the sandbox rollback;
+clone re-synced ff-only to origin/main with an explicit rev-parse
+check — the first fetch-before-merge slip of the recovery procedure
+was caught by that check and corrected): boot chain stops at exactly
+**1,301,783** steps on 0xa1600050, exit 2; banner sample **19/19 in
+order**; bench **25.66 M instr/s** — inside the restated 24–26 band
+(sixth consecutive in-band fresh-sandbox measurement: 25.72, 25.55,
+25.66, 24.26-under-load, 25.46, 25.66). CI status of 3e562e4 (BN,
+the predecessor) verified `completed, success` — the
+verify-the-predecessor chain stays unbroken.
+
+Result: 198 tests (debug and release), fmt clean, clippy zero
+warnings, xref audit clean. Boot pins unchanged (handoff jr v0 at
+1,301,763; trap 0xa1600050 at 1,301,783, exit 2; fingerprint
+0xcd8d03bf). The blocker stays hardware-gated exactly as registered
+(§51.2): P1, P2/P2b/P2c, P3 — the real-device session per
+docs/hardware-session.md.
