@@ -1,5 +1,20 @@
 # Roadmap
 
+## Milestone BR — the Wayback bound completed to the limit of reachable tooling ✅ (v0.37.10)
+
+- **Bound completed (§71.1)**: web.archive.org is host-level
+  connection-dead from this sandbox (HTTP 000 on both schemes,
+  control included, two rounds) — transport, not corpus; the
+  archive.org availability API is alive and shows a vendor-root
+  snapshot (2026-08-15) but ZERO archived snapshots at six
+  plausible SPHE1506-era paths; the snapshot itself is unreadable
+  (dead host). Discipline note: future rounds should NOT re-probe
+  web.archive.org. Zero new evidence; zero downloads.
+- **Claims re-verified fresh (§71.2)**: 1,301,783/trap/exit 2 PASS,
+  banner 19/19, bench 24.82 inside 24–26 (ninth consecutive
+  in-band); CI of 29d7632 completed/success. Boot pins unchanged;
+  blocker stays hardware-gated (§51.2).
+
 ## Milestone BQ — the Internet Archive corpus completed at variant level; §32 candidate list doubles ✅ (v0.37.9)
 
 - **Variant sweep (§70.1)**: seven queries, metadata level only,

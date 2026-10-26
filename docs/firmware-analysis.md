@@ -5421,3 +5421,57 @@ warnings, xref audit clean. Boot pins unchanged (handoff jr v0 at
 0xcd8d03bf). The blocker stays hardware-gated exactly as registered
 (§51.2): P1, P2/P2b/P2c, P3 — the real-device session per
 docs/hardware-session.md.
+
+## 71. Milestone BR — verification round: the Wayback bound completed as far as reachable tooling allows (research + verification, v0.37.10)
+
+### 71.1 Completing the §69.1 bounded-unavailable item
+
+BP recorded the Wayback CDX endpoint as bounded-unavailable (empty
+even on the control query). BL's precedent — executing a prior
+round's bounded item — applies: this round re-characterized the
+tooling rather than re-probing blind.
+
+- **CDX endpoint: host-level dead from this sandbox.** Both the
+  plain-HTTP and HTTPS CDX queries fail at the connection layer
+  (HTTP 000, no response bytes) — including the no-filter control —
+  across two rounds. The failure is the transport, not the corpus.
+- **The availability API (archive.org host) is alive** (HTTP 200),
+  so the round used per-URL probes instead of CDX enumeration:
+  the vendor root (`sunplus.com`) has a recent snapshot
+  (2026-08-15, status 200), while six plausible SPHE1506-era paths
+  (products, product list, download, support, a product-URL guess,
+  a consumer-ICs path) have **zero archived snapshots**. The
+  snapshot itself lives on the dead host and cannot be read from
+  here (verified: one fetch, HTTP 000).
+- **Corpus-level conclusion**: no SPHE1506-era vendor content is
+  recoverable through the reachable Wayback tooling; the vendor's
+  current site snapshot is irrelevant by construction (the product
+  line left the site years before the snapshot date — consistent
+  with the §44.4/§48 datasheet-aggregator findings).
+- **Discipline note**: web.archive.org is recorded as
+  connection-dead from this environment with two independent
+  characterizations (BP, BR). Future rounds should NOT re-probe it;
+  the bound is final unless the sandbox's egress changes.
+
+Verdict: the bound is completed to the limit of reachable tooling;
+zero new evidence; zero downloads; the blocker stays hardware-gated
+(P1 per docs/hardware-session.md) and the third-party-firmware path
+stays closed to the project.
+
+### 71.2 Claims and gates re-verified in a fresh sandbox
+
+`claims_audit.py` end-to-end on this session's rebuilt environment:
+boot chain stops at exactly **1,301,783** steps on 0xa1600050, exit
+2; banner sample **19/19 in order**; bench **24.82 M instr/s** —
+inside the restated 24–26 band (ninth consecutive in-band
+fresh-sandbox measurement: 25.72, 25.55, 25.66, 24.26-under-load,
+25.46, 25.66, 25.86, 25.58, 24.82). CI status of 29d7632 (BQ, the
+predecessor) verified `completed, success` — the
+verify-the-predecessor chain stays unbroken.
+
+Result: 198 tests (debug and release), fmt clean, clippy zero
+warnings, xref audit clean. Boot pins unchanged (handoff jr v0 at
+1,301,763; trap 0xa1600050 at 1,301,783, exit 2; fingerprint
+0xcd8d03bf). The blocker stays hardware-gated exactly as registered
+(§51.2): P1, P2/P2b/P2c, P3 — the real-device session per
+docs/hardware-session.md.

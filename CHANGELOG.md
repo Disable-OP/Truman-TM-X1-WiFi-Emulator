@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.37.10 — Milestone BR: verification round (research + verification, §71)
+
+- The §69.1 Wayback bound completed: host-level connection failure
+  characterized (twice); the reachable availability API shows no
+  SPHE1506-era vendor snapshots at six plausible paths. Future
+  rounds should not re-probe web.archive.org from this environment.
+  No code changes.
+- Claims re-verified in a fresh sandbox: boot pin 1,301,783 / trap /
+  exit 2, banner 19/19, bench 24.82 in the 24–26 band; CI of 29d7632
+  success.
+
 ## 0.37.9 — Milestone BQ: verification round (research + verification, §70)
 
 - Internet Archive corpus completed at variant depth (metadata
