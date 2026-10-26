@@ -5070,3 +5070,64 @@ clippy zero warnings. Boot pins unchanged (handoff jr v0 at 1,301,763;
 trap 0xa1600050 at 1,301,783, exit 2; fingerprint 0xcd8d03bf). The
 blocker stays hardware-gated exactly as registered (§51.2): P1,
 P2/P2b/P2c, P3 — the real-device session per docs/hardware-session.md.
+
+## 65. Milestone BL — the code-search universe enumerated with authentication; the docs audit wired into CI (research + hardening, v0.37.4)
+
+### 65.1 The BK bounded-unavailable probe, now executed: zero new leads, closure strengthened
+
+Milestone BK's code-level seed search was recorded as
+"bounded-unavailable" (unauthenticated quota exhausted mid-probe). This
+session executed it with authentication — the PAT applied through a
+temporary 0600 header file (`curl -H @file`), never present in a
+process argument, shell history, or any file that outlives the call,
+and shredded immediately after. The full result set, enumerated across
+all pages:
+
+| seed | results | repositories |
+|---|---|---|
+| `sp_imgdec` | 3 | vicyap/sony-xav-ax100 only |
+| `sphe15xx` | 57 | Team-Proton/linux-sunplus-15xx (55) + 2 incidental non-code text matches (a TrID file-signature definition, a digital-preservation registry page) |
+| `sphe1506` | 10 | Team-Proton/linux-sunplus-15xx only |
+| `MOON_PNG_RESET` | 3 | vicyap/sony-xav-ax100 only — and the two kernel-side files (`mach-gemini/.../hal_imgdec.{c,h}`) are already documented in §34 as identical to the U-Boot driver |
+| `sp_png_dec` | 24 | vicyap (the known command driver) + Sunplus MMC/SD drivers in other SoCs' U-Boot trees (BPI-F2S, plus1, eCV5546) — prefix-coincidence matches, no engine content |
+
+**The public code universe for this platform's engine is exactly the
+two known repositories, both long since archived in-repo
+byte-identical (§33/§34 provenance tables) and studied.** A discipline
+note is recorded: the first `sp_imgdec` hit briefly read as a
+breakthrough — it was a rediscovery of the already-committed reference
+files, caught by checking the provenance table before any analysis.
+Zero new repositories, zero new engine artifacts; the §51.2 closure is
+strengthened, not reopened. The boot blocker stays hardware-gated.
+
+### 65.2 CI status of BK/BJ, verified session-side
+
+The runs API reports the workflow runs for a87edc6 (Milestone BK) and
+ce351fa (BJ) as `completed, success` — continuous CI health across the
+last three pushes (with 50e7768/BI verified in §64.2).
+
+### 65.3 The docs cross-reference audit is now a CI gate
+
+§52.2 committed `tools/xref_audit.py` with the promise that the check
+is "reproducible by any future loop or CI run" — but no CI run ever
+invoked it; the audit stayed a session habit, and the §63 dangling-ref
+catch happened only because a session happened to run it. The arc is
+now closed: ci.yml gains a sixth gate, `python3 tools/xref_audit.py`
+(after the cargo gates), so a dangling § reference or a version-pin
+drift fails CI exactly like a failing test. The §62.2 guard
+(`tests/ci_workflow.rs`) was updated in the same commit per its own
+"restate BOTH or neither" discipline — the pinned gate list is now six
+entries. Suite size unchanged (198; the guard's line-count rule is
+insensitive to array-element edits). A transport lesson is recorded
+for future sessions: this session's display layer strips the
+two-character sequence `[m` from output (the §62.2 observation-layer
+artifact, live again — `branches: [main]` displayed as `ain]` here);
+any bracket+`m` content was verified by byte length and byte presence
+(20-byte line containing 0x5b and 0x6d), never by quoted display.
+
+Result: 198 tests (debug and release), fmt clean, clippy zero
+warnings, xref audit clean. Boot pins unchanged (handoff jr v0 at
+1,301,763; trap 0xa1600050 at 1,301,783, exit 2; fingerprint
+0xcd8d03bf). The blocker stays hardware-gated exactly as registered
+(§51.2): P1, P2/P2b/P2c, P3 — the real-device session per
+docs/hardware-session.md.

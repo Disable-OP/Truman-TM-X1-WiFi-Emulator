@@ -1,5 +1,26 @@
 # Roadmap
 
+## Milestone BL — the code-search universe enumerated; the docs audit wired into CI ✅ (v0.37.4)
+
+- **Authenticated code search (§65.1)**: BK's bounded-unavailable probe
+  executed (PAT via temporary header file, never in process args):
+  `sp_imgdec`=3, `sphe15xx`=57, `sphe1506`=10, `MOON_PNG_RESET`=3,
+  `sp_png_dec`=24 — the public engine universe is EXACTLY the two known
+  repositories (Team-Proton, vicyap/sony-xav-ax100), both archived
+  in-repo and studied; kernel hal_imgdec already documented identical
+  (§34). Zero new leads; §51.2 closure strengthened. First hit was a
+  rediscovery caught by the provenance table — discipline note
+  recorded.
+- **CI verified (§65.2)**: a87edc6 (BK) and ce351fa (BJ) runs
+  `completed, success`.
+- **xref into CI (§65.3)**: ci.yml gains the sixth gate
+  (`python3 tools/xref_audit.py`) — §52.2's "reproducible by any CI
+  run" arc closed; ci_workflow.rs restated in the same commit. Suite
+  unchanged (198). Transport lesson: this session's display layer
+  strips `[m` — verify by byte length/presence, never quoted display.
+  Boot pins unchanged; blocker stays hardware-gated (§51.2).
+
+
 ## Milestone BK — two named probes executed; the README test-count seam closed ✅ (v0.37.3)
 
 - **Named probes (§64.1, §51.2 respected)**: the public eCos tree —

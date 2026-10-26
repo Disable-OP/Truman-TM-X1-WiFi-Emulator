@@ -43,3 +43,5 @@ jobs:
         run: cargo test --release
       - name: Check (all targets)
         run: cargo check --all-targets
+      - name: Docs cross-reference audit (§65)
+        run: python3 tools/xref_audit.py

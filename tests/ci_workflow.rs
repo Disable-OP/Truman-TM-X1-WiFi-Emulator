@@ -32,6 +32,11 @@ fn ci_workflow_filter_and_gates_are_intact() {
         "cargo test\n",
         "cargo test --release\n",
         "cargo check --all-targets",
+        // BL (§65): the docs cross-reference audit is a CI gate, not a
+        // session habit — the §52.2 promise ("reproducible by any future
+        // loop or CI run") is wired in, so a dangling § ref or a version
+        // drift fails CI exactly like a failing test.
+        "python3 tools/xref_audit.py",
     ] {
         assert!(
             src.contains(gate),

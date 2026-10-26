@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.37.4 — Milestone BL: the code-search universe enumerated; the docs audit wired into CI (research + hardening, §65)
+
+- Authenticated GitHub code search completed (BK's bounded-unavailable
+  item): all seeds resolve to the two already-archived repositories
+  (Team-Proton/linux-sunplus-15xx, vicyap/sony-xav-ax100) plus
+  non-code text matches; zero new repositories or engine artifacts.
+  §51.2 closure strengthened.
+- CI: the docs cross-reference audit (`python3 tools/xref_audit.py`)
+  is now the sixth ci.yml gate — §52.2's arc closed; a dangling § ref
+  or version drift fails CI. tests/ci_workflow.rs pins the new gate
+  (restate-both honored). Runs for BK (a87edc6) and BJ (ce351fa)
+  verified success via the runs API.
+- Transport note: this session's display layer strips `[m` sequences —
+  filter-line integrity re-verified at byte level (20 bytes, 0x5b
+  present).
+- Tests unchanged: 198 (debug and release). Boot pins unchanged.
+
 ## 0.37.3 — Milestone BK: two named probes zero; the README test-count seam closed (research + docs hygiene, §64)
 
 - Named probes, §51.2 respected: the public eCos tree's `ecos.db` has
