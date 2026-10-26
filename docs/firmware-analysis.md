@@ -5719,3 +5719,38 @@ blocker stays hardware-gated exactly as registered (§51.2): P1,
 P2/P2b/P2c, P3 — the real-device session per
 docs/hardware-session.md; the §32 container path holds its two
 named candidates (§70.1) for the owner's decision.
+
+## 79. Milestone BZ — pure verification round: zero findings, chain green (session record, v0.37.18)
+
+### 79.1 The round, honestly empty
+
+No new evidence class appeared; the task text is unchanged; the
+predecessor's CI is green. Per the
+§54/§59/§72/§73/§74/§75/§76/§77/§78 precedent the round is
+recorded for chain continuity and nothing more is claimed:
+
+- **Fourth snapshot rollback** — the now-routine regression
+  (clone at 23471b2, stale refs, permission-bit-only drift,
+  session worklog and helper script gone; toolchain survived).
+  The fixed-cost recovery ran as written: `core.fileMode false`,
+  fetch before merge, `--ff-only`, explicit `rev-parse` re-check
+  — landed exactly on origin/main (d1aeb12, BY) with zero
+  content drift; helper script rebuilt before any commit existed
+  (§68.2/§76.1/§77.1/§78.1).
+- `tools/claims_audit.py`: boot chain stops at exactly
+  **1,301,783** steps on 0xa1600050, exit 2; banner sample
+  **19/19 in order**; bench **25.60 M instr/s** — inside the
+  restated 24–26 band (seventeenth consecutive in-band
+  fresh-sandbox measurement: 25.72, 25.55, 25.66,
+  24.26-under-load, 25.46, 25.66, 25.86, 25.58, 24.82, 25.86,
+  25.56, 25.59, 25.28, 25.72, 25.55, 25.74, 25.60). CI status of
+  d1aeb12 (BY, the predecessor) verified `completed, success`.
+
+Result: 198 tests (debug and release), fmt clean, clippy zero
+warnings, check --all-targets clean, xref audit clean. No code
+changes. Boot pins unchanged (handoff jr v0 at 1,301,763; trap
+0xa1600050 at 1,301,783, exit 2; fingerprint 0xcd8d03bf). The
+blocker stays hardware-gated exactly as registered (§51.2): P1,
+P2/P2b/P2c, P3 — the real-device session per
+docs/hardware-session.md; the §32 container path holds its two
+named candidates (§70.1) for the owner's decision.

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.37.18 — Milestone BZ: pure verification round (§79)
+
+- Zero-finding round recorded for chain continuity: claims
+  fresh-verified, CI of d1aeb12 success, 198 tests, all gates
+  clean, zero diff. Fourth routine snapshot-rollback recovery.
+  No code changes.
+
 ## 0.37.17 — Milestone BY: pure verification round (§78)
 
 - Zero-finding round recorded for chain continuity: claims
