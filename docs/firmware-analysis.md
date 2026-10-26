@@ -4995,3 +4995,78 @@ in-session. Boot pins unchanged (handoff jr v0 at 1,301,763; trap
 0xa1600050 at 1,301,783, exit 2; fingerprint 0xcd8d03bf). The blocker
 stays hardware-gated exactly as registered (§51.2): P1, P2/P2b/P2c, P3
 — the real-device session per docs/hardware-session.md.
+
+## 64. Milestone BK — two named probes executed; the README test-count seam closed (research + docs hygiene, v0.37.3)
+
+### 64.1 Named-lead probes (surveys stay closed, §51.2 respected)
+
+Two genuinely named angles — both registered as unexecuted candidates in
+the BK-round planning, neither a re-sampling of a closed corpus:
+
+- **The public eCos tree corpus (new corpus, closed)**: the firmware's
+  boot chain enters a decompressed eCos stage (Milestone I), so any
+  Sunplus SPHE HAL ever landed in public eCos would carry engine or
+  memory-map semantics. The canonical tree's package database
+  (`packages/ecos.db`, 266,587 bytes from the ryoon/eCos CVS→git
+  mirror, pushed 2022-06) contains **zero** `sunplus|sphe` matches;
+  the MIPS HAL vendor set is exactly tx39, jmr3904, mips32, mips64,
+  atlas, malta, and siblings — no Sunplus target ever existed in
+  public eCos. (A second mirror lacked the file at that path; one
+  authoritative sample is decisive for the tree's content.)
+- **The seed-name repo search (named by the in-repo reference
+  headers)**: GitHub repository search for `sphe15xx`, `sphe1506`, and
+  `sunplus ecos` returns **total: 0** for each — no repository names
+  the platform. Code-level search (`sp_imgdec` and siblings as seeds)
+  was not executable this session: the web-search backend returned
+  zero results for trivially matchable queries (service-side), and the
+  unauthenticated REST quota was exhausted mid-probe. Recorded as
+  bounded-unavailable, not as a zero-yield claim.
+
+Verdict: zero leads both ways; the survey closure stands unchanged
+(§51.2) and the blocker stays hardware-gated (P1 capture per
+docs/hardware-session.md).
+
+### 64.2 The CI status of BJ, verified from the session side
+
+The GitHub Actions runs API (the §61.1/§62.2 method) reports the
+workflow run for **ce351fa** (Milestone BJ) as `completed, success`,
+and 50e7768 (BI) likewise. First post-push CI verification performed
+from the emulator session rather than inferred from the push's exit
+status.
+
+### 64.3 The README test-count seam: the front door's claim pinned
+
+The README states the suite size on its front door ("cargo test
+--release          # 197 tests: …") — a hand-maintained claim that
+nothing mechanically read, the same unguarded-file shape as §62.2's
+ci.yml and §63's bench band. The seam is real by construction: this
+round itself added a test and had to remember to bump the count.
+
+- **The exact counting rule (found, not assumed)**: the suite has no
+  generated or parametrized tests, and `cargo fmt` puts every test
+  attribute alone on its own line — so the suite size equals the
+  number of lines whose trimmed content is exactly `#[test]` across
+  `src/` (lib/bin unittests: 67) and `tests/` (integration: 131 after
+  this round). `examples/` is excluded (plain `cargo test` does not
+  run example unittests). The rule was verified exact before being
+  pinned: a naive occurrence counter over-claimed by three (the
+  guard's own doc comment and its search-literal mention the
+  attribute), which the first draft actually reported (200 ≠ 197) —
+  the drift message itself located the defect.
+- **The guard**: `tests/readme_count_sync.rs` parses the README's
+  `# N tests:` claim and asserts equality with the counted suite,
+  with the §63-style message "restate BOTH or neither (§64)". The
+  negative control was run live: README perturbed to the stale 197 →
+  the test fails with the drift message (suite 198 = 67 src + 131
+  tests) → restored → passes.
+- A guard-authoring lesson is recorded: a mechanical reader that
+  defines its needle by quoting the pattern it counts must either use
+  a self-exact rule (line-shaped, not occurrence-shaped) or exclude
+  itself; the line-shaped rule needs no needle gymnastics and stays
+  honest under future rewording.
+
+Result: the suite grows 197 → **198** (debug and release), fmt clean,
+clippy zero warnings. Boot pins unchanged (handoff jr v0 at 1,301,763;
+trap 0xa1600050 at 1,301,783, exit 2; fingerprint 0xcd8d03bf). The
+blocker stays hardware-gated exactly as registered (§51.2): P1,
+P2/P2b/P2c, P3 — the real-device session per docs/hardware-session.md.

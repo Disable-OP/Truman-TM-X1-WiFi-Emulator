@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.37.3 — Milestone BK: two named probes zero; the README test-count seam closed (research + docs hygiene, §64)
+
+- Named probes, §51.2 respected: the public eCos tree's `ecos.db` has
+  zero sunplus/sphe (no Sunplus HAL ever landed in public eCos);
+  GitHub repo search `sphe15xx`/`sphe1506`/`sunplus ecos` all zero.
+  Code-level search bounded-unavailable this session. Surveys stay
+  closed.
+- CI verified from the session side: the runs API reports BJ (ce351fa)
+  and BI (50e7768) completed/success.
+- New: `tests/readme_count_sync.rs` — the README's `# N tests:` claim
+  is pinned to the actual suite size (lone `#[test]` lines in src/ +
+  tests/; examples excluded). Negative control verified live. The
+  first draft's occurrence counter over-counted by three (its own
+  doc/string mentions of the attribute) — replaced by the exact
+  line-shaped rule.
+- Tests 197 → 198 (debug and release). Boot pins unchanged.
+
 ## 0.37.2 — Milestone BJ: the bench-band seam closed (tooling honesty, §63)
 
 - Fixed: `tools/claims_audit.py` still stated the retired bench band

@@ -1,5 +1,29 @@
 # Roadmap
 
+## Milestone BK — two named probes executed; the README test-count seam closed ✅ (v0.37.3)
+
+- **Named probes (§64.1, §51.2 respected)**: the public eCos tree —
+  `packages/ecos.db` of the canonical CVS→git mirror has ZERO
+  sunplus/sphe (MIPS HAL vendors: tx39/jmr3904/atlas/malta/…; no
+  Sunplus target ever landed) — and GitHub repo search
+  (`sphe15xx`/`sphe1506`/`sunplus ecos` all total: 0). Code-level
+  seed search bounded-unavailable this session (search backend down,
+  REST quota exhausted mid-probe). Zero leads; surveys stay closed.
+- **CI verified (§64.2)**: the runs API reports ce351fa (BJ) and
+  50e7768 (BI) `completed, success` — first session-side CI
+  verification.
+- **The count seam (§64.3)**: the README's `# N tests:` front-door
+  claim had no mechanical reader; the suite is exactly the count of
+  lone `#[test]` lines (src 67 + tests 131 = 198; examples excluded
+  by `cargo test` semantics). `tests/readme_count_sync.rs` pins the
+  two statements ("restate BOTH or neither"); negative control live
+  (197 perturb → fail → restore → pass). A naive occurrence counter
+  over-counted by three (its own doc/string mentions) — the drift
+  message located it; the line-shaped rule is self-exact. Suite
+  197 → 198 (debug and release). Boot pins unchanged; blocker stays
+  hardware-gated (§51.2).
+
+
 ## Milestone BJ — the bench-band seam closed: the audit tool states the claim it audits ✅ (v0.37.2)
 
 - **The seam (§63.1)**: BI restated the README bench band to 24–26 but
