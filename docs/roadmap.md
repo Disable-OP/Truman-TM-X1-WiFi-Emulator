@@ -1,5 +1,17 @@
 # Roadmap
 
+## Milestone BX — pure verification round: zero findings, chain green ✅ (v0.37.16)
+
+- **No new evidence class; round honestly empty (§77.1)**:
+  zero-diff against origin/main after a second, recurring sandbox
+  snapshot rollback (recovered from the written §68.2 discipline
+  alone), claims fresh-verified (1,301,783/trap/exit 2, banner
+  19/19, bench 25.55 in 24–26 — fifteenth consecutive in-band),
+  CI of fc9aa4b completed/success, 198 tests debug and release,
+  all gates clean. Boot pins unchanged; blocker stays
+  hardware-gated (§51.2); §32 holds its two named candidates for
+  the owner.
+
 ## Milestone BW — pure verification round: zero findings, chain green ✅ (v0.37.15)
 
 - **No new evidence class; round honestly empty (§76.1)**:

@@ -5639,3 +5639,43 @@ blocker stays hardware-gated exactly as registered (§51.2): P1,
 P2/P2b/P2c, P3 — the real-device session per
 docs/hardware-session.md; the §32 container path holds its two
 named candidates (§70.1) for the owner's decision.
+
+## 77. Milestone BX — pure verification round: zero findings, chain green (session record, v0.37.16)
+
+### 77.1 The round, honestly empty — snapshot rollback confirmed as recurring
+
+No new evidence class appeared; the task text is unchanged; the
+predecessor's CI is green. Per the
+§54/§59/§72/§73/§74/§75/§76 precedent the round is recorded for
+chain continuity and nothing more is claimed. One operational
+note is appended to the §76.1 recovery record:
+
+- **Second snapshot rollback — the pattern is recurring, not
+  incidental.** The sandbox presented the identical stale state
+  again (clone at 23471b2, stale origin/main ref,
+  permission-bit-only drift across the tree, the session worklog
+  rolled back to its ancient state). The difference this time:
+  the Rust toolchain survived while the project directories did
+  not, and the recovery was executed from the written discipline
+  alone — `core.fileMode false`, fetch before merge, `--ff-only`,
+  an explicit `rev-parse` re-check — landing exactly on
+  origin/main (fc9aa4b, BW) with zero content drift. The §68.2
+  discipline has now absorbed this failure mode twice at
+  20-milestone depth; it stays standing.
+- `tools/claims_audit.py`: boot chain stops at exactly
+  **1,301,783** steps on 0xa1600050, exit 2; banner sample
+  **19/19 in order**; bench **25.55 M instr/s** — inside the
+  restated 24–26 band (fifteenth consecutive in-band
+  fresh-sandbox measurement: 25.72, 25.55, 25.66,
+  24.26-under-load, 25.46, 25.66, 25.86, 25.58, 24.82, 25.86,
+  25.56, 25.59, 25.28, 25.72, 25.55). CI status of fc9aa4b (BW,
+  the predecessor) verified `completed, success`.
+
+Result: 198 tests (debug and release), fmt clean, clippy zero
+warnings, check --all-targets clean, xref audit clean. No code
+changes. Boot pins unchanged (handoff jr v0 at 1,301,763; trap
+0xa1600050 at 1,301,783, exit 2; fingerprint 0xcd8d03bf). The
+blocker stays hardware-gated exactly as registered (§51.2): P1,
+P2/P2b/P2c, P3 — the real-device session per
+docs/hardware-session.md; the §32 container path holds its two
+named candidates (§70.1) for the owner's decision.

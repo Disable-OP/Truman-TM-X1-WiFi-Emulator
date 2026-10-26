@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.37.16 — Milestone BX: pure verification round (§77)
+
+- Zero-finding round recorded for chain continuity: claims
+  fresh-verified, CI of fc9aa4b success, 198 tests, all gates
+  clean, zero diff. Second recurring sandbox snapshot rollback
+  absorbed by the fetch-before-merge discipline (§68.2, §76.1).
+  No code changes.
+
 ## 0.37.15 — Milestone BW: pure verification round (§76)
 
 - Zero-finding round recorded for chain continuity: claims
