@@ -1,5 +1,15 @@
 # Roadmap
 
+## Milestone BV — pure verification round: zero findings, chain green ✅ (v0.37.14)
+
+- **No new evidence class; round honestly empty (§75.1)**:
+  zero-diff against origin/main, claims fresh-verified
+  (1,301,783/trap/exit 2, banner 19/19, bench 25.28 in 24–26 —
+  thirteenth consecutive in-band), CI of e7fb1d7
+  completed/success, 198 tests debug and release, all gates
+  clean. Boot pins unchanged; blocker stays hardware-gated
+  (§51.2); §32 holds its two named candidates for the owner.
+
 ## Milestone BU — pure verification round: zero findings, chain green ✅ (v0.37.13)
 
 - **No new evidence class; round honestly empty (§74.1)**:
