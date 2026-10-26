@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.37.0 — Milestone BH: the stray-token seam closed (hardening, §61)
+
+### Changed
+- **Breaking (CLI)**: tokens a subcommand does not implement are now
+  rejected instead of being silently ignored. `inspect` rejects
+  anything after its path (it takes no flags); `run`, `trace` and
+  `map` reject a second positional path. Previously
+  `inspect fw -v --max-steps 5` and `run fw junk` exited 0 while
+  dropping the extras. New error:
+  "error: unexpected argument `X`" (exit 1, nothing executes).
+
+### Added
+- `ArgsError::UnexpectedArgument` variant; four tests pinning the
+  rejections (exact message, empty stdout). Tests 191 → 195 (debug
+  and release).
+
 ## 0.36.0 — Milestone BG: the cross-flag seam closed (hardening, §60)
 
 ### Changed

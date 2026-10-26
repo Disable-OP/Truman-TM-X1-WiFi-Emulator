@@ -16,6 +16,11 @@
 //!
 //! Exit codes: 0 = success, 1 = usage/IO error, 2 = emulation stopped on a
 //! condition (fault/unknown instruction/step limit).
+//!
+//! Every token a subcommand receives must have an observable effect:
+//! cross-subcommand flags are rejected (§60) and stray tokens — a second
+//! positional path, anything after the path on `inspect` — are rejected
+//! (§61); nothing is silently dropped.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -59,6 +64,11 @@ enum ArgsError {
     /// it (e.g. `--limit` on `run`). Rejected loudly — every accepted
     /// flag must have an observable effect (Milestone BG, §60).
     WrongCommand(String, String),
+    /// A token left over after a subcommand consumed everything it
+    /// implements — a second positional path, or any token after the
+    /// path on `inspect`, which takes no flags. Rejected — every
+    /// accepted token must have an observable effect (Milestone BH, §61).
+    UnexpectedArgument(String),
     MissingValue(String),
     /// An I/O or content failure on user-supplied input (file missing,
     /// unparseable). Reported as-is — the value was present, so no
@@ -98,6 +108,10 @@ fn main() -> ExitCode {
         }
         Err(ArgsError::WrongCommand(opt, cmd)) => {
             eprintln!("error: option `{opt}` is not valid for `{cmd}`");
+            ExitCode::from(1)
+        }
+        Err(ArgsError::UnexpectedArgument(a)) => {
+            eprintln!("error: unexpected argument `{a}`");
             ExitCode::from(1)
         }
         Err(ArgsError::MissingValue(o)) => {
@@ -151,6 +165,11 @@ fn load_and_identify(path: &Path) -> Result<(firmware::Image, firmware::Identifi
 
 fn cmd_inspect(args: &[String]) -> Result<ExitCode, ArgsError> {
     let path = parse_path_arg(args, "inspect")?;
+    // `inspect` takes exactly one positional and no flags; anything after
+    // the path used to be silently ignored (Milestone BH, §61).
+    if let Some(extra) = args.get(1) {
+        return Err(ArgsError::UnexpectedArgument(extra.clone()));
+    }
     let (img, id) = match load_and_identify(&path) {
         Ok(v) => v,
         Err(c) => return Ok(c),
@@ -310,6 +329,9 @@ fn print_touchmap(result: &truman_emulator::machine::RunResult) {
 fn cmd_run(args: &[String]) -> Result<ExitCode, ArgsError> {
     let (opts, rest) = parse_run_options(args, 1_000_000, "run")?;
     let path = parse_path_arg(&rest, "run")?;
+    if let Some(extra) = rest.get(1) {
+        return Err(ArgsError::UnexpectedArgument(extra.clone()));
+    }
     let (img, id) = match load_and_identify(&path) {
         Ok(v) => v,
         Err(c) => return Ok(c),
@@ -418,6 +440,9 @@ fn print_step(r: &cpu::StepReport) {
 fn cmd_trace(args: &[String]) -> Result<ExitCode, ArgsError> {
     let (opts, rest) = parse_run_options(args, 1_000, "trace")?;
     let path = parse_path_arg(&rest, "trace")?;
+    if let Some(extra) = rest.get(1) {
+        return Err(ArgsError::UnexpectedArgument(extra.clone()));
+    }
     let (img, _id) = match load_and_identify(&path) {
         Ok(v) => v,
         Err(c) => return Ok(c),
@@ -533,6 +558,9 @@ fn parse_map_options(args: &[String]) -> Result<(MapOptions, Vec<String>), ArgsE
 fn cmd_map(args: &[String]) -> Result<ExitCode, ArgsError> {
     let (opts, rest) = parse_map_options(args)?;
     let path = parse_path_arg(&rest, "map")?;
+    if let Some(extra) = rest.get(1) {
+        return Err(ArgsError::UnexpectedArgument(extra.clone()));
+    }
     let (img, _id) = match load_and_identify(&path) {
         Ok(v) => v,
         Err(c) => return Ok(c),

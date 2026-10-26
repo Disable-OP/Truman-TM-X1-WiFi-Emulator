@@ -4837,3 +4837,53 @@ Result: fmt clean, clippy zero warnings, boot pins unchanged (chain to
 trap 1,301,783, trap 0xa1600050, fingerprint 0xcd8d03bf). The blocker
 stays hardware-gated exactly as registered (§51.2): P1, P2/P2b/P2c, P3
 — the real-device session per docs/hardware-session.md.
+
+## 61. Milestone BH — the stray-token seam closed: nothing a subcommand receives is silently dropped (hardening, v0.37.0)
+
+### 61.1 Named-lead check (surveys stay closed)
+
+Two *named* probes, per the §51.2 reopening condition: (1) the
+artifact owner's own GitHub corpus (`Disable-OP`, never probed — BF
+checked the repo's ecosystem, not the owner's other repositories):
+five repositories, all Blockman-GO-domain (C/Python game tooling) plus
+a `twoyi` fork — zero SPHE/receiver/MIPS/eCos leads; (2) the known
+regfile source `Team-Proton/linux-sunplus-15xx` for movement since the
+pinned `master` blob: the repository's last commit is 2016-05-13 ("fix
+spi flash write") — frozen a decade, no updates. Zero leads both ways;
+the closure stands.
+
+### 61.2 The seam: silently ignored stray tokens
+
+The BG milestone closed the cross-flag seam; a follow-up token-audit
+found its positional sibling. `cmd_inspect` reads `args[0]` and never
+looks at the rest, and `run`/`trace`/`map` pass the leftover positionals
+to `parse_path_arg`, which also reads only the first:
+
+- `inspect fw.bin -v --max-steps 5` → exit 0, the report prints, the
+  two tokens are dropped on the floor (live-demonstrated pre-fix).
+- `run fw.bin --max-steps 40 some_junk_positional` → exit 0, the run
+  executes, the token is dropped (live-demonstrated pre-fix).
+
+A user who passes a stray path (did they mean `run fw1 fw2`?) or a
+verbose flag on `inspect` gets no signal that anything was ignored —
+the same misreport family as §56/§59/§60. The honest fix is rejection.
+
+### 61.3 The fix and the contracts
+
+New `ArgsError::UnexpectedArgument` variant — `error: unexpected
+argument `X`` (exit 1, one line, no usage reprint, matching the
+BG/BadValue house style). `inspect` rejects anything after its path;
+`run`/`trace`/`map` reject a second positional after the flag parse
+(so `map fw --value-tables vt extra` also rejects `extra`). In all
+cases the check runs before load/boot/execution — pinned stdout-empty.
+
+Four tests (`tests/cli_errors.rs`, suite 191 → 195): `inspect` with a
+stray flag and a second path (both invocations in one test), and one
+second-positional rejection each for `run`, `trace`, `map` — exact
+message, exit 1, stdout empty. The binary's head doc now states the
+invariant outright: nothing a subcommand receives is silently dropped.
+
+Result: fmt clean, clippy zero warnings, boot pins unchanged (chain to
+trap 1,301,783, trap 0xa1600050, fingerprint 0xcd8d03bf). The blocker
+stays hardware-gated exactly as registered (§51.2): P1, P2/P2b/P2c, P3
+— the real-device session per docs/hardware-session.md.

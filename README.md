@@ -136,7 +136,7 @@ Requires a stable Rust toolchain (https://rustup.rs). No other dependencies.
 
 ```sh
 cargo build --release
-cargo test --release          # 191 tests: boot chain, entry harness, interrupt + COP0 timer delivery, key injection,
+cargo test --release          # 195 tests: boot chain, entry harness, interrupt + COP0 timer delivery, key injection,
                               # watchpoints, Q8 runtime evidence, timer program, keycode-consumer pin,
                               # perf-model regressions (lazy describe, hot-region memo),
                               # post-handoff map (exec pages, MMIO, DRAM write map),
@@ -144,7 +144,7 @@ cargo test --release          # 191 tests: boot chain, entry harness, interrupt 
                               # divergence→symbol attribution, the capture→ladder solver (§36-§37),
                               # the §40.4 vendor vector gate (§41),
                               # the §40.3 class-prior solve ordering (§42),
-                              # CLI surface/error/success/diag contracts, determinism, cross-flag rejection (§53-§60)
+                              # CLI surface/error/success/diag contracts, determinism, cross-flag + stray-token rejection (§53-§61)
 cargo build --release --example bench
 ./target/release/examples/bench firmware/*.bin   # throughput harness (Milestones V+Z): ≈25 M instr/s (machine-dependent; 25.4–25.6 measured across sandbox rebuilds)
                                                   # on the deterministic boot chain (17.5x over 0.17.0)

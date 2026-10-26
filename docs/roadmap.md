@@ -1,5 +1,24 @@
 # Roadmap
 
+## Milestone BH — the stray-token seam closed: nothing received is silently dropped ✅ (v0.37.0)
+
+- **Named-lead probes (§61.1)**: the artifact owner's other GitHub
+  repositories (all Blockman-GO-domain, zero SPHE leads) and the
+  Team-Proton/linux-sunplus-15xx source (frozen 2016-05-13) — zero
+  leads both ways; surveys stay closed (§51.2).
+- **The seam (§61.2)**: the positional sibling of BG's cross-flag
+  seam — `inspect fw -v` and `run fw junk` were live-demonstrated
+  exiting 0 while silently dropping the extra tokens (`inspect` never
+  looked past its path; `run`/`trace`/`map` read only the first
+  leftover positional).
+- **The fix (§61.3)**: `ArgsError::UnexpectedArgument` — "error:
+  unexpected argument `X`", exit 1, stdout empty (rejection precedes
+  load/boot/execution). Four tests (stray flag + second path on
+  `inspect`; second positional on each of `run`/`trace`/`map`).
+  Suite 191 → 195 (debug and release). Boot pins unchanged; blocker
+  stays hardware-gated (§51.2).
+
+
 ## Milestone BG — the cross-flag seam closed: every accepted flag has an observable effect ✅ (v0.36.0)
 
 - **The seam (§60.1)**: `run`/`trace` share one option parser, so three

@@ -24,6 +24,9 @@
 //!   one subcommand is rejected on the other (`run --limit`,
 //!   `trace --trace-tail`, `trace --dump`) — exit 1, no execution, the
 //!   shared run/trace parser no longer silently drops such flags
+//! - stray tokens (Milestone BH, §61): anything a subcommand does not
+//!   implement is rejected, not silently dropped — a second positional
+//!   path on run/trace/map, any token after the path on `inspect`
 //!
 //! The two real-firmware runs reuse the boot chain the acceptance tests
 //! already execute; both are bounded and deterministic (same pins as
@@ -218,6 +221,93 @@ fn trace_rejects_the_run_only_dump_flag() {
     assert!(
         o.stderr
             .contains("error: option `--dump` is not valid for `trace`"),
+        "stderr: {}",
+        o.stderr
+    );
+    assert!(
+        o.stdout.is_empty(),
+        "rejection must precede execution, stdout: {:?}",
+        o.stdout
+    );
+}
+
+#[test]
+fn inspect_rejects_stray_tokens() {
+    let fw = firmware_path();
+    let fw = fw.to_str().unwrap();
+    // Milestone BH (§61): `inspect` takes exactly one positional and no
+    // flags — a stray flag or a second path used to be silently ignored
+    // while the report printed as if nothing had happened.
+    for extra in ["-v", "second.bin"] {
+        let o = run(&["inspect", fw, extra]);
+        assert_eq!(
+            o.code, 1,
+            "extra: {extra}\nstdout: {}\nstderr: {}",
+            o.stdout, o.stderr
+        );
+        assert!(
+            o.stderr
+                .contains(&format!("error: unexpected argument `{extra}`")),
+            "extra: {extra}\nstderr: {}",
+            o.stderr
+        );
+        assert!(
+            o.stdout.is_empty(),
+            "rejection must precede the report, extra: {extra}, stdout: {:?}",
+            o.stdout
+        );
+    }
+}
+
+#[test]
+fn run_rejects_a_second_positional() {
+    let fw = firmware_path();
+    let fw = fw.to_str().unwrap();
+    // Milestone BH (§61): extra positionals beyond the firmware path were
+    // silently dropped — the run executed as if they were not there.
+    let o = run(&["run", fw, "--max-steps", "40", "junk_positional"]);
+    assert_eq!(o.code, 1, "stdout: {}\nstderr: {}", o.stdout, o.stderr);
+    assert!(
+        o.stderr
+            .contains("error: unexpected argument `junk_positional`"),
+        "stderr: {}",
+        o.stderr
+    );
+    assert!(
+        o.stdout.is_empty(),
+        "rejection must precede execution, stdout: {:?}",
+        o.stdout
+    );
+}
+
+#[test]
+fn trace_rejects_a_second_positional() {
+    let fw = firmware_path();
+    let fw = fw.to_str().unwrap();
+    let o = run(&["trace", fw, "--max-steps", "40", "junk_positional"]);
+    assert_eq!(o.code, 1, "stdout: {}\nstderr: {}", o.stdout, o.stderr);
+    assert!(
+        o.stderr
+            .contains("error: unexpected argument `junk_positional`"),
+        "stderr: {}",
+        o.stderr
+    );
+    assert!(
+        o.stdout.is_empty(),
+        "rejection must precede execution, stdout: {:?}",
+        o.stdout
+    );
+}
+
+#[test]
+fn map_rejects_a_second_positional() {
+    let fw = firmware_path();
+    let fw = fw.to_str().unwrap();
+    let o = run(&["map", fw, "junk_positional"]);
+    assert_eq!(o.code, 1, "stdout: {}\nstderr: {}", o.stdout, o.stderr);
+    assert!(
+        o.stderr
+            .contains("error: unexpected argument `junk_positional`"),
         "stderr: {}",
         o.stderr
     );
