@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.37.17 — Milestone BY: pure verification round (§78)
+
+- Zero-finding round recorded for chain continuity: claims
+  fresh-verified, CI of e6a6968 success, 198 tests, all gates
+  clean, zero diff. Third recurring sandbox snapshot rollback —
+  recovery is now a fixed-cost routine (§68.2, §76.1, §77.1).
+  No code changes.
+
 ## 0.37.16 — Milestone BX: pure verification round (§77)
 
 - Zero-finding round recorded for chain continuity: claims
