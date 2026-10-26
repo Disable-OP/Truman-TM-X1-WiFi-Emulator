@@ -5189,3 +5189,53 @@ warnings, xref audit clean. Boot pins unchanged (handoff jr v0 at
 0xcd8d03bf). The blocker stays hardware-gated exactly as registered
 (§51.2): P1, P2/P2b/P2c, P3 — the real-device session per
 docs/hardware-session.md.
+
+## 67. Milestone BN — verification round: the source repository's community surface and ref-graph bounded; claims re-verified fresh (research + verification, v0.37.6)
+
+### 67.1 Three bounded probes on the task's own source repository
+
+The named-lead probing discipline (the §51.2 reopening condition) turns
+this round to the one surface never enumerated: the upstream source
+repository's own social surface and ref-graph, re-checked live through
+the REST API and transport-level `git ls-remote` respectively.
+
+- **Issues and pull requests (API, state=all)**: zero issues and zero
+  pull requests have ever been filed. No community hardware captures
+  exist upstream; the P1 unlock (docs/hardware-session.md) cannot
+  arrive through the repository's social surface today.
+- **Ref-graph (transport-level `ls-remote`)**: the remote advertises
+  exactly one ref — the main branch at c68dc69 — with zero tags and
+  zero side branches. The local clone is therefore provably complete:
+  nothing exists on the remote outside the audited lineage, and the
+  six-milestone chain (BI through BM) is the repository's entire
+  recorded life at this branch.
+- **Archived-repo freshness (cross-check, deliberately not re-sampled)**:
+  Team-Proton frozen at its 2016-05-13 last commit (§61.1) and vicyap
+  pinned at 5682442 with zero drift (§66.1) remain the recorded
+  freshness state; this round re-downloads nothing, per the §65.1
+  discipline note that re-fetching archived corpora produces
+  rediscoveries, not evidence.
+
+Verdict: zero leads on all three surfaces; the §51.2 closure survives
+its fifth independent named-lead probe. The blocker stays
+hardware-gated (P1 per docs/hardware-session.md).
+
+### 67.2 Claims and gates re-verified in a fresh sandbox
+
+`claims_audit.py` end-to-end on this session's rebuilt environment
+(rustc 1.99.1 reinstalled from the official installer after the sandbox
+rollback): boot chain stops at exactly **1,301,783** steps on
+0xa1600050, exit 2; banner sample **19/19 in order**; bench
+**25.46 M instr/s** — inside the restated 24–26 band (fifth
+consecutive in-band fresh-sandbox measurement: 25.72, 25.55, 25.66,
+24.26-under-load, 25.46). CI status of c68dc69 (BM) verified
+`completed, success` via the runs API — the verify-the-predecessor
+chain stays unbroken, every pushed round's CI now confirmed green by
+its successor.
+
+Result: 198 tests (debug and release), fmt clean, clippy zero
+warnings, check --all-targets clean, xref audit clean. Boot pins
+unchanged (handoff jr v0 at 1,301,763; trap 0xa1600050 at 1,301,783,
+exit 2; fingerprint 0xcd8d03bf). The blocker stays hardware-gated
+exactly as registered (§51.2): P1, P2/P2b/P2c, P3 — the real-device
+session per docs/hardware-session.md.

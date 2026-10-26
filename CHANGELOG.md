@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.37.6 — Milestone BN: verification round (research + verification, §67)
+
+- The task's own source repository bounded: zero issues and zero PRs
+  ever; the ref-graph is exactly one ref (no tags, no side branches)
+  — the clone is provably complete. No code changes.
+- Claims re-verified in a fresh sandbox: boot pin 1,301,783 / trap /
+  exit 2, banner 19/19, bench 25.46 in the 24–26 band; CI of c68dc69
+  success.
+
 ## 0.37.5 — Milestone BM: verification round (research + verification, §66)
 
 - Named-lead probes: the `xav-ax100` ecosystem fully enumerated (3

@@ -1,5 +1,20 @@
 # Roadmap
 
+## Milestone BN — verification round: the source repository's community surface and ref-graph bounded; claims fresh-verified ✅ (v0.37.6)
+
+- **Three bounded probes (§67.1)**: upstream issues/PRs = 0/0 ever
+  (no community hardware captures; the P1 unlock cannot arrive via
+  the social surface); transport-level ref-graph = exactly one ref,
+  zero tags/branches (the clone is provably complete); archived-repo
+  freshness stays as recorded (§61.1, §66.1 — no re-sampling per the
+  §65.1 discipline note). Zero leads; §51.2 closure survives its
+  fifth named-lead probe.
+- **Claims re-verified fresh (§67.2)**: 1,301,783/trap/exit 2 PASS,
+  banner 19/19, bench 25.46 inside 24–26 (fifth consecutive in-band
+  fresh-sandbox measurement); CI of c68dc69 completed/success
+  (verify-the-predecessor chain unbroken). Boot pins unchanged;
+  blocker stays hardware-gated (§51.2).
+
 ## Milestone BM — verification round: the sibling-product community bounded; claims fresh-verified ✅ (v0.37.5)
 
 - **Two new named-lead repos probed (§66.1)**: `xav-ax100` search
