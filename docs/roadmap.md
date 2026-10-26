@@ -1,5 +1,15 @@
 # Roadmap
 
+## Milestone BS — pure verification round: zero findings, chain green ✅ (v0.37.11)
+
+- **No new evidence class appeared; round honestly empty (§72.1)**:
+  zero-diff against origin/main, claims fresh-verified
+  (1,301,783/trap/exit 2, banner 19/19, bench 25.86 in 24–26 —
+  tenth consecutive in-band), CI of 22b143b completed/success, 198
+  tests debug and release, all gates clean. Boot pins unchanged;
+  blocker stays hardware-gated (§51.2); §32 holds its two named
+  candidates for the owner.
+
 ## Milestone BR — the Wayback bound completed to the limit of reachable tooling ✅ (v0.37.10)
 
 - **Bound completed (§71.1)**: web.archive.org is host-level

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.37.11 — Milestone BS: pure verification round (§72)
+
+- Zero-finding round recorded for chain continuity: claims
+  fresh-verified, CI of 22b143b success, 198 tests, all gates
+  clean, zero diff. No code changes.
+
 ## 0.37.10 — Milestone BR: verification round (research + verification, §71)
 
 - The §69.1 Wayback bound completed: host-level connection failure
