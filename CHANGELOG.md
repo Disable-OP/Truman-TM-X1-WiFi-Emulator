@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.37.20 — Milestone CB: pure verification round (§81)
+
+- Zero-finding round recorded for chain continuity: claims
+  fresh-verified, CI of 9fa0ddb success, 198 tests, all gates
+  clean, zero diff. Sixth routine snapshot-rollback recovery.
+  No code changes.
+
 ## 0.37.19 — Milestone CA: pure verification round (§80)
 
 - Zero-finding round recorded for chain continuity: claims

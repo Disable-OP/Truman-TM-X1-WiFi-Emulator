@@ -1,5 +1,16 @@
 # Roadmap
 
+## Milestone CB — pure verification round: zero findings, chain green ✅ (v0.37.20)
+
+- **No new evidence class; round honestly empty (§81.1)**:
+  zero-diff against origin/main after a sixth routine snapshot
+  rollback recovery, claims fresh-verified (1,301,783/trap/
+  exit 2, banner 19/19, bench 24.84 in 24–26 — nineteenth
+  consecutive in-band), CI of 9fa0ddb completed/success, 198
+  tests debug and release, all gates clean. Boot pins unchanged;
+  blocker stays hardware-gated (§51.2); §32 holds its two named
+  candidates for the owner.
+
 ## Milestone CA — pure verification round: zero findings, chain green ✅ (v0.37.19)
 
 - **No new evidence class; round honestly empty (§80.1)**:
