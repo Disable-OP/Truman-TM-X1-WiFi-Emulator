@@ -1,5 +1,27 @@
 # Roadmap
 
+## Milestone BG — the cross-flag seam closed: every accepted flag has an observable effect ✅ (v0.36.0)
+
+- **The seam (§60.1)**: `run`/`trace` share one option parser, so three
+  recognized flags were silently dropped on the other subcommand
+  (`run --limit`, `trace --trace-tail`, `trace --dump`) — parsed into
+  fields the command never reads. A silently-accepted flag is a
+  misreport vector, the same family as §56/§59; none of the three has
+  a meaningful cross-subcommand semantics, so the honest fix is
+  rejection.
+- **The fix (§60.2)**: `ArgsError::WrongCommand` — "error: option
+  `--limit` is not valid for `run`", exit 1, stdout empty (rejection
+  precedes load/boot/execution). Usage inventory completed: `--dump
+  PHYS,LEN,PATH` now listed for `run`, and the `--verbose` long form
+  documented (`-v, --verbose`).
+- **Five contracts (§60.3)**: the three rejections pinned (exact
+  message, empty stdout), duplicate flags pinned last-wins
+  (`--max-steps 40 --max-steps 60` executes 60), `-v` vs `--verbose`
+  pinned byte-identical on the 5-step window; `cli_surface` now pins
+  `dump`/`verbose` in the usage inventory. Suite 186 → 191 (debug and
+  release). Boot pins unchanged; blocker stays hardware-gated (§51.2).
+
+
 ## Milestone BF — the README claims re-verified through the tracer refactor; the last map flag contracts pinned ✅ (v0.35.4)
 
 - **Claims re-measured (§59.2)**: boot chain exactly 1,301,783 steps

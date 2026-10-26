@@ -2,7 +2,8 @@
 //!
 //! Subcommands:
 //! - `inspect <firmware>` — identify and validate the image, print findings
-//! - `run <firmware> [--max-steps N] [--trace-tail N] [-v]` — boot and execute
+//! - `run <firmware> [--max-steps N] [--trace-tail N] [--dump PHYS,LEN,PATH]
+//!   [-v]` — boot and execute
 //! - `trace <firmware> [--max-steps N] [--limit N] [-v]` — boot and print a
 //!   per-instruction trace of the first N steps
 //! - `map <firmware> [--pre-steps N] [--post-steps N] [--head N]
@@ -29,19 +30,20 @@ fn usage() -> String {
          \n\
          USAGE:\n\
          \x20 truman-emulator inspect <firmware-path>\n\
-         \x20 truman-emulator run <firmware-path> [--max-steps N] [--trace-tail N] [-v]\n\
+         \x20 truman-emulator run <firmware-path> [--max-steps N] [--trace-tail N] [--dump PHYS,LEN,PATH] [-v]\n\
          \x20 truman-emulator trace <firmware-path> [--max-steps N] [--limit N] [-v]\n\
          \x20 truman-emulator map <firmware-path> [--pre-steps N] [--post-steps N] [--head N] [--value-tables FILE]\n\
          \n\
          OPTIONS:\n\
          \x20 --max-steps N   instruction budget (default: run = 1_000_000, trace = 1_000)\n\
-         \x20 --trace-tail N  print last N traced instructions on stop (default 24)\n\
-         \x20 --limit N       print first N traced instructions (default 100)\n\
+         \x20 --trace-tail N  run: print last N traced instructions on stop (default 24)\n\
+         \x20 --limit N       trace: print first N traced instructions (default 100)\n\
+         \x20 --dump P,L,PATH run: write LEN bytes at physical PHYS to PATH (§57)\n\
          \x20 --pre-steps N   map: budget for booting to the handoff (default 2_000_000)\n\
          \x20 --post-steps N  map: post-handoff execution budget (default 1_000_000)\n\
          \x20 --head N        map: trace the first N post-handoff instructions (default 64)\n\
          \x20 --value-tables F  map: engine value ladder from a file (§35; default RFC)\n\
-         \x20 -v              verbose diagnostics"
+         \x20 -v, --verbose   verbose diagnostics"
     )
 }
 
@@ -53,6 +55,10 @@ enum ArgsError {
     BadOption(String),
     /// The option is recognized but its value/spec is malformed.
     BadValue(String),
+    /// A recognized option used on a subcommand that does not implement
+    /// it (e.g. `--limit` on `run`). Rejected loudly — every accepted
+    /// flag must have an observable effect (Milestone BG, §60).
+    WrongCommand(String, String),
     MissingValue(String),
     /// An I/O or content failure on user-supplied input (file missing,
     /// unparseable). Reported as-is — the value was present, so no
@@ -88,6 +94,10 @@ fn main() -> ExitCode {
         }
         Err(ArgsError::BadValue(o)) => {
             eprintln!("error: option `{o}` requires a valid value");
+            ExitCode::from(1)
+        }
+        Err(ArgsError::WrongCommand(opt, cmd)) => {
+            eprintln!("error: option `{opt}` is not valid for `{cmd}`");
             ExitCode::from(1)
         }
         Err(ArgsError::MissingValue(o)) => {
@@ -156,6 +166,19 @@ fn cmd_inspect(args: &[String]) -> Result<ExitCode, ArgsError> {
     Ok(ExitCode::from(0))
 }
 
+/// A flag implemented for exactly one subcommand is rejected — not
+/// silently ignored — when it appears on another one. Before Milestone BG
+/// the shared run/trace parser accepted `run --limit`, `trace
+/// --trace-tail` and `trace --dump` and dropped them on the floor; every
+/// accepted flag must have an observable effect (§60).
+fn reject_cross_flag(cmd: &str, owner: &str, flag: &str) -> Result<(), ArgsError> {
+    if cmd == owner {
+        Ok(())
+    } else {
+        Err(ArgsError::WrongCommand(flag.to_string(), cmd.to_string()))
+    }
+}
+
 struct RunOptions {
     max_steps: u64,
     trace_tail: usize,
@@ -168,6 +191,7 @@ struct RunOptions {
 fn parse_run_options(
     args: &[String],
     default_steps: u64,
+    cmd: &str,
 ) -> Result<(RunOptions, Vec<String>), ArgsError> {
     let mut opts = RunOptions {
         max_steps: default_steps,
@@ -190,6 +214,7 @@ fn parse_run_options(
                 i += 2;
             }
             "--trace-tail" => {
+                reject_cross_flag(cmd, "run", "--trace-tail")?;
                 let v = args
                     .get(i + 1)
                     .ok_or_else(|| ArgsError::MissingValue("--trace-tail".into()))?;
@@ -199,6 +224,7 @@ fn parse_run_options(
                 i += 2;
             }
             "--limit" => {
+                reject_cross_flag(cmd, "trace", "--limit")?;
                 let v = args
                     .get(i + 1)
                     .ok_or_else(|| ArgsError::MissingValue("--limit".into()))?;
@@ -212,6 +238,7 @@ fn parse_run_options(
                 i += 1;
             }
             "--dump" => {
+                reject_cross_flag(cmd, "run", "--dump")?;
                 // Format: phys,len,path (hex numbers, decimal path bytes).
                 let spec = args
                     .get(i + 1)
@@ -281,7 +308,7 @@ fn print_touchmap(result: &truman_emulator::machine::RunResult) {
 }
 
 fn cmd_run(args: &[String]) -> Result<ExitCode, ArgsError> {
-    let (opts, rest) = parse_run_options(args, 1_000_000)?;
+    let (opts, rest) = parse_run_options(args, 1_000_000, "run")?;
     let path = parse_path_arg(&rest, "run")?;
     let (img, id) = match load_and_identify(&path) {
         Ok(v) => v,
@@ -389,7 +416,7 @@ fn print_step(r: &cpu::StepReport) {
 }
 
 fn cmd_trace(args: &[String]) -> Result<ExitCode, ArgsError> {
-    let (opts, rest) = parse_run_options(args, 1_000)?;
+    let (opts, rest) = parse_run_options(args, 1_000, "trace")?;
     let path = parse_path_arg(&rest, "trace")?;
     let (img, _id) = match load_and_identify(&path) {
         Ok(v) => v,

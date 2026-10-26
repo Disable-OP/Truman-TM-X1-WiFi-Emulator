@@ -20,6 +20,10 @@
 //!   exit 0: a budget stop is a *successful bounded run*
 //! - CPU-fault stop on the real firmware (--max-steps past the handoff
 //!   trap) → exit 2: the trap is a *failure*, deterministically
+//! - cross-flag use (Milestone BG, §60): a flag implemented for exactly
+//!   one subcommand is rejected on the other (`run --limit`,
+//!   `trace --trace-tail`, `trace --dump`) — exit 1, no execution, the
+//!   shared run/trace parser no longer silently drops such flags
 //!
 //! The two real-firmware runs reuse the boot chain the acceptance tests
 //! already execute; both are bounded and deterministic (same pins as
@@ -159,6 +163,67 @@ fn cpu_fault_at_the_trap_is_exit_2() {
     assert!(
         o.stdout.contains("1301783"),
         "the stop report must carry the step count: {}",
+        o.stdout
+    );
+}
+
+#[test]
+fn run_rejects_the_trace_only_limit_flag() {
+    let fw = firmware_path();
+    let fw = fw.to_str().unwrap();
+    // Milestone BG (§60): the shared run/trace parser used to accept
+    // `run --limit` and silently drop it. Every accepted flag must have
+    // an observable effect; cross-flag use is rejected before anything
+    // executes (no boot diagnostics on stdout, exit 1).
+    let o = run(&["run", fw, "--limit", "10"]);
+    assert_eq!(o.code, 1, "stdout: {}\nstderr: {}", o.stdout, o.stderr);
+    assert!(
+        o.stderr
+            .contains("error: option `--limit` is not valid for `run`"),
+        "stderr: {}",
+        o.stderr
+    );
+    assert!(
+        o.stdout.is_empty(),
+        "rejection must precede execution, stdout: {:?}",
+        o.stdout
+    );
+}
+
+#[test]
+fn trace_rejects_the_run_only_trace_tail_flag() {
+    let fw = firmware_path();
+    let fw = fw.to_str().unwrap();
+    let o = run(&["trace", fw, "--trace-tail", "5"]);
+    assert_eq!(o.code, 1, "stdout: {}\nstderr: {}", o.stdout, o.stderr);
+    assert!(
+        o.stderr
+            .contains("error: option `--trace-tail` is not valid for `trace`"),
+        "stderr: {}",
+        o.stderr
+    );
+    assert!(
+        o.stdout.is_empty(),
+        "rejection must precede execution, stdout: {:?}",
+        o.stdout
+    );
+}
+
+#[test]
+fn trace_rejects_the_run_only_dump_flag() {
+    let fw = firmware_path();
+    let fw = fw.to_str().unwrap();
+    let o = run(&["trace", fw, "--dump", "0x1fc00000,0x4,window.bin"]);
+    assert_eq!(o.code, 1, "stdout: {}\nstderr: {}", o.stdout, o.stderr);
+    assert!(
+        o.stderr
+            .contains("error: option `--dump` is not valid for `trace`"),
+        "stderr: {}",
+        o.stderr
+    );
+    assert!(
+        o.stdout.is_empty(),
+        "rejection must precede execution, stdout: {:?}",
         o.stdout
     );
 }

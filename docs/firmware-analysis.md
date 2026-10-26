@@ -4776,3 +4776,64 @@ Result: the suite grows 183 → **186** (debug and release), fmt clean,
 clippy zero warnings, boot pins unchanged. The blocker stays
 hardware-gated exactly as registered (§51.2): P1, P2/P2b/P2c, P3 — the
 real-device session per docs/hardware-session.md.
+
+## 60. Milestone BG — the cross-flag seam closed: every accepted flag now has an observable effect (hardening, v0.36.0)
+
+### 60.1 The seam: silently ignored cross-flag combinations
+
+A flag×subcommand matrix audit of the CLI (the four contract suites
+AZ/BB/BC/BD pin each flag on its *own* subcommand, but never the wrong
+pairing) found that `run` and `trace` share one option parser
+(`parse_run_options`), and three recognized flags landed in fields the
+other command never reads:
+
+- `run <file> --limit N` — parsed, stored, **never read** by `run`
+  (only `trace` prints a first-N head); silently ignored.
+- `trace <file> --trace-tail N` — parsed, **never read** by `trace`
+  (only `run` prints a last-N tail); silently ignored.
+- `trace <file> --dump PHYS,LEN,PATH` — parsed, **never read** by
+  `trace` (the post-run dump loop is `run`-only); silently ignored.
+
+A silently-accepted flag is a misreport vector in the same family as
+the §56 head-honesty defect and §59's contradictory `--value-tables`
+report: the user believes an effect took place. None of the three
+combinations has a meaningful semantics to *implement* instead (`run`
+has no head block to cap; `trace` already prints its full head, so a
+tail would duplicate it; a `trace`-side dump loop would be a second
+seam without a use), so the honest fix is rejection.
+
+### 60.2 The fix: per-subcommand option validation
+
+- New `ArgsError::WrongCommand(option, command)` variant: a recognized
+  flag used on a subcommand that does not implement it now fails with
+  `error: option `--limit` is not valid for `run`` — exit 1, no usage
+  reprint, and (pinned) **stdout stays empty**: the rejection happens
+  in the parser, before any load/boot/execution.
+- `parse_run_options` takes the invoking subcommand and guards the
+  three owner-only flags via one helper; `run` and `trace` pass their
+  names. The `map` parser is separate and unaffected (unknown flags
+  there were already `BadOption`).
+- Usage inventory completed (discoverability is part of the same
+  seam): `--dump PHYS,LEN,PATH` is now listed on the `run` line and in
+  OPTIONS ("run: write LEN bytes at physical PHYS to PATH"), and the
+  OPTIONS entry documents the `--verbose` long form (`-v, --verbose`)
+  that the parser always accepted but `--help` never showed.
+
+### 60.3 The contracts (five tests, suite 186 → 191)
+
+`tests/cli_errors.rs` (+3): `run --limit 10`, `trace --trace-tail 5`
+and `trace --dump …` each exit 1 with the exact "is not valid for"
+message and an empty stdout. `tests/cli_success.rs` (+2): the parser's
+duplicate-flag policy is pinned as **last-wins** (`--max-steps 40
+--max-steps 60` executes 60, reported in both the budget line and the
+stop line), and `run -v` vs `run --verbose` must produce
+**byte-identical** reports on the deterministic 5-step window
+(including the three `firmware:` notes). The `cli_surface` drift guard
+now pins `dump` and `verbose` in the usage flag inventory, and its
+short-flag collector tolerates the `-v, --verbose` punctuation. The
+README documents `--dump` with a runnable example.
+
+Result: fmt clean, clippy zero warnings, boot pins unchanged (chain to
+trap 1,301,783, trap 0xa1600050, fingerprint 0xcd8d03bf). The blocker
+stays hardware-gated exactly as registered (§51.2): P1, P2/P2b/P2c, P3
+— the real-device session per docs/hardware-session.md.

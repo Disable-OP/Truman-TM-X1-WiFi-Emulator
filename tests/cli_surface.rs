@@ -50,25 +50,34 @@ fn usage_flags(usage: &str) -> BTreeSet<String> {
         .collect()
 }
 
-/// Every `-x` short flag in the usage text.
+/// Every `-x` short flag in the usage text. Trailing punctuation is
+/// tolerated so the OPTIONS line may list the long form alongside the
+/// short form (`-v, --verbose`, Milestone BG).
 fn usage_shorts(usage: &str) -> BTreeSet<String> {
     usage
         .split_whitespace()
-        .filter(|t| {
-            t.len() == 2
+        .filter_map(|t| {
+            let t = t.trim_end_matches(|c: char| !c.is_ascii_alphanumeric() && c != '-');
+            if t.len() == 2
                 && t.starts_with('-')
                 && !t.starts_with("--")
                 && t.chars().nth(1).is_some_and(|c| c.is_ascii_alphabetic())
+            {
+                Some(t[1..].to_string())
+            } else {
+                None
+            }
         })
-        .map(|t| t[1..].to_string())
         .collect()
 }
 
 const SUBCOMMANDS: [&str; 4] = ["inspect", "run", "trace", "map"];
-const USAGE_FLAGS_PIN: [&str; 7] = [
+const USAGE_FLAGS_PIN: [&str; 9] = [
     "max-steps",
     "trace-tail",
     "limit",
+    "dump",
+    "verbose",
     "pre-steps",
     "post-steps",
     "head",

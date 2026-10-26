@@ -19,6 +19,8 @@
 //! - `run` (1000 steps): the boot diagnostics, the stop report, the final
 //!   pc pin, the UART banner content, the uart window's access line, the
 //!   default 24-instruction tail block and the register footer.
+//! - `run` flag policies (Milestone BG, §60): duplicate numeric flags are
+//!   last-wins, and `--verbose` is a byte-identical long form of `-v`.
 
 use std::process::Command;
 
@@ -301,5 +303,59 @@ fn run_trace_tail_honors_an_explicit_count() {
         !o.stdout.contains("-- last"),
         "no tail block when 0: {}",
         o.stdout
+    );
+}
+
+#[test]
+fn duplicate_flags_are_last_wins() {
+    let fw = firmware_path();
+    let fw = fw.to_str().unwrap();
+    // Milestone BG (§60): the parser's duplicate-flag policy is last-wins,
+    // pinned so it cannot flip silently. Both budgets are below the
+    // handoff, so the run stops on the budget and exits 0.
+    let o = run(&["run", fw, "--max-steps", "40", "--max-steps", "60"]);
+    assert_eq!(o.code, 0, "stdout: {}\nstderr: {}", o.stdout, o.stderr);
+    assert!(
+        o.stdout.contains("run: executing up to 60 steps"),
+        "the effective budget must be the last value: {}",
+        o.stdout
+    );
+    assert!(
+        !o.stdout.contains("up to 40"),
+        "the earlier duplicate must not win: {}",
+        o.stdout
+    );
+    assert!(
+        o.stdout.contains("stopped after 60 steps"),
+        "the executed count must match the last value: {}",
+        o.stdout
+    );
+}
+
+#[test]
+fn verbose_long_form_is_identical_to_the_short_form() {
+    let fw = firmware_path();
+    let fw = fw.to_str().unwrap();
+    // Milestone BG (§60): `--verbose` is the documented long form of `-v`
+    // (now listed in the usage OPTIONS block). Both must produce
+    // byte-identical reports on the deterministic 5-step window, including
+    // the three `firmware:` identification notes.
+    let short = run(&["run", fw, "--max-steps", "5", "-v"]);
+    let long = run(&["run", fw, "--max-steps", "5", "--verbose"]);
+    assert_eq!(short.code, 0, "stdout: {}", short.stdout);
+    assert_eq!(long.code, 0, "stdout: {}", long.stdout);
+    assert_eq!(
+        short.stdout, long.stdout,
+        "-v and --verbose must be indistinguishable"
+    );
+    let notes = short
+        .stdout
+        .lines()
+        .filter(|l| l.starts_with("firmware: "))
+        .count();
+    assert_eq!(
+        notes, 3,
+        "the three identification notes must lead: {}",
+        short.stdout
     );
 }

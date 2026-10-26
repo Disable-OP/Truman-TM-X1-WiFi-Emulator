@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.36.0 — Milestone BG: the cross-flag seam closed (hardening, §60)
+
+### Changed
+- **Breaking (CLI)**: a flag implemented for exactly one subcommand is
+  now rejected on the other. The shared run/trace parser used to
+  accept `run --limit`, `trace --trace-tail` and `trace --dump` and
+  silently ignore them; each now fails with
+  "error: option `…` is not valid for `…`" (exit 1, stdout empty,
+  nothing executes). Every accepted flag must have an observable
+  effect.
+- Duplicate numeric flags are pinned as last-wins (previous behavior,
+  now a contract, not an accident).
+
+### Added
+- `ArgsError::WrongCommand` variant; `--dump PHYS,LEN,PATH` and the
+  `--verbose` long form are now documented in `--help` (the parser
+  always accepted `--verbose`; the usage text never showed it).
+- Five tests: three cross-flag rejections (exact message, empty
+  stdout), the last-wins policy, `-v` ≡ `--verbose` (byte-identical
+  reports). `cli_surface` pins `dump`/`verbose` in the usage flag
+  inventory; README gains a `--dump` example. Tests 186 → 191 (debug
+  and release).
+
 ## 0.35.4 — Milestone BF: claims re-verified through the tracer refactor; the last map flag contracts pinned (§59)
 
 ### Fixed
