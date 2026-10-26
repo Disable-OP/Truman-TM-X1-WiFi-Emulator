@@ -200,3 +200,78 @@ fn verbose_flag_prints_the_identification_notes() {
         o.stdout
     );
 }
+
+#[test]
+fn map_head_honors_an_explicit_count() {
+    let fw = firmware_path();
+    let fw = fw.to_str().unwrap();
+    // BD pinned the default head (64 → all 20 post steps); an explicit
+    // smaller head caps the printed window likewise.
+    let o = run(&["map", fw, "--post-steps", "2000", "--head", "10"]);
+    assert_eq!(o.code, 2);
+    let ls = lines(&o.stdout);
+    assert!(
+        ls.contains(&"-- first 10 post-handoff instructions --"),
+        "{ls:?}"
+    );
+    let head = section(
+        &ls,
+        "-- first 10 post-handoff instructions --",
+        "-- executed pages (4 KiB, top) --",
+    );
+    assert_eq!(head.len(), 10, "head: {}", head.len());
+    assert_eq!(
+        head[0].trim_start(),
+        "pc=0xa1600000  00008160  special(0x20)"
+    );
+}
+
+#[test]
+fn value_tables_missing_file_is_a_clean_io_error() {
+    let fw = firmware_path();
+    let fw = fw.to_str().unwrap();
+    // §59 fix pin: a missing file is an I/O error — the value was
+    // present, so the old contradictory double report ("cannot read…"
+    // then "requires a value" + usage reprint) must stay gone.
+    let o = run(&["map", fw, "--value-tables", "/nonexistent/tables.bin"]);
+    assert_eq!(o.code, 1, "stdout: {}\nstderr: {}", o.stdout, o.stderr);
+    assert!(
+        o.stderr
+            .contains("error: cannot read value tables /nonexistent/tables.bin:"),
+        "stderr: {}",
+        o.stderr
+    );
+    assert!(
+        !o.stderr.contains("requires a value"),
+        "no contradiction: {}",
+        o.stderr
+    );
+    assert!(
+        !o.stderr.contains("USAGE"),
+        "no usage reprint: {}",
+        o.stderr
+    );
+    assert!(!o.stderr.contains("panicked"));
+}
+
+#[test]
+fn value_tables_junk_file_is_rejected_by_content() {
+    let fw = firmware_path();
+    let fw = fw.to_str().unwrap();
+    // A present-but-unparseable file is a content rejection (exit 1,
+    // the parser's message, no panic) — the same gate the library
+    // tests pin, now end-to-end through the CLI.
+    let dir = std::env::temp_dir();
+    let path = dir.join(format!("truman-bf-junk-{}.bin", std::process::id()));
+    std::fs::write(&path, b"not a value ladder").expect("write junk");
+    let path = path.to_str().unwrap().to_string();
+    let o = run(&["map", fw, "--value-tables", &path]);
+    assert_eq!(o.code, 1, "stdout: {}\nstderr: {}", o.stdout, o.stderr);
+    assert!(
+        o.stderr.contains(&format!("error: value tables {path}:")),
+        "stderr: {}",
+        o.stderr
+    );
+    assert!(!o.stderr.contains("panicked"));
+    std::fs::remove_file(&path).ok();
+}

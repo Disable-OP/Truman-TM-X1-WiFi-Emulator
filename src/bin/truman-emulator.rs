@@ -54,6 +54,10 @@ enum ArgsError {
     /// The option is recognized but its value/spec is malformed.
     BadValue(String),
     MissingValue(String),
+    /// An I/O or content failure on user-supplied input (file missing,
+    /// unparseable). Reported as-is — the value was present, so no
+    /// usage reprint and no "requires a value" contradiction.
+    Io(String),
 }
 
 fn parse_path_arg(args: &[String], cmd: &str) -> Result<PathBuf, ArgsError> {
@@ -88,6 +92,10 @@ fn main() -> ExitCode {
         }
         Err(ArgsError::MissingValue(o)) => {
             eprintln!("error: option `{o}` requires a value\n\n{}", usage());
+            ExitCode::from(1)
+        }
+        Err(ArgsError::Io(msg)) => {
+            eprintln!("error: {msg}");
             ExitCode::from(1)
         }
     }
@@ -505,13 +513,13 @@ fn cmd_map(args: &[String]) -> Result<ExitCode, ArgsError> {
     let mut config = MachineConfig::default();
     if let Some(vt_path) = &opts.value_tables {
         let raw = std::fs::read(vt_path).map_err(|e| {
-            eprintln!("error: cannot read value tables {}: {e}", vt_path.display());
-            ArgsError::MissingValue("--value-tables".into())
+            ArgsError::Io(format!(
+                "cannot read value tables {}: {e}",
+                vt_path.display()
+            ))
         })?;
-        let tables = truman_emulator::inflate::ValueTables::from_bytes(&raw).map_err(|e| {
-            eprintln!("error: value tables {}: {e}", vt_path.display());
-            ArgsError::MissingValue("--value-tables".into())
-        })?;
+        let tables = truman_emulator::inflate::ValueTables::from_bytes(&raw)
+            .map_err(|e| ArgsError::Io(format!("value tables {}: {e}", vt_path.display())))?;
         println!(
             "map: value ladder loaded from {} (non-default engine semantics, §35)",
             vt_path.display()

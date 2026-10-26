@@ -4725,3 +4725,54 @@ Result: the suite grows 179 → **183** (debug and release), fmt clean,
 clippy zero warnings, boot pins unchanged. The blocker stays
 hardware-gated exactly as registered (§51.2): P1, P2/P2b/P2c, P3 — the
 real-device session per docs/hardware-session.md.
+
+## 59. Milestone BF — the README claims re-verified through the tracer refactor; the last map flag contracts pinned (docs hygiene + hardening, v0.35.4)
+
+### 59.1 Named-lead check (surveys stay closed)
+
+Per the §51.2 reopening condition, two targeted probes were made for
+*named* artifacts — not a resampling of closed angle families: the
+GitHub repository's own ecosystem (0 forks, 0 stars, no issues/PRs,
+single branch — no community leads) and a 60-day window search for new
+SPHE1506-named documents (datasheet/service manual/schematic/dump
+tools). Result: zero leads — the only datasheet corpus remains the
+older-generation SPHE 8202A/1003A family, and the receiver-software
+blogs are the known dump corpus. The survey closure stands.
+
+### 59.2 The three README claims re-measured through the refactor
+
+Milestone BC changed the Tracer (ring → head capture) and BD/BE added
+pins after BA's fresh-sandbox verification — the README's measurable
+claims were due for a re-measurement on the current code:
+
+- **Boot chain**: exactly **1,301,783** steps to the trap
+  (pc=0xa1600050, word 0x0000ffff) — the pin holds through BC/BD/BE.
+- **Throughput**: **25.42 M instr/s** (bench example, this sandbox) —
+  inside the README's stated "25.4–25.6 across rebuilds" band; no
+  wording change needed.
+- **Banner**: every line of the README's console sample matches the
+  live output **in order** (subsequence check with the sample's `…`
+  elision honored). One refinement recorded: the device stream also
+  carries **trailing whitespace** (`Go! ` with a trailing space) —
+  the same normalization family as §54's CR note, now stated
+  explicitly.
+
+### 59.3 The last map flag contracts + one error-path fix
+
+- **`--head` explicit** (`tests/cli_diag.rs`): `--head 10` prints
+  exactly the 10-line post-handoff window (default 64 was pinned in
+  BD).
+- **One UX defect found and fixed**: a missing/unparseable
+  `--value-tables` file printed a contradictory double report —
+  "error: cannot read value tables …" followed by "error: option
+  `--value-tables` requires a value" plus a usage reprint, although
+  the value was present. A dedicated `ArgsError::Io` variant now
+  reports the I/O/content failure as-is (exit 1, no usage reprint) —
+  the same family as BB's BadValue fix. Pinned both ways: missing
+  file → the "cannot read" message, no contradiction, no panic;
+  junk file → the parser's content-rejection message, no panic.
+
+Result: the suite grows 183 → **186** (debug and release), fmt clean,
+clippy zero warnings, boot pins unchanged. The blocker stays
+hardware-gated exactly as registered (§51.2): P1, P2/P2b/P2c, P3 — the
+real-device session per docs/hardware-session.md.

@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.35.4 — Milestone BF: claims re-verified through the tracer refactor; the last map flag contracts pinned (§59)
+
+### Fixed
+- A missing/unparseable `--value-tables` file printed a contradictory
+  double report ("error: cannot read value tables …" followed by
+  "option `--value-tables` requires a value" plus a usage reprint)
+  although the value was present. The new `ArgsError::Io` variant
+  reports I/O and content failures as-is: exit 1, the real message,
+  no usage reprint.
+
+### Added
+- **`tests/cli_diag.rs`** — three pins (§59.3): the explicit `--head`
+  count on `map`; the missing-file `--value-tables` error (no
+  contradiction, no panic); the junk-file content rejection end-to-end.
+- Claims re-verified through the BC tracer refactor (§59.2): boot
+  chain 1,301,783 steps, bench 25.42 M instr/s (in the stated band),
+  README banner sample matches in order. Tests 183 → 186 (debug and
+  release).
+
 ## 0.35.3 — Milestone BE: the machine's determinism invariants pinned chain-wide (hardening, §58)
 
 ### Added

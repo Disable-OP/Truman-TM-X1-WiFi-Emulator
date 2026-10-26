@@ -1,5 +1,24 @@
 # Roadmap
 
+## Milestone BF — the README claims re-verified through the tracer refactor; the last map flag contracts pinned ✅ (v0.35.4)
+
+- **Claims re-measured (§59.2)**: boot chain exactly 1,301,783 steps
+  (pin holds through BC/BD/BE); bench 25.42 M instr/s — inside the
+  stated 25.4–25.6 band; every README banner sample line matches in
+  order (trailing-whitespace normalization now stated alongside §54's
+  CR note). Named-lead probes (§59.1): repo ecosystem and 60-day
+  SPHE1506 doc search — zero leads; surveys stay closed (§51.2).
+- **One error-path fix (§59.3)**: a missing/unparseable
+  `--value-tables` file printed a contradictory double report ("cannot
+  read…" + "requires a value" + usage); the new `ArgsError::Io`
+  variant reports it cleanly (exit 1, no usage reprint), pinned both
+  ways in `tests/cli_diag.rs` along with the explicit `--head`
+  contract. Suite 183 → 186 (debug and release).
+- **Unchanged**: boot pins (chain to trap 1,301,783, trap 0xA1600050,
+  fingerprint 0xcd8d03bf); fmt clean, clippy 0 warnings. Blocker stays
+  hardware-gated (P1, P2/P2b/P2c, P3; surveys closed per §51.2).
+
+
 ## Milestone BE — the machine's determinism invariants pinned chain-wide ✅ (v0.35.3)
 
 - **`tests/determinism.rs` (§58.2)**: full end-state equality (stop,
