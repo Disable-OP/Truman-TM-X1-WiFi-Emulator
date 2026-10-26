@@ -5357,3 +5357,67 @@ warnings, xref audit clean. Boot pins unchanged (handoff jr v0 at
 0xcd8d03bf). The blocker stays hardware-gated exactly as registered
 (§51.2): P1, P2/P2b/P2c, P3 — the real-device session per
 docs/hardware-session.md.
+
+## 70. Milestone BQ — verification round: the Internet Archive corpus completed at variant level; the §32 candidate list doubles (research + verification, v0.37.9)
+
+### 70.1 The variant sweep: six new items enumerated at metadata level
+
+BP (§69) opened the Internet Archive corpus with the canonical seed
+spellings; the receiver community, however, names boards by variant
+(1506G/1506C/1506T/1506HV). This round completes the corpus with a
+variant sweep — seven queries, metadata level only, zero payload
+bytes downloaded (the §32 constraint stands):
+
+- **`ipfox-iptv-1507-g`** (software): `IPFOX_IPTV_1507G.bin`,
+  **7,397,376 bytes** — byte-size-IDENTICAL to BP's
+  `IPFOX_IPTV_1506G.bin` candidate. Same vendor (iFox), adjacent SoC
+  variant (1507G vs 1506G), identical image size: the metadata-level
+  signature of the same container tooling. The §32 owner-decision
+  list now names **two** same-family candidates, either of which
+  could over-determine the 59 ladder constants (§30.3) were the
+  owner ever to elect the path.
+- **Three 1506T receiver packs** (Arabic-titled "receiver channel
+  file" RARs, 39.1/10.7/42.6 MB): channel-list accessory packs; one
+  is described "1506t **wifi 7601**" — the MT7601 USB-WiFi module
+  that equips the family's WiFi variants. Metadata-level context for
+  the WiFi-peripheral landscape around the 1506T boards; not
+  containers.
+- **`manualzilla-id-7204760`**: a Tatung **TLM-1506T** LCD monitor
+  manual — a model-number coincidence, bounded at metadata level
+  without a download.
+- **`montag-ipfox-gx-rom`** (software): `Montag ipfox GxRom.bin`,
+  14,791,054 bytes — "GX" naming consistent with the GX6605S
+  (Nationalchip) receiver line the twelfth survey placed in the
+  ecosystem (§49); nearly double the Sunplus images' size,
+  consistent with a different vendor's layout. Recorded with its
+  uncertainty: the SoC cannot be confirmed without a download, which
+  the constraint prohibits.
+- Incidental matches bounded: a 1990s CIA reading-room document and
+  the Unitree Go1 robot-dog archive (a "sunplus" string inside a
+  driver list) — no receiver or engine relevance.
+- `sunplus ecos` and `1506HV`: zero items — the artifact's exact
+  variant and the eCos pairing have no public archive presence.
+
+Verdict: the archive corpus is now enumerated at variant depth. Two
+named candidates stand in the §32 record; zero downloads; zero
+engine evidence claimed from metadata; the blocker stays
+hardware-gated (P1 per docs/hardware-session.md) and the
+third-party-firmware path stays closed to the project.
+
+### 70.2 Claims and gates re-verified in a fresh sandbox
+
+`claims_audit.py` end-to-end on this session's rebuilt environment:
+boot chain stops at exactly **1,301,783** steps on 0xa1600050, exit
+2; banner sample **19/19 in order**; bench **25.58 M instr/s** —
+inside the restated 24–26 band (eighth consecutive in-band
+fresh-sandbox measurement: 25.72, 25.55, 25.66, 24.26-under-load,
+25.46, 25.66, 25.86, 25.58). CI status of a0d315b (BP, the
+predecessor) verified `completed, success` — the
+verify-the-predecessor chain stays unbroken.
+
+Result: 198 tests (debug and release), fmt clean, clippy zero
+warnings, xref audit clean. Boot pins unchanged (handoff jr v0 at
+1,301,763; trap 0xa1600050 at 1,301,783, exit 2; fingerprint
+0xcd8d03bf). The blocker stays hardware-gated exactly as registered
+(§51.2): P1, P2/P2b/P2c, P3 — the real-device session per
+docs/hardware-session.md.

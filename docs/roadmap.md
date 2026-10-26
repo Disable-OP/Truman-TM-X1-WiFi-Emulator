@@ -1,5 +1,21 @@
 # Roadmap
 
+## Milestone BQ — the Internet Archive corpus completed at variant level; §32 candidate list doubles ✅ (v0.37.9)
+
+- **Variant sweep (§70.1)**: seven queries, metadata level only,
+  zero payload bytes downloaded — six new items enumerated.
+  `IPFOX_IPTV_1507G.bin` is byte-size-identical (7,397,376 B) to
+  BP's 1506G candidate: the §32 owner-decision list now names two
+  same-family candidates. Three 1506T channel packs (one "wifi
+  7601" = MT7601 USB WiFi context); Tatung TLM-1506T monitor manual
+  bounded as a model-number coincidence; Montag GX ROM (14.8 MB)
+  recorded with its GX6605S uncertainty. `1506HV` and
+  `sunplus ecos`: zero items.
+- **Claims re-verified fresh (§70.2)**: 1,301,783/trap/exit 2 PASS,
+  banner 19/19, bench 25.58 inside 24–26 (eighth consecutive
+  in-band); CI of a0d315b completed/success. Boot pins unchanged;
+  blocker stays hardware-gated (§51.2).
+
 ## Milestone BP — the Internet Archive corpus probed; §32 names its first concrete candidate ✅ (v0.37.8)
 
 - **Never-probed corpus (§69.1)**: archive.org seed searches — zero

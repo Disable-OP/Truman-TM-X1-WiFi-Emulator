@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.37.9 — Milestone BQ: verification round (research + verification, §70)
+
+- Internet Archive corpus completed at variant depth (metadata
+  level only, zero downloads): a second byte-size-identical
+  same-family candidate (`IPFOX_IPTV_1507G.bin`, 7,397,376 B) joins
+  the §32 owner-decision list; 1506T WiFi-peripheral naming (MT7601)
+  recorded; one model-number coincidence and one different-vendor
+  item bounded.
+- Claims re-verified in a fresh sandbox: boot pin 1,301,783 / trap /
+  exit 2, banner 19/19, bench 25.58 in the 24–26 band; CI of a0d315b
+  success. No code changes.
+
 ## 0.37.8 — Milestone BP: verification round (research + verification, §69)
 
 - The Internet Archive corpus probed (never touched by earlier
