@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.37.5 — Milestone BM: verification round (research + verification, §66)
+
+- Named-lead probes: the `xav-ax100` ecosystem fully enumerated (3
+  repos) — superdavex (ARM sibling update pack, eCos-partition
+  corroboration, GEMINIp magic) and wtodd1 (update-format tooling)
+  bounded; zero engine evidence. vicyap frozen at the provenance SHA.
+- Claims re-verified in a fresh sandbox: boot pin 1,301,783 / trap /
+  exit 2, banner 19/19, bench 25.66 in the 24–26 band; CI of 3a68ca3
+  success. No code changes.
+
 ## 0.37.4 — Milestone BL: the code-search universe enumerated; the docs audit wired into CI (research + hardening, §65)
 
 - Authenticated GitHub code search completed (BK's bounded-unavailable

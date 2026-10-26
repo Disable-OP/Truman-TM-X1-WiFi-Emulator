@@ -1,5 +1,23 @@
 # Roadmap
 
+## Milestone BM — verification round: the sibling-product community bounded; claims fresh-verified ✅ (v0.37.5)
+
+- **Two new named-lead repos probed (§66.1)**: `xav-ax100` search
+  surfaced superdavex (update-pack contents: rootfs/spapp/MCU;
+  README confirms Cortex-A9 + Linux 3.4.5 + an 8 MiB **ecos
+  partition** — independent corroboration of the platform family's
+  eCos pairing; `CUST_PACK.BIN` magic `GEMINIp`) and wtodd1
+  (extraction/decryption tooling for the ARM family's update format).
+  Zero engine evidence; vicyap freshness probe: frozen at 5682442 =
+  the provenance pin (zero drift). §51.2 closure survives its fourth
+  named-lead probe.
+- **Claims re-verified fresh (§66.2)**: 1,301,783/trap/exit 2 PASS,
+  banner 19/19, bench 25.66 inside 24–26 (fourth consecutive in-band
+  fresh-sandbox measurement); CI of 3a68ca3 completed/success (sixth
+  gate's first run included). Boot pins unchanged; blocker stays
+  hardware-gated (§51.2).
+
+
 ## Milestone BL — the code-search universe enumerated; the docs audit wired into CI ✅ (v0.37.4)
 
 - **Authenticated code search (§65.1)**: BK's bounded-unavailable probe

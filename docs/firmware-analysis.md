@@ -5131,3 +5131,61 @@ warnings, xref audit clean. Boot pins unchanged (handoff jr v0 at
 0xcd8d03bf). The blocker stays hardware-gated exactly as registered
 (§51.2): P1, P2/P2b/P2c, P3 — the real-device session per
 docs/hardware-session.md.
+
+## 66. Milestone BM — verification round: the sibling-product community bounded; claims re-verified fresh (research + verification, v0.37.5)
+
+### 66.1 Two new named-lead repositories probed and bounded
+
+The `xav-ax100` repository search (authenticated) returned three
+repositories — the archived vicyap source plus two never-enumerated
+ones. Both were probed to their full trees:
+
+- **vicyap/sony-xav-ax100 (freshness probe: zero drift)**: latest
+  commit 5682442 (2017-08-25), single `master` branch — exactly the
+  SHA the §33/§34 provenance table pins. The archived reference is
+  complete and current; nothing new upstream to pull.
+- **superdavex/Sony-XAV-AX100 (22 files, 58 MB)**: product
+  customization tools and an update package's contents
+  (`CUST_PACK.BIN` 15,691 B; `rootfs.img` 3.9 MB; `spapp.img`
+  33.8 MB; `st16mcu.bin` 123 KB; logo tooling). The README names the
+  hardware: **Cortex-A9 ARMv7, U-Boot 2014.04, Linux 3.4.5**, and a
+  NAND partition table whose 8 MiB `ecos` partition confirms the
+  Sunplus platform family runs eCos as a companion RTOS beside Linux
+  — an independent corroboration of this artifact's own boot-chain
+  finding (Milestone I). `CUST_PACK.BIN`'s header carries the magic
+  `GEMINIp` (v6) — the update-pack format of the ARM sibling, named
+  after the same `mach-gemini` platform as the archived kernel HAL.
+  The Truman artifact's head (`b56f0024…`) shares no magic with it:
+  distinct products, distinct pack formats. No source, no engine
+  content beyond the archived references.
+- **wtodd1/xav-ax100 (8 files, 19 KB)**: extraction and
+  re-packaging tooling for the official Sony updates (NAND partition
+  decryption, u-boot init-script extraction with key derivation "md5
+  of the first 32 bytes", custom u-boot script packaging) plus notes
+  with the official firmware links. An ARM-family update-format
+  document; it names a U-Boot RAM map (`HW_BUF`, `ECOS_RAM2`,
+  `CHUNK_MEM`, …) for the sibling. Nothing bears on the MIPS
+  Truman's PNG_DEC value semantics or the §30.3 ladder.
+
+Verdict: the sibling product's entire community ecosystem (three
+repositories, enumerated) contains zero new engine evidence; the
+§51.2 closure survives its fourth independent named-lead probe. The
+blocker stays hardware-gated (P1 per docs/hardware-session.md).
+
+### 66.2 The three README claims re-verified in a fresh sandbox
+
+`claims_audit.py` end-to-end on this session's fresh environment:
+boot chain stops at exactly **1,301,783** steps on 0xa1600050, exit 2
+(pin holds through BL's CI change — which touched no emulator code);
+banner sample **19/19 in order**; bench **25.66 M instr/s** — inside
+the restated 24–26 band (fourth consecutive in-band fresh-sandbox
+measurement: 25.72, 25.55, 25.66, plus BI's 24.26-under-load). CI
+status of 3a68ca3 (BL) verified `completed, success` via the runs API
+— the sixth gate's first execution included.
+
+Result: 198 tests (debug and release), fmt clean, clippy zero
+warnings, xref audit clean. Boot pins unchanged (handoff jr v0 at
+1,301,763; trap 0xa1600050 at 1,301,783, exit 2; fingerprint
+0xcd8d03bf). The blocker stays hardware-gated exactly as registered
+(§51.2): P1, P2/P2b/P2c, P3 — the real-device session per
+docs/hardware-session.md.
