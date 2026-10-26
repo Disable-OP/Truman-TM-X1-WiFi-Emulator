@@ -8,8 +8,10 @@ with ad-hoc commands; this tool makes that audit reproducible:
   pinned trap (exit 2, pc 0xa1600050) — a budget stop below the handoff
   is a failure of the pin;
 - claim 2 (advisory): the bench harness throughput, reported and compared
-  to the README band (25.4-25.6 M instr/s). The band is machine-dependent
+  to the README band (24-26 M instr/s). The band is machine-dependent
   by the README's own wording — a miss warns but does not fail;
+  tests/claims_band_sync.rs pins this constant to the README's stated
+  band, so the two statements cannot drift apart again (§63);
 - claim 3 (hard): every content line of the README's console sample
   appears in the live run output in order (subsequence match, `...`
   elision lines skipped, CR and trailing-whitespace normalization per
@@ -29,7 +31,7 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-BAND = (25.4, 25.6)
+BAND = (24.0, 26.0)  # must equal the README's stated band; pinned by tests/claims_band_sync.rs (§63)
 PIN_STEPS = "1301783"
 PIN_TRAP = "0xa1600050"
 PIN_BUDGET = "1310000"

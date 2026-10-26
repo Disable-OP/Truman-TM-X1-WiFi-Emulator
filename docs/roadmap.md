@@ -1,5 +1,23 @@
 # Roadmap
 
+## Milestone BJ — the bench-band seam closed: the audit tool states the claim it audits ✅ (v0.37.2)
+
+- **The seam (§63.1)**: BI restated the README bench band to 24–26 but
+  left `tools/claims_audit.py`'s `BAND` at (25.4, 25.6) — demonstrated
+  live: the tool measured 25.65 M instr/s (inside the README's band)
+  and issued a false "OUTSIDE" advisory against a compliant
+  measurement. The drift came from the very commit that proved the old
+  band dishonest; the misreport family (§54/§56/§59) on the tool
+  whose job is auditing the README.
+- **The fix + guard (§63.2/§63.3)**: `BAND = (24.0, 26.0)` + docstring;
+  `tests/claims_band_sync.rs` pins the README band and the tool `BAND`
+  to each other ("restate BOTH or neither"), negative control run live
+  (perturb → fail with the drift message → revert → pass). En-dash
+  UTF-8 boundary lesson recorded. Audit re-run: 25.72 inside 24.0-26.0,
+  PASS. Suite 196 → 197 (debug and release). Boot pins unchanged;
+  blocker stays hardware-gated (§51.2).
+
+
 ## Milestone BI — the README claims audit as one command; the CI workflow pinned as a test ✅ (v0.37.1)
 
 - **`tools/claims_audit.py` (§62.1)**: the BA/BF-style claims

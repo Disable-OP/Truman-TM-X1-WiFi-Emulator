@@ -4942,3 +4942,56 @@ Result: the suite grows 195 → **196** (debug and release), fmt clean,
 clippy zero warnings, boot pins unchanged. The blocker stays
 hardware-gated exactly as registered (§51.2): P1, P2/P2b/P2c, P3 — the
 real-device session per docs/hardware-session.md.
+
+## 63. Milestone BJ — the bench-band seam closed: the audit tool states the claim it audits (tooling honesty, v0.37.2)
+
+### 63.1 The seam, demonstrated live
+
+Milestone BI restated the README's bench band from "25.4–25.6 across
+sandbox rebuilds" to **"24–26 across sandbox rebuilds and under load"**
+after fresh measurement (§62.1) — but left `tools/claims_audit.py`'s
+operative constant at `BAND = (25.4, 25.6)` and its docstring at
+"25.4-25.6". The seam is a checker that misstates the claim it audits,
+and it was demonstrated live in this session's first audit run of the
+round: the tool measured **25.65 M instr/s** — inside the README's own
+24–26 band — and reported
+`OUTSIDE the README band 25.4-25.6 … advisory: … consider re-stating
+the band`, i.e. a **false advisory against a compliant measurement**.
+The drift was introduced by the very commit that discovered the old
+band was dishonest (BI's changelog: the "previous 25.4–25.6 band
+understated the observed spread (24.26 under [audit load])") — the
+restatement reached the README but not the tool that enforces the
+README's claims. This is the §54/§56/§59 misreport family, and
+structurally the same unguarded-file shape as §62.2's ci.yml: the
+audit tool had no mechanical reader of its own claim coupling.
+
+### 63.2 The fix
+
+`BAND = (24.0, 26.0)` with a comment naming its pin, and the docstring
+updated to "24-26". A re-run of the audit in the same session now
+reports the truth: `claim 2 (bench throughput): 25.72 M instr/s —
+inside the README band 24.0-26.0 (machine-dependent; advisory only)`,
+`claims audit: PASS`.
+
+### 63.3 The guard — the two statements pinned to each other
+
+`tests/claims_band_sync.rs` (the §62.2 pattern applied to the audit
+tool): a mechanical reader parses the README's stated band (the number
+pair immediately before "measured across sandbox rebuilds", en dash or
+ASCII dash) and the tool's `BAND = (lo, hi)` line, and asserts the two
+intervals are equal — with the drift message "restate BOTH or
+neither (§63)". A deliberate re-statement of either side now requires
+updating both in one commit; the BI-shaped drift can never recur
+silently. Parsing notes preserved for the record: the en dash is
+multi-byte in UTF-8 (the first draft's `dash + 1` byte-slice panicked
+inside the dash character — the fix advances by `len_utf8()`), and the
+guard's negative control was run live: with `BAND` temporarily
+perturbed to the stale values the test fails with exactly the drift
+message, and passes again after the revert.
+
+Result: the suite grows 196 → **197** (debug and release), fmt clean,
+clippy zero warnings, the audit tool's hard pins re-verified end-to-end
+in-session. Boot pins unchanged (handoff jr v0 at 1,301,763; trap
+0xa1600050 at 1,301,783, exit 2; fingerprint 0xcd8d03bf). The blocker
+stays hardware-gated exactly as registered (§51.2): P1, P2/P2b/P2c, P3
+— the real-device session per docs/hardware-session.md.

@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.37.2 — Milestone BJ: the bench-band seam closed (tooling honesty, §63)
+
+- Fixed: `tools/claims_audit.py` still stated the retired bench band
+  (25.4–25.6) after BI restated the README to 24–26 — demonstrated
+  live: 25.65 M instr/s measured, inside the README band, reported
+  "OUTSIDE" with a false advisory. The checker misstated the claim it
+  audits.
+- `BAND = (24.0, 26.0)`; docstring updated; re-run reports 25.72
+  inside 24.0-26.0, audit PASS.
+- New: `tests/claims_band_sync.rs` pins the README's stated band and
+  the tool's `BAND` constant to each other — restate BOTH or neither
+  (§63.3). Negative control verified live (perturb → fail → revert →
+  pass). En dash is multi-byte in UTF-8: advance by `len_utf8()`, never
+  raw bytes.
+- Tests 196 → 197 (debug and release). Boot pins unchanged.
+
 ## 0.37.1 — Milestone BI: the claims audit as one command; the CI workflow pinned (docs hygiene + hardening, §62)
 
 ### Added
