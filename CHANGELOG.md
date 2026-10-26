@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.37.13 — Milestone BU: pure verification round (§74)
+
+- Zero-finding round recorded for chain continuity: claims
+  fresh-verified, CI of 6d3923a success, 198 tests, all gates
+  clean, zero diff. No code changes.
+
 ## 0.37.12 — Milestone BT: pure verification round (§73)
 
 - Zero-finding round recorded for chain continuity: claims

@@ -5534,3 +5534,31 @@ blocker stays hardware-gated exactly as registered (§51.2): P1,
 P2/P2b/P2c, P3 — the real-device session per
 docs/hardware-session.md; the §32 container path holds its two
 named candidates (§70.1) for the owner's decision.
+
+## 74. Milestone BU — pure verification round: zero findings, chain green (session record, v0.37.13)
+
+### 74.1 The round, honestly empty
+
+No new evidence class appeared; the task text is unchanged; the
+predecessor's CI is green. Per the §54/§59/§72/§73 precedent the
+round is recorded for chain continuity and nothing more is claimed:
+
+- Sandbox recovered (rustc 1.99.1 via the official installer; clone
+  ff-only to origin/main with the explicit rev-parse check; zero
+  diff against origin/main before any edit).
+- `claims_audit.py`: boot chain stops at exactly **1,301,783** steps
+  on 0xa1600050, exit 2; banner sample **19/19 in order**; bench
+  **25.59 M instr/s** — inside the restated 24–26 band (twelfth
+  consecutive in-band fresh-sandbox measurement: 25.72, 25.55,
+  25.66, 24.26-under-load, 25.46, 25.66, 25.86, 25.58, 24.82,
+  25.86, 25.56, 25.59). CI status of 6d3923a (BT, the predecessor)
+  verified `completed, success`.
+
+Result: 198 tests (debug and release), fmt clean, clippy zero
+warnings, check --all-targets clean, xref audit clean. No code
+changes. Boot pins unchanged (handoff jr v0 at 1,301,763; trap
+0xa1600050 at 1,301,783, exit 2; fingerprint 0xcd8d03bf). The
+blocker stays hardware-gated exactly as registered (§51.2): P1,
+P2/P2b/P2c, P3 — the real-device session per
+docs/hardware-session.md; the §32 container path holds its two
+named candidates (§70.1) for the owner's decision.
