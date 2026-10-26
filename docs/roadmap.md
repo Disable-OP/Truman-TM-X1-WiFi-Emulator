@@ -1,5 +1,18 @@
 # Roadmap
 
+## Milestone BW — pure verification round: zero findings, chain green ✅ (v0.37.15)
+
+- **No new evidence class; round honestly empty (§76.1)**:
+  zero-diff against origin/main after a sandbox snapshot-rollback
+  recovery (fetch-before-merge discipline §68.2 resolved a stale
+  23471b2 clone showing permission-bit-only drift, nothing
+  discarded), claims fresh-verified (1,301,783/trap/exit 2,
+  banner 19/19, bench 25.72 in 24–26 — fourteenth consecutive
+  in-band), CI of 9e6e139 completed/success, 198 tests debug and
+  release, all gates clean. Boot pins unchanged; blocker stays
+  hardware-gated (§51.2); §32 holds its two named candidates for
+  the owner.
+
 ## Milestone BV — pure verification round: zero findings, chain green ✅ (v0.37.14)
 
 - **No new evidence class; round honestly empty (§75.1)**:

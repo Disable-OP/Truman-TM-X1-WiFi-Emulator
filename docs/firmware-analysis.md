@@ -5591,3 +5591,51 @@ blocker stays hardware-gated exactly as registered (§51.2): P1,
 P2/P2b/P2c, P3 — the real-device session per
 docs/hardware-session.md; the §32 container path holds its two
 named candidates (§70.1) for the owner's decision.
+
+## 76. Milestone BW — pure verification round: zero findings, chain green (session record, v0.37.15)
+
+### 76.1 The round, honestly empty — and one recovery worth writing down
+
+No new evidence class appeared; the task text is unchanged; the
+predecessor's CI is green. Per the §54/§59/§72/§73/§74/§75
+precedent the round is recorded for chain continuity and nothing
+more is claimed. One operational event is recorded because it
+validates a standing discipline rather than because it yields
+evidence:
+
+- **Sandbox snapshot rollback, recovered by the book.** The
+  restored sandbox presented a stale clone: HEAD at the
+  Milestone-M commit 23471b2, a stale origin/main ref to match,
+  and 47 files flagged modified — a whole-repo diff of exactly
+  **0 insertions, 0 deletions**, i.e. permission-bit drift only
+  (every file re-marked executable). The fetch-before-merge
+  discipline (§68.2) resolved it without incident:
+  `core.fileMode false` silenced the phantom diff, `git fetch`
+  updated origin/main to the true tip, `merge --ff-only` and an
+  explicit `rev-parse` re-check landed the tree exactly on
+  origin/main with zero content drift. Nothing was stashed,
+  discarded, or rewritten; the remote remains the sole source of
+  truth. Had the merge come before the fetch, the stale ref would
+  have reported "Already up to date" against 23471b2 — the exact
+  failure mode §68.2 guards against, this time at a 20-milestone
+  depth.
+- `tools/claims_audit.py`: boot chain stops at exactly **1,301,783**
+  steps on 0xa1600050, exit 2; banner sample **19/19 in order**;
+  bench **25.72 M instr/s** — inside the restated 24–26 band
+  (fourteenth consecutive in-band fresh-sandbox measurement:
+  25.72, 25.55, 25.66, 24.26-under-load, 25.46, 25.66, 25.86,
+  25.58, 24.82, 25.86, 25.56, 25.59, 25.28, 25.72). A direct
+  examples/bench run agreed at **25.30** (also in-band) and
+  re-displayed the pins live: stop reason `cpu: unknown
+  instruction at pc=0xa1600050: 0x0000ffff`, final pc
+  0xa1600050. CI status of 9e6e139 (BV, the predecessor)
+  verified `completed, success`.
+
+Result: 198 tests (debug and release), fmt clean, clippy zero
+warnings, check --all-targets clean, xref audit clean. No code
+changes. Boot pins unchanged (handoff jr v0 at 1,301,763; trap
+0xa1600050 at 1,301,783, exit 2; fingerprint 0xcd8d03bf). The
+blocker stays hardware-gated exactly as registered (§51.2): P1,
+P2/P2b/P2c, P3 — the real-device session per
+docs/hardware-session.md; the §32 container path holds its two
+named candidates (§70.1) for the owner's decision.
