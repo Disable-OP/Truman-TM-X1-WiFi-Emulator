@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.37.28 — Milestone CJ: pure verification round (§89)
+
+- Zero-finding round recorded for chain continuity: claims
+  fresh-verified, CI of d9c1782 success, 198 tests, all gates
+  clean, zero diff. Fourteenth routine snapshot-rollback
+  recovery (toolchain reinstalled). No code changes.
+
 ## 0.37.27 — Milestone CI: pure verification round (§88)
 
 - Zero-finding round recorded for chain continuity: claims
