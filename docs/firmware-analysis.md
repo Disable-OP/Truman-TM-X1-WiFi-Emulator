@@ -6368,3 +6368,43 @@ blocker stays hardware-gated exactly as registered (§51.2): P1,
 P2/P2b/P2c, P3 — the real-device session per
 docs/hardware-session.md; the §32 container path holds its two
 named candidates (§70.1) for the owner's decision.
+
+## 96. Milestone CQ — pure verification round: zero findings, chain green (session record, v0.37.35)
+
+### 96.1 The round, honestly empty
+
+No new evidence class appeared; the task text is unchanged; the
+predecessor's CI is green. Per the §54/§59/§72–§95 precedent the
+round is recorded for chain continuity and nothing more is
+claimed:
+
+- **Twenty-second snapshot rollback** — the documented per-round
+  routine: clone at 23471b2, stale refs, permission-bit-only
+  drift, session worklog and helper script regressed to nothing;
+  toolchain absent again on the fresh shell, so rustup stable
+  1.99.1 was reinstalled with the rustfmt/clippy components
+  re-added before the gates ran. Fixed-cost recovery:
+  `core.fileMode false`, fetch before merge, `--ff-only`,
+  explicit `rev-parse` re-check — landed exactly on origin/main
+  (fc0dc14, CP) with zero content drift; helper script rebuilt
+  before any commit existed.
+- `tools/claims_audit.py`: boot chain stops at exactly
+  **1,301,783** steps on 0xa1600050, exit 2; banner sample
+  **19/19 in order**; bench **25.64 M instr/s** — inside the
+  restated 24–26 band (thirty-fourth consecutive in-band
+  fresh-sandbox measurement: 25.72, 25.55, 25.66,
+  24.26-under-load, 25.46, 25.66, 25.86, 25.58, 24.82, 25.86,
+  25.56, 25.59, 25.28, 25.72, 25.55, 25.74, 25.60, 25.37,
+  24.84, 25.89, 25.80, 25.79, 25.62, 24.84, 25.34, 25.75,
+  24.63, 25.39, 25.45, 25.46, 25.40, 25.16, 25.48, 25.64). CI
+  status of fc0dc14 (CP, the predecessor) verified `completed,
+  success`.
+
+Result: 198 tests (debug and release), fmt clean, clippy zero
+warnings, check --all-targets clean, xref audit clean. No code
+changes. Boot pins unchanged (handoff jr v0 at 1,301,763; trap
+0xa1600050 at 1,301,783, exit 2; fingerprint 0xcd8d03bf). The
+blocker stays hardware-gated exactly as registered (§51.2): P1,
+P2/P2b/P2c, P3 — the real-device session per
+docs/hardware-session.md; the §32 container path holds its two
+named candidates (§70.1) for the owner's decision.
