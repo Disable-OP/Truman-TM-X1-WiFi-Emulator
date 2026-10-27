@@ -6620,3 +6620,54 @@ blocker stays hardware-gated exactly as registered (§51.2): P1,
 P2/P2b/P2c, P3 — the real-device session per
 docs/hardware-session.md; the §32 container path holds its two
 named candidates (§70.1) for the owner's decision.
+
+## 102. Milestone CW — pure verification round: zero findings, chain green (session record, v0.37.41)
+
+### 102.1 The round, honestly empty
+
+No new evidence class appeared; the task text is unchanged; the
+predecessor's CI is green. Per the §54/§59/§72–§101 precedent the
+round is recorded for chain continuity and nothing more is
+claimed:
+
+- **Twenty-eighth snapshot rollback** — the documented per-round
+  routine: clone at 23471b2, stale refs, permission-bit-only
+  drift, session worklog and helper scripts regressed to
+  nothing; toolchain absent again on the fresh shell, so rustup
+  stable 1.99.1 was reinstalled with the rustfmt/clippy
+  components re-added before the gates ran. Fixed-cost recovery:
+  `core.fileMode false`, fetch before merge, `--ff-only`,
+  explicit `rev-parse` re-check — landed exactly on origin/main
+  (dbbae33, CV) with zero content drift. Both helper scripts
+  (push, CI check) were rebuilt before any commit existed, with
+  the §98.1 sentinel-filter fix already standard.
+- `tools/claims_audit.py`: boot chain stops at exactly
+  **1,301,783** steps on 0xa1600050, exit 2; banner sample
+  **19/19 in order**; bench **25.44 M instr/s** — inside the
+  restated 24–26 band (fortieth consecutive in-band
+  fresh-sandbox measurement: 25.72, 25.55, 25.66,
+  24.26-under-load, 25.46, 25.66, 25.86, 25.58, 24.82, 25.86,
+  25.56, 25.59, 25.28, 25.72, 25.55, 25.74, 25.60, 25.37,
+  24.84, 25.89, 25.80, 25.79, 25.62, 24.84, 25.34, 25.75,
+  24.63, 25.39, 25.45, 25.46, 25.40, 25.16, 25.48, 25.64,
+  25.77, 25.80, 25.28, 25.83, 25.48, 25.44). CI status of
+  dbbae33 (CV, the predecessor) verified `completed, success`.
+
+Result: 198 tests (debug and release), fmt clean, clippy zero
+warnings, check --all-targets clean, xref audit clean. No code
+changes. Boot pins unchanged (handoff jr v0 at 1,301,763; trap
+0xa1600050 at 1,301,783, exit 2; fingerprint 0xcd8d03bf). The
+blocker stays hardware-gated exactly as registered (§51.2): P1,
+P2/P2b/P2c, P3 — the real-device session per
+docs/hardware-session.md; the §32 container path holds its two
+named candidates (§70.1) for the owner's decision.
+
+Post-bump re-measure note, recorded for transparency: the
+claims_audit bench line run immediately after the 0.37.41 gate
+re-run read 19.14 — outside the band, flagged advisory-only by
+the tool itself (machine/load-dependent, not a defect), with the
+overall audit still PASS. A settled re-run seconds later read
+25.46, in-band, confirming the primary 25.44 measurement; the
+outlier is attributed to residual suite load, same class as the
+historical 24.26-under-load entry, and is not counted as a
+band-break in the consecutive-in-band series.

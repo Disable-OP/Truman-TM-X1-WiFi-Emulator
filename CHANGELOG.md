@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.37.41 — Milestone CW: pure verification round (§102)
+
+- Zero-finding round recorded for chain continuity: claims
+  fresh-verified, CI of dbbae33 success, 198 tests, all gates
+  clean, zero diff. Twenty-eighth routine snapshot-rollback
+  recovery (toolchain reinstalled). No code changes.
+
 ## 0.37.40 — Milestone CV: pure verification round (§101)
 
 - Zero-finding round recorded for chain continuity: claims
