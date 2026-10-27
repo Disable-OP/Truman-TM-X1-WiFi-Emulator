@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.37.30 — Milestone CL: pure verification round (§91)
+
+- Zero-finding round recorded for chain continuity (covers the
+  skipped 16:29 loop, lost to a session-side tool-service outage
+  pre-commit): claims fresh-verified, CI of 33193c4 success, 198
+  tests, all gates clean, zero diff. Seventeenth routine
+  snapshot-rollback recovery (toolchain reinstalled). No code
+  changes.
+
 ## 0.37.29 — Milestone CK: pure verification round (§90)
 
 - Zero-finding round recorded for chain continuity: claims

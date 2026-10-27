@@ -1,5 +1,18 @@
 # Roadmap
 
+## Milestone CL — pure verification round: zero findings, chain green ✅ (v0.37.30)
+
+- **No new evidence class; round honestly empty (§91.1)**:
+  covers the skipped 16:29 loop (recovered then killed by a
+  session-side tool-service outage before any commit); zero-diff
+  against origin/main after the seventeenth routine snapshot
+  rollback recovery (toolchain reinstalled), claims
+  fresh-verified (1,301,783/trap/exit 2, banner 19/19, bench
+  25.45 in 24–26 — twenty-ninth consecutive in-band), CI of
+  33193c4 completed/success, 198 tests debug and release, all
+  gates clean. Boot pins unchanged; blocker stays hardware-gated
+  (§51.2); §32 holds its two named candidates for the owner.
+
 ## Milestone CK — pure verification round: zero findings, chain green ✅ (v0.37.29)
 
 - **No new evidence class; round honestly empty (§90.1)**:
