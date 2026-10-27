@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.37.39 — Milestone CU: pure verification round (§100)
+
+- Hundredth section of the analysis; zero-finding round
+  recorded for chain continuity: claims fresh-verified, CI of
+  0252141 success, 198 tests, all gates clean, zero diff.
+  Twenty-sixth routine snapshot-rollback recovery (toolchain
+  reinstalled). No code changes.
+
 ## 0.37.38 — Milestone CT: pure verification round (§99)
 
 - Zero-finding round recorded for chain continuity: claims
