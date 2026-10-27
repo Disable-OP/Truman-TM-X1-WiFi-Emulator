@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.37.40 — Milestone CV: pure verification round (§101)
+
+- Zero-finding round recorded for chain continuity: claims
+  fresh-verified, CI of afa4752 success, 198 tests, all gates
+  clean, zero diff. Twenty-seventh routine snapshot-rollback
+  recovery (toolchain reinstalled). No code changes.
+
 ## 0.37.39 — Milestone CU: pure verification round (§100)
 
 - Hundredth section of the analysis; zero-finding round
