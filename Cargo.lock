@@ -4,4 +4,4 @@ version = 4
 
 [[package]]
 name = "truman-emulator"
-version = "0.37.43"
+version = "0.37.44"
