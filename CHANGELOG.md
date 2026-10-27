@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.37.43 — Milestone CY: pure verification round (§104)
+
+- Zero-finding round recorded for chain continuity: claims
+  fresh-verified, CI of c32d762 success, 198 tests, all gates
+  clean, zero diff. Thirtieth routine snapshot-rollback
+  recovery (toolchain reinstalled). No code changes.
+
 ## 0.37.42 — Milestone CX: pure verification round (§103)
 
 - Zero-finding round recorded for chain continuity: claims
