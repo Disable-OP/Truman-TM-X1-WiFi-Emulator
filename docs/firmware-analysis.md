@@ -6448,3 +6448,49 @@ blocker stays hardware-gated exactly as registered (§51.2): P1,
 P2/P2b/P2c, P3 — the real-device session per
 docs/hardware-session.md; the §32 container path holds its two
 named candidates (§70.1) for the owner's decision.
+
+## 98. Milestone CS — pure verification round: zero findings, chain green (session record, v0.37.37)
+
+### 98.1 The round, honestly empty
+
+No new evidence class appeared; the task text is unchanged; the
+predecessor's CI is green. Per the §54/§59/§72–§97 precedent the
+round is recorded for chain continuity and nothing more is
+claimed:
+
+- **Twenty-fourth snapshot rollback** — the documented per-round
+  routine: clone at 23471b2, stale refs, permission-bit-only
+  drift, session worklog and helper scripts regressed to
+  nothing; toolchain absent again on the fresh shell, so rustup
+  stable 1.99.1 was reinstalled with the rustfmt/clippy
+  components re-added before the gates ran. Fixed-cost recovery:
+  `core.fileMode false`, fetch before merge, `--ff-only`,
+  explicit `rev-parse` re-check. Fetch-first this time showed
+  the remote already one milestone ahead of the handoff summary
+  (23471b2..88f4b0e — the CR push landed after that summary was
+  written); the fast-forward landed exactly on origin/main
+  (88f4b0e, CR) with zero content drift. Both helper scripts
+  (push, CI check) were rebuilt before any commit existed; the
+  CI-check helper's success-filter had a sentinel-line defect
+  that was caught and fixed on first use against 88f4b0e before
+  any claim was recorded.
+- `tools/claims_audit.py`: boot chain stops at exactly
+  **1,301,783** steps on 0xa1600050, exit 2; banner sample
+  **19/19 in order**; bench **25.80 M instr/s** — inside the
+  restated 24–26 band (thirty-sixth consecutive in-band
+  fresh-sandbox measurement: 25.72, 25.55, 25.66,
+  24.26-under-load, 25.46, 25.66, 25.86, 25.58, 24.82, 25.86,
+  25.56, 25.59, 25.28, 25.72, 25.55, 25.74, 25.60, 25.37,
+  24.84, 25.89, 25.80, 25.79, 25.62, 24.84, 25.34, 25.75,
+  24.63, 25.39, 25.45, 25.46, 25.40, 25.16, 25.48, 25.64,
+  25.77, 25.80). CI status of 88f4b0e (CR, the predecessor)
+  verified `completed, success`.
+
+Result: 198 tests (debug and release), fmt clean, clippy zero
+warnings, check --all-targets clean, xref audit clean. No code
+changes. Boot pins unchanged (handoff jr v0 at 1,301,763; trap
+0xa1600050 at 1,301,783, exit 2; fingerprint 0xcd8d03bf). The
+blocker stays hardware-gated exactly as registered (§51.2): P1,
+P2/P2b/P2c, P3 — the real-device session per
+docs/hardware-session.md; the §32 container path holds its two
+named candidates (§70.1) for the owner's decision.
