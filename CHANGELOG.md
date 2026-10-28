@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.37.45 — Milestone DA: pure verification round (§106)
+
+- Zero-finding round recorded for chain continuity: remote
+  ahead of the handoff summary (CZ already pushed; fetch-first
+  confirmed), claims fresh-verified, CI of 0bbe189 success, 198
+  tests, all gates clean, zero diff. Thirty-second routine
+  snapshot-rollback recovery (toolchain reinstalled). No code
+  changes.
+
 ## 0.37.44 — Milestone CZ: pure verification round (§105)
 
 - Zero-finding round recorded for chain continuity: claims

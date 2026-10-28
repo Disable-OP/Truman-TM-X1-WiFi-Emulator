@@ -1,5 +1,19 @@
 # Roadmap
 
+## Milestone DA — pure verification round: zero findings, chain green ✅ (v0.37.45)
+
+- **No new evidence class; round honestly empty (§106.1)**:
+  zero-diff against origin/main after a thirty-second routine
+  snapshot rollback recovery (toolchain reinstalled); remote
+  found ahead of the handoff summary (0bbe189/CZ already pushed,
+  §98.1 pattern second occurrence) and confirmed by
+  fetch-before-merge, claims fresh-verified (1,301,783/trap/
+  exit 2, banner 19/19, bench 25.33 in 24–26 — forty-fourth
+  consecutive in-band), CI of 0bbe189 completed/success, 198
+  tests debug and release, all gates clean. Boot pins unchanged;
+  blocker stays hardware-gated (§51.2); §32 holds its two named
+  candidates for the owner.
+
 ## Milestone CZ — pure verification round: zero findings, chain green ✅ (v0.37.44)
 
 - **No new evidence class; round honestly empty (§105.1)**:
