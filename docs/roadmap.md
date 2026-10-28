@@ -1,5 +1,17 @@
 # Roadmap
 
+## Milestone DN — pure verification round: zero findings, chain green ✅ (v0.37.58)
+
+- **No new evidence class; round honestly empty (§119.1)**:
+  zero-diff against origin/main after a forty-fifth routine
+  snapshot rollback recovery (toolchain reinstalled, no
+  remote-ahead anomaly), claims fresh-verified (1,301,783/trap/
+  exit 2, banner 19/19, bench 25.36 in 24–26 — fifty-seventh
+  consecutive in-band), CI of 5f8646c completed/success, 198
+  tests debug and release, all gates clean. Boot pins unchanged;
+  blocker stays hardware-gated (§51.2); §32 holds its two named
+  candidates for the owner.
+
 ## Milestone DM — pure verification round: zero findings, chain green ✅ (v0.37.57)
 
 - **No new evidence class; round honestly empty (§118.1)**:
