@@ -1,5 +1,19 @@
 # Roadmap
 
+## Milestone DG — pure verification round: zero findings, chain green ✅ (v0.37.51)
+
+- **No new evidence class; round honestly empty (§112.1)**:
+  zero-diff against origin/main after a thirty-eighth routine
+  snapshot rollback recovery (toolchain reinstalled; §98.1
+  remote-ahead anomaly, third occurrence — handoff summary
+  stale at DE, origin already at DF b598aac, absorbed by
+  fetch-before-merge), claims fresh-verified (1,301,783/trap/
+  exit 2, banner 19/19, bench 25.78 in 24–26 — fiftieth
+  consecutive in-band), CI of b598aac completed/success, 198
+  tests debug and release, all gates clean. Boot pins unchanged;
+  blocker stays hardware-gated (§51.2); §32 holds its two named
+  candidates for the owner.
+
 ## Milestone DF — pure verification round: zero findings, chain green ✅ (v0.37.50)
 
 - **No new evidence class; round honestly empty (§111.1)**:
