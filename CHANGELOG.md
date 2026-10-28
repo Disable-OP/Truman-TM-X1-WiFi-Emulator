@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.37.47 — Milestone DC: pure verification round (§108)
+
+- Zero-finding round recorded for chain continuity: claims
+  fresh-verified, CI of 4ce8287 success, 198 tests, all gates
+  clean, zero diff. Thirty-fourth routine snapshot-rollback
+  recovery (toolchain reinstalled). No code changes.
+
 ## 0.37.46 — Milestone DB: pure verification round (§107)
 
 - Zero-finding round recorded for chain continuity: claims
