@@ -1,5 +1,19 @@
 # Roadmap
 
+## Milestone DU — pure verification round: zero findings, chain green ✅ (v0.37.65)
+
+- **No new evidence class; round honestly empty (§126.1)**:
+  zero-diff against origin/main after a fifty-second routine
+  snapshot rollback recovery (toolchain reinstalled, no
+  remote-ahead anomaly), claims fresh-verified (1,301,783/trap/
+  exit 2, banner 19/19, bench 25.36 in 24–26 solo, plus 25.44
+  post-bump bonus) — solo-gate protocol adopted after §125,
+  confirming the 21.74 reading as transient contention; CI of
+  f461d1a success, 198 tests debug and release, fmt/clippy/
+  check/xref clean. No code changes; boot pins unchanged;
+  blocker hardware-gated (§51.2); §32 holds its two named
+  candidates (§70.1).
+
 ## Milestone DT — pure verification round: zero findings, chain green ✅ (v0.37.64)
 
 - **No new evidence class; round honestly empty (§125.1)**:
