@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.37.66 — Milestone DV: pure verification round (§127)
+
+- Zero-finding round recorded for chain continuity: claims
+  fresh-verified, CI of 043dae9 success, 198 tests, all gates
+  clean, zero diff. Fifty-third routine snapshot-rollback
+  recovery (toolchain reinstalled). Solo-gate protocol held;
+  bench 24.90 solo in-band (bonus 25.77). No code changes.
+
 ## 0.37.65 — Milestone DU: pure verification round (§126)
 
 - Zero-finding round recorded for chain continuity: claims
