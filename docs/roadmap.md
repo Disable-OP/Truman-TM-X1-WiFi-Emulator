@@ -1,5 +1,18 @@
 # Roadmap
 
+## Milestone DX — pure verification round: zero findings, chain green ✅ (v0.37.68)
+
+- **No new evidence class; round honestly empty (§129.1)**:
+  zero-diff against origin/main after a fifty-fifth routine
+  snapshot rollback recovery (toolchain reinstalled, no
+  remote-ahead anomaly), claims fresh-verified (1,301,783/trap/
+  exit 2, banner 19/19, bench 25.65 in 24–26 solo, plus 25.86
+  post-bump bonus) — solo-gate protocol held for the fourth
+  consecutive round; CI of 0d94e67 success, 198 tests debug and
+  release, fmt/clippy/check/xref clean. No code changes; boot
+  pins unchanged; blocker hardware-gated (§51.2); §32 holds its
+  two named candidates (§70.1).
+
 ## Milestone DW — pure verification round: zero findings, chain green ✅ (v0.37.67)
 
 - **No new evidence class; round honestly empty (§128.1)**:
