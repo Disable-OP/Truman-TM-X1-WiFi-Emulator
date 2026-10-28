@@ -1,5 +1,19 @@
 # Roadmap
 
+## Milestone DS — pure verification round: zero findings, chain green ✅ (v0.37.63)
+
+- **No new evidence class; round honestly empty (§124.1)**:
+  zero-diff against origin/main after a fiftieth routine
+  snapshot rollback recovery (toolchain reinstalled; §98.1
+  remote-ahead anomaly absorbed losslessly via
+  fetch-before-merge — the handoff named fd0945b, fetch found
+  7114519), claims fresh-verified (1,301,783/trap/exit 2,
+  banner 19/19, bench 25.51 in 24–26, sixty-second consecutive
+  in-band, plus 25.62 post-bump bonus), CI of 7114519 success,
+  198 tests debug and release, fmt/clippy/check/xref clean. No
+  code changes; boot pins unchanged; blocker hardware-gated
+  (§51.2); §32 holds its two named candidates (§70.1).
+
 ## Milestone DR — pure verification round: zero findings, chain green ✅ (v0.37.62)
 
 - **No new evidence class; round honestly empty (§123.1)**:
