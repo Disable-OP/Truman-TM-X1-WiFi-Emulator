@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.37.64 — Milestone DT: pure verification round (§125)
+
+- Zero-finding round recorded for chain continuity: claims
+  fresh-verified, CI of cec17e6 success, 198 tests, all gates
+  clean, zero diff. Fifty-first routine snapshot-rollback
+  recovery (toolchain reinstalled). First out-of-band advisory
+  bench reading (21.74, concurrent load) recorded verbatim;
+  in-band solo re-run 25.69. No code changes.
+
 ## 0.37.63 — Milestone DS: pure verification round (§124)
 
 - Zero-finding round recorded for chain continuity: claims

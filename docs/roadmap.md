@@ -1,5 +1,20 @@
 # Roadmap
 
+## Milestone DT — pure verification round: zero findings, chain green ✅ (v0.37.64)
+
+- **No new evidence class; round honestly empty (§125.1)**:
+  zero-diff against origin/main after a fifty-first routine
+  snapshot rollback recovery (toolchain reinstalled, no
+  remote-ahead anomaly), claims fresh-verified (1,301,783/trap/
+  exit 2, banner 19/19) — with the series' **first out-of-band
+  advisory bench reading (21.74, concurrent release suite;
+  recorded verbatim)** and an in-band solo post-bump re-run
+  (25.69), consistent with transient contention, not any code
+  or firmware change; CI of cec17e6 success, 198 tests debug
+  and release, fmt/clippy/check/xref clean. No code changes;
+  boot pins unchanged; blocker hardware-gated (§51.2); §32
+  holds its two named candidates (§70.1).
+
 ## Milestone DS — pure verification round: zero findings, chain green ✅ (v0.37.63)
 
 - **No new evidence class; round honestly empty (§124.1)**:
