@@ -9937,3 +9937,69 @@ pc 0xbfc00000). The blocker stays hardware-gated exactly as
 registered (§51.2): P1, P2/P2b/P2c, P3 — the real-device session
 per docs/hardware-session.md; the §32 container path holds its
 two named candidates (§70.1) for the owner's decision.
+
+## 153. Milestone EW — pure verification round: zero findings, chain
+green (session record, v0.37.92)
+
+### 153.1 The round, honestly empty
+
+No new evidence class appeared; the task text is unchanged; the
+predecessor's CI is green. Per the §54/§59/§72–§152 precedent the
+round is recorded for chain continuity and nothing more is
+claimed:
+
+- **Seventy-ninth snapshot rollback, no remote-ahead anomaly** —
+  the documented per-round routine found the repo at 23471b2,
+  stale refs, the session worklog regressed and helper scripts
+  gone; the toolchain was absent on the fresh shell, so rustup
+  stable 1.99.1 was reinstalled with the rustfmt/clippy
+  components re-added before the gates ran. Fixed-cost
+  recovery: `core.fileMode false`, fetch before merge,
+  `--ff-only`, explicit `rev-parse` re-check — landed exactly
+  on origin/main (7c7c37c, EV) with zero content drift; the
+  handoff summary and the fetched head agreed, so no §98.1
+  ancestry detour was needed. The permission-bit drift was
+  absent for a sixth consecutive round — zero dirty entries
+  after `core.fileMode false`.
+- **Claims fresh-verified, solo-gate protocol held for the
+  twenty-eighth consecutive round** (fmt → clippy → check →
+  debug tests → release tests → a quiet pause before the solo
+  audit): `tools/claims_audit.py` run solo on the fresh sandbox
+  produced **25.64 M instr/s — inside the 24–26 band**, and the
+  post-bump bonus produced **25.60 — in-band**; eight consecutive
+  in-band samples now stand behind the §150 out-of-band 22.83
+  transient (24.98, 25.29, 25.64, 25.61, 25.67, 25.16, 25.64,
+  25.60), further confirming it as isolated per the §145
+  handling — the verdict stays PASS and the standing watch rule
+  holds (two consecutive out-of-band readings would trigger a
+  deeper investigation, which has not occurred). The series:
+  sixty-two consecutive in-band fresh-sandbox measurements
+  through DS, the §125 out-of-band reading recorded verbatim
+  (21.74-under-load), its in-band solo re-run (25.69), the
+  §126–§152 solo readings, and now two further in-band readings
+  (25.72, 25.55, 25.66, 24.26-under-load, 25.46, 25.66, 25.86, 25.58, 24.82, 25.86, 25.56,
+  25.59, 25.28, 25.72, 25.55, 25.74, 25.60, 25.37, 24.84, 25.89, 25.80, 25.79,
+  25.62, 24.84, 25.34, 25.75, 24.63, 25.39, 25.45, 25.46, 25.40, 25.16, 25.48,
+  25.64, 25.77, 25.80, 25.28, 25.83, 25.48, 25.44, 25.74, 25.65, 25.82, 25.33,
+  25.80, 25.91, 25.90, 25.73, 25.05, 25.78, 25.56, 25.52, 25.64, 25.71, 25.53,
+  25.68, 25.36, 25.67, 25.07, 25.78, 25.57, 25.51, 21.74-under-load, 25.69, 25.36, 25.44,
+  24.90, 25.77, 25.46, 25.59, 25.65, 25.86, 25.56, 25.53, 25.82, 25.75, 25.73,
+  25.31, 25.50, 25.59, 25.62, 25.56, 25.71, 25.52, 25.18, 25.38, 25.55, 25.54,
+  25.29, 25.69, 25.71, 25.56, 25.27, 25.42, 25.20, 25.31, 25.24, 25.62, 25.06,
+  25.72, 25.25, 24.91, 25.58, 22.22, 25.26, 25.38, 25.32, 25.09, 25.16, 25.37,
+  25.18, 25.49, 25.62, 22.83, 24.98, 25.29, 25.64, 25.61, 25.67, 25.16, 25.64,
+  25.60).
+- `tools/claims_audit.py` (cargo on PATH, the normal path):
+  boot chain stops at exactly **1,301,783** steps on
+  0xa1600050, exit 2; banner sample **19/19 in order**; overall
+  verdict PASS. CI status of 7c7c37c (EV, the predecessor)
+  verified `completed, success`.
+
+Result: 198 tests (debug and release), fmt clean, clippy zero
+warnings, check --all-targets clean, xref audit clean. No code
+changes. Boot pins unchanged (handoff jr v0 at 1,301,763; trap
+0xa1600050 at 1,301,783, exit 2; fingerprint 0xcd8d03bf; reset
+pc 0xbfc00000). The blocker stays hardware-gated exactly as
+registered (§51.2): P1, P2/P2b/P2c, P3 — the real-device session
+per docs/hardware-session.md; the §32 container path holds its
+two named candidates (§70.1) for the owner's decision.

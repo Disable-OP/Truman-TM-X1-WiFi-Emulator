@@ -1,5 +1,21 @@
 # Roadmap
 
+## Milestone EW — pure verification round: zero findings, chain green ✅ (v0.37.92)
+
+- **No new evidence class; round honestly empty (§153.1)**:
+  zero-diff against origin/main after a seventy-ninth routine
+  snapshot rollback recovery (toolchain reinstalled, no
+  remote-ahead anomaly — handoff and remote agreed on 7c7c37c;
+  permission-bit drift absent for a sixth consecutive round),
+  claims fresh-verified (1,301,783/trap/exit 2, banner 19/19,
+  bench 25.64 solo in-band plus 25.60 post-bump bonus in-band —
+  eight consecutive in-band samples behind the §150 out-of-band
+  22.83 transient) — solo-gate protocol held for the
+  twenty-eighth consecutive round; CI of 7c7c37c success,
+  198 tests debug and release, fmt/clippy/check/xref clean. No
+  code changes; boot pins unchanged; blocker hardware-gated
+  (§51.2); §32 holds its two named candidates (§70.1).
+
 ## Milestone EV — pure verification round: zero findings, chain green ✅ (v0.37.91)
 
 - **No new evidence class; round honestly empty (§152.1)**:
