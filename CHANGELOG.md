@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.37.90 — Milestone EU: pure verification round (§151)
+
+- Zero-finding round recorded for chain continuity: claims
+  fresh-verified, CI of 8ee17b0 success, 198 tests, all gates
+  clean, zero diff. Seventy-seventh routine snapshot-rollback
+  recovery (toolchain reinstalled, one remote-ahead anomaly —
+  the parallel instance's ET commit 8ee17b0 absorbed via the
+  §98.1 ancestry check and ff-only; round relabelled from ET to
+  EU per the EK/EQ precedent). Solo-gate protocol held; bench
+  25.64 solo in-band (bonus 25.61) — four consecutive in-band
+  samples since the §150 out-of-band transient. No code changes.
+
 ## 0.37.89 — Milestone ET: pure verification round (§150)
 
 - Zero-finding round recorded for chain continuity: claims

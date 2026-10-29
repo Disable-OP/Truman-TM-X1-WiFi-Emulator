@@ -1,5 +1,24 @@
 # Roadmap
 
+## Milestone EU — pure verification round: zero findings, chain green ✅ (v0.37.90)
+
+- **No new evidence class; round honestly empty (§151.1)**:
+  zero-diff against origin/main after a seventy-seventh routine
+  snapshot rollback recovery (toolchain reinstalled, one
+  remote-ahead anomaly — the fetched head was the parallel
+  instance's already-completed ET commit 8ee17b0, absorbed via
+  the §98.1 ancestry check and ff-only, this round relabelled
+  from ET to EU per the EK/EQ precedent; permission-bit drift
+  absent for a fourth consecutive round), claims fresh-verified
+  (1,301,783/trap/exit 2, banner 19/19, bench 25.64 solo
+  in-band plus 25.61 post-bump bonus in-band — four consecutive
+  in-band samples behind the §150 out-of-band 22.83 transient)
+  — solo-gate protocol held for the twenty-sixth consecutive
+  round; CI of 8ee17b0 success, 198 tests debug and release,
+  fmt/clippy/check/xref clean. No code changes; boot pins
+  unchanged; blocker hardware-gated (§51.2); §32 holds its two
+  named candidates (§70.1).
+
 ## Milestone ET — pure verification round: zero findings, one verbatim out-of-band solo sample, chain green ✅ (v0.37.89)
 
 - **No new evidence class; round honestly empty (§150.1)**:
