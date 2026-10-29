@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.37.84 — Milestone EO: pure verification round (§145)
+
+- Zero-finding round recorded for chain continuity: claims
+  fresh-verified, CI of f95f82f success, 198 tests, all gates
+  clean, zero diff. Seventy-first routine snapshot-rollback
+  recovery (toolchain reinstalled, no remote-ahead anomaly).
+  Solo-gate protocol held; bench 25.58 solo in-band. The
+  post-bump bonus read 22.22 out-of-band, recorded verbatim
+  per the §125 precedent; the immediate solo re-run returned
+  25.26 in-band, verdict PASS unchanged. No code changes.
+
 ## 0.37.83 — Milestone EN: pure verification round (§144)
 
 - Zero-finding round recorded for chain continuity: claims

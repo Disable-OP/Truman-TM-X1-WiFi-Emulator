@@ -1,5 +1,24 @@
 # Roadmap
 
+## Milestone EO — pure verification round: zero findings, one verbatim out-of-band bonus sample, chain green ✅ (v0.37.84)
+
+- **No new evidence class; round honestly empty (§145.1)**:
+  zero-diff against origin/main after a seventy-first routine
+  snapshot rollback recovery (toolchain reinstalled, no
+  remote-ahead anomaly — handoff and remote agreed on f95f82f;
+  permission-bit drift absent for an eleventh consecutive
+  round), claims fresh-verified (1,301,783/trap/exit 2, banner
+  19/19, bench 25.58 in 24–26 solo) — solo-gate protocol held
+  for the twentieth consecutive round. The post-bump bonus
+  read **22.22, out-of-band**, recorded verbatim per the §125
+  precedent (second occurrence of the advisory-only class, no
+  concurrent build running); an immediate solo re-run returned
+  25.26 in-band, confirming band health; verdict stayed PASS.
+  CI of f95f82f success, 198 tests debug and release,
+  fmt/clippy/check/xref clean. No code changes; boot pins
+  unchanged; blocker hardware-gated (§51.2); §32 holds its two
+  named candidates (§70.1).
+
 ## Milestone EN — pure verification round: zero findings, chain green ✅ (v0.37.83)
 
 - **No new evidence class; round honestly empty (§144.1)**:
