@@ -1,5 +1,18 @@
 # Roadmap
 
+## Milestone EC — pure verification round: zero findings, chain green ✅ (v0.37.73)
+
+- **No new evidence class; round honestly empty (§134.1)**:
+  zero-diff against origin/main after a sixtieth routine
+  snapshot rollback recovery (toolchain reinstalled, no
+  remote-ahead anomaly), claims fresh-verified (1,301,783/trap/
+  exit 2, banner 19/19, bench 25.62 in 24–26 solo, plus 25.56
+  post-bump bonus) — solo-gate protocol held for the ninth
+  consecutive round; CI of 7b2191b success, 198 tests debug and
+  release, fmt/clippy/check/xref clean. No code changes; boot
+  pins unchanged; blocker hardware-gated (§51.2); §32 holds its
+  two named candidates (§70.1).
+
 ## Milestone EB — pure verification round: zero findings, chain green ✅ (v0.37.72)
 
 - **No new evidence class; round honestly empty (§133.1)**:
