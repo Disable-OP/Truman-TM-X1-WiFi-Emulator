@@ -1,5 +1,22 @@
 # Roadmap
 
+## Milestone ES — pure verification round: zero findings, chain green ✅ (v0.37.88)
+
+- **No new evidence class; round honestly empty (§149.1)**:
+  zero-diff against origin/main after a seventy-fifth routine
+  snapshot rollback recovery (toolchain reinstalled, no
+  remote-ahead anomaly — handoff and remote agreed on 984d4b0;
+  permission-bit drift absent for a second consecutive round
+  after its EQ recurrence), claims fresh-verified
+  (1,301,783/trap/exit 2, banner 19/19, bench 25.49 in 24–26
+  solo, plus 25.62 post-bump bonus) — solo-gate protocol held
+  for the twenty-fourth consecutive round; eight consecutive
+  in-band samples since the §145 out-of-band 22.22 transient,
+  confirming it as isolated; CI of 984d4b0 success, 198 tests
+  debug and release, fmt/clippy/check/xref clean. No code
+  changes; boot pins unchanged; blocker hardware-gated
+  (§51.2); §32 holds its two named candidates (§70.1).
+
 ## Milestone ER — pure verification round: zero findings, chain green ✅ (v0.37.87)
 
 - **No new evidence class; round honestly empty (§148.1)**:

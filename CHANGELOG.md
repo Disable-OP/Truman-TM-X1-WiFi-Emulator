@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.37.88 — Milestone ES: pure verification round (§149)
+
+- Zero-finding round recorded for chain continuity: claims
+  fresh-verified, CI of 984d4b0 success, 198 tests, all gates
+  clean, zero diff. Seventy-fifth routine snapshot-rollback
+  recovery (toolchain reinstalled, no remote-ahead anomaly).
+  Solo-gate protocol held; bench 25.49 solo in-band (bonus
+  25.62) — eight consecutive in-band samples since the §145
+  out-of-band transient. No code changes.
+
 ## 0.37.87 — Milestone ER: pure verification round (§148)
 
 - Zero-finding round recorded for chain continuity: claims
