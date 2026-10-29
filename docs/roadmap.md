@@ -1,5 +1,20 @@
 # Roadmap
 
+## Milestone EN — pure verification round: zero findings, chain green ✅ (v0.37.83)
+
+- **No new evidence class; round honestly empty (§144.1)**:
+  zero-diff against origin/main after a seventieth routine
+  snapshot rollback recovery (toolchain reinstalled, no
+  remote-ahead anomaly — handoff and remote agreed on ba05a6c;
+  permission-bit drift absent for a tenth consecutive round),
+  claims fresh-verified (1,301,783/trap/exit 2, banner 19/19,
+  bench 25.25 in 24–26 solo, plus 24.91 post-bump bonus) —
+  solo-gate protocol held for the nineteenth consecutive round;
+  CI of ba05a6c success, 198 tests debug and release,
+  fmt/clippy/check/xref clean. No code changes; boot pins
+  unchanged; blocker hardware-gated (§51.2); §32 holds its two
+  named candidates (§70.1).
+
 ## Milestone EM — pure verification round: zero findings, chain green ✅ (v0.37.82)
 
 - **No new evidence class; round honestly empty (§143.1)**:
