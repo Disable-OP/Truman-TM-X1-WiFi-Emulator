@@ -1,5 +1,25 @@
 # Roadmap
 
+## Milestone EQ — pure verification round: zero findings, one §98.1 remote-ahead absorption, chain green ✅ (v0.37.86)
+
+- **No new evidence class; round honestly empty (§147.1)**:
+  zero-diff against origin/main after a seventy-third routine
+  snapshot rollback recovery (toolchain reinstalled; one
+  remote-ahead anomaly — the fetched head was the parallel
+  instance's EP commit ddc5835, absorbed via the §98.1
+  ancestry check and ff-only merge, round relabelled EP → EQ
+  per the EK precedent; permission-bit drift recurred after
+  eleven absent rounds, absorbed by core.fileMode false),
+  claims fresh-verified (1,301,783/trap/exit 2, banner 19/19,
+  bench 25.09 in 24–26 solo, plus 25.16 post-bump bonus) —
+  solo-gate protocol held for the twenty-second consecutive
+  round; all four samples since the §145 out-of-band 22.22
+  transient in-band, confirming it as isolated; CI of ddc5835
+  success, 198 tests debug and release, fmt/clippy/check/xref
+  clean. No code changes; boot pins unchanged; blocker
+  hardware-gated (§51.2); §32 holds its two named
+  candidates (§70.1).
+
 ## Milestone EP — pure verification round: zero findings, chain green ✅ (v0.37.85)
 
 - **No new evidence class; round honestly empty (§146.1)**:

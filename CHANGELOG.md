@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.37.86 — Milestone EQ: pure verification round (§147)
+
+- Zero-finding round recorded for chain continuity: claims
+  fresh-verified, CI of ddc5835 success, 198 tests, all gates
+  clean, zero diff. Seventy-third routine snapshot-rollback
+  recovery (toolchain reinstalled; one §98.1 remote-ahead
+  anomaly — the parallel instance's EP commit ddc5835 absorbed
+  ff-only, round relabelled EP → EQ per the EK precedent).
+  Solo-gate protocol held; bench 25.09 solo in-band (bonus
+  25.16) — all four samples since the §145 out-of-band
+  transient in-band. No code changes.
+
 ## 0.37.85 — Milestone EP: pure verification round (§146)
 
 - Zero-finding round recorded for chain continuity: claims
