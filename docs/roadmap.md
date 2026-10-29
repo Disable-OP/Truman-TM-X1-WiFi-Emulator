@@ -1,5 +1,21 @@
 # Roadmap
 
+## Milestone ED — pure verification round: zero findings, chain green ✅ (v0.37.74)
+
+- **No new evidence class; round honestly empty (§135.1)**:
+  zero-diff against origin/main after a sixty-first routine
+  snapshot rollback recovery (toolchain reinstalled) that this
+  time met the fifth remote-ahead anomaly (§98.1): the handoff
+  stopped at EB (7b2191b) while the remote already carried EC
+  (be1d3a5, the 12:29 session's landing); fetch-before-merge
+  `--ff-only` absorbed it losslessly. Claims fresh-verified
+  (1,301,783/trap/exit 2, banner 19/19, bench 25.71 in 24–26
+  solo, plus 25.52 post-bump bonus) — solo-gate protocol held
+  for the tenth consecutive round; CI of be1d3a5 success, 198
+  tests debug and release, fmt/clippy/check/xref clean. No code
+  changes; boot pins unchanged; blocker hardware-gated (§51.2);
+  §32 holds its two named candidates (§70.1).
+
 ## Milestone EC — pure verification round: zero findings, chain green ✅ (v0.37.73)
 
 - **No new evidence class; round honestly empty (§134.1)**:

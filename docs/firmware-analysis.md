@@ -8236,3 +8236,75 @@ blocker stays hardware-gated exactly as registered (§51.2): P1,
 P2/P2b/P2c, P3 — the real-device session per
 docs/hardware-session.md; the §32 container path holds its two
 named candidates (§70.1) for the owner's decision.
+
+## 135. Milestone ED — pure verification round: zero findings, chain green (session record, v0.37.74)
+
+### 135.1 The round, honestly empty
+
+No new evidence class appeared; the task text is unchanged; the
+predecessor's CI is green. Per the §54/§59/§72–§134 precedent the
+round is recorded for chain continuity and nothing more is
+claimed:
+
+- **Sixty-first snapshot rollback, with the fifth remote-ahead
+  anomaly (§98.1)** — the documented per-round routine found the
+  repo at 23471b2, stale refs, the session worklog regressed and
+  helper scripts gone; the toolchain was absent on the fresh
+  shell, so rustup stable 1.99.1 was reinstalled with the
+  rustfmt/clippy components re-added before the gates ran. The
+  notable variation: the handoff summary stopped at EB (7b2191b),
+  but `ls-remote` returned be1d3a5 — the 12:29 session had
+  already completed and pushed Milestone EC (v0.37.73, docs
+  §134) before this round began. The fixed-cost response held:
+  `core.fileMode false`, fetch **before** merge, `--ff-only`
+  (23471b2 → be1d3a5), explicit `rev-parse` re-check, and a
+  `merge-base --is-ancestor` confirmation that EB is EC's
+  ancestor — the jump absorbed losslessly with zero content
+  drift (the fifth such anomaly after DA, DF, DG and DS), and
+  this round therefore proceeds as Milestone ED. A second
+  variation, recorded for completeness: the usual 47-entry
+  permission-bit drift was absent — zero dirty entries after
+  `core.fileMode false`. Both helper scripts were rebuilt before
+  any commit existed, the CI-check helper carrying the §112.1
+  string-concatenation fix as standard from the first write.
+- **Solo-gate protocol held for the tenth consecutive round
+  (§126–§134)**: the gates ran strictly sequentially — fmt,
+  clippy, check, then the debug suite, then the release suite,
+  and only after every build had gone quiet, the claims audit
+  solo. The fresh reading came in at **25.71 M instr/s —
+  in-band**. The series: sixty-two consecutive in-band
+  fresh-sandbox measurements through DS, the §125 out-of-band
+  reading recorded verbatim (21.74-under-load), its in-band
+  solo re-run (25.69), the §126–§134 solo readings, and now two
+  further in-band readings (25.72, 25.55, 25.66, 24.26-under-load, 25.46, 25.66, 25.86, 25.58,
+  24.82, 25.86, 25.56, 25.59, 25.28, 25.72, 25.55, 25.74, 25.60,
+  25.37, 24.84, 25.89, 25.80, 25.79, 25.62, 24.84, 25.34, 25.75,
+  24.63, 25.39, 25.45, 25.46, 25.40, 25.16, 25.48, 25.64, 25.77,
+  25.80, 25.28, 25.83, 25.48, 25.44, 25.74, 25.65, 25.82, 25.33,
+  25.80, 25.91, 25.90, 25.73, 25.05, 25.78, 25.56, 25.52, 25.64,
+  25.71, 25.53, 25.68, 25.36, 25.67, 25.07, 25.78, 25.57, 25.51,
+  21.74-under-load, 25.69, 25.36, 25.44, 24.90, 25.77, 25.46, 25.59,
+  25.65, 25.86, 25.56, 25.53, 25.82, 25.75, 25.73, 25.31, 25.50,
+  25.59, 25.62, 25.56, 25.71, 25.52).
+- `tools/claims_audit.py` (cargo on PATH, the normal path):
+  boot chain stops at exactly **1,301,783** steps on
+  0xa1600050, exit 2; banner sample **19/19 in order**; overall
+  verdict PASS. CI status of be1d3a5 (EC, the predecessor)
+  verified `completed, success`. Post-bump audit re-run
+  produced a second solo reading, **25.52 — in-band**; recorded
+  as a bonus sample, no band break, verdict unchanged.
+- Push note carried forward: the §133 transient server-side
+  rejection ("fatal error in commit_refs") has not recurred
+  since — EC's push landed on the first attempt per its commit
+  record; this round's push follows the same standard (one
+  idempotent same-commit retry only on a transient server
+  rejection, never a force-push).
+
+Result: 198 tests (debug and release), fmt clean, clippy zero
+warnings, check --all-targets clean, xref audit clean. No code
+changes. Boot pins unchanged (handoff jr v0 at 1,301,763; trap
+0xa1600050 at 1,301,783, exit 2; fingerprint 0xcd8d03bf; reset
+pc 0xbfc00000). The blocker stays hardware-gated exactly as
+registered (§51.2): P1, P2/P2b/P2c, P3 — the real-device session
+per docs/hardware-session.md; the §32 container path holds its
+two named candidates (§70.1) for the owner's decision.

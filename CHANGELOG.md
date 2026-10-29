@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.37.74 — Milestone ED: pure verification round (§135)
+
+- Zero-finding round recorded for chain continuity: claims
+  fresh-verified, CI of be1d3a5 success, 198 tests, all gates
+  clean, zero diff. Sixty-first routine snapshot-rollback
+  recovery; fifth remote-ahead anomaly (§98.1) absorbed
+  losslessly via fetch-before-merge `--ff-only` (handoff
+  stopped at EB; remote already carried EC). Solo-gate protocol
+  held; bench 25.71 solo in-band (bonus 25.52). No code
+  changes.
+
 ## 0.37.73 — Milestone EC: pure verification round (§134)
 
 - Zero-finding round recorded for chain continuity: claims
