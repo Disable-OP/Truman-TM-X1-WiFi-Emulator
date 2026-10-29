@@ -1,5 +1,18 @@
 # Roadmap
 
+## Milestone DZ — pure verification round: zero findings, chain green ✅ (v0.37.70)
+
+- **No new evidence class; round honestly empty (§131.1)**:
+  zero-diff against origin/main after a fifty-seventh routine
+  snapshot rollback recovery (toolchain reinstalled, no
+  remote-ahead anomaly), claims fresh-verified (1,301,783/trap/
+  exit 2, banner 19/19, bench 25.82 in 24–26 solo, plus 25.75
+  post-bump bonus) — solo-gate protocol held for the sixth
+  consecutive round; CI of 1622c48 success, 198 tests debug and
+  release, fmt/clippy/check/xref clean. No code changes; boot
+  pins unchanged; blocker hardware-gated (§51.2); §32 holds its
+  two named candidates (§70.1).
+
 ## Milestone DY — pure verification round: zero findings, chain green ✅ (v0.37.69)
 
 - **No new evidence class; round honestly empty (§130.1)**:
