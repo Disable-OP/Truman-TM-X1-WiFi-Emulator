@@ -1,5 +1,24 @@
 # Roadmap
 
+## Milestone ET — pure verification round: zero findings, one verbatim out-of-band solo sample, chain green ✅ (v0.37.89)
+
+- **No new evidence class; round honestly empty (§150.1)**:
+  zero-diff against origin/main after a seventy-sixth routine
+  snapshot rollback recovery (toolchain reinstalled, no
+  remote-ahead anomaly — handoff and remote agreed on eabf417;
+  permission-bit drift absent for a third consecutive round),
+  claims fresh-verified (1,301,783/trap/exit 2, banner 19/19,
+  bench 22.83 solo OUTSIDE the 24–26 band, recorded verbatim
+  per the §125/§145 precedent — third occurrence of the class,
+  no concurrent build running; immediate solo re-run 24.98
+  in-band and post-bump bonus 25.29 in-band confirming band
+  health; verdict PASS unchanged, isolated host transient) —
+  solo-gate protocol held for the twenty-fifth consecutive
+  round; CI of eabf417 success, 198 tests debug and release,
+  fmt/clippy/check/xref clean. No code changes; boot pins
+  unchanged; blocker hardware-gated (§51.2); §32 holds its two
+  named candidates (§70.1).
+
 ## Milestone ES — pure verification round: zero findings, chain green ✅ (v0.37.88)
 
 - **No new evidence class; round honestly empty (§149.1)**:

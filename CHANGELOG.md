@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.37.89 — Milestone ET: pure verification round (§150)
+
+- Zero-finding round recorded for chain continuity: claims
+  fresh-verified, CI of eabf417 success, 198 tests, all gates
+  clean, zero diff. Seventy-sixth routine snapshot-rollback
+  recovery (toolchain reinstalled, no remote-ahead anomaly).
+  Solo-gate protocol held; bench 22.83 solo OUTSIDE the 24–26
+  band, recorded verbatim (third occurrence of the class);
+  immediate solo re-run 24.98 in-band and post-bump bonus
+  25.29 in-band — verdict PASS unchanged, isolated host
+  transient. No code changes.
+
 ## 0.37.88 — Milestone ES: pure verification round (§149)
 
 - Zero-finding round recorded for chain continuity: claims
