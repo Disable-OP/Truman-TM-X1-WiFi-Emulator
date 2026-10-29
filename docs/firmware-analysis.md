@@ -8308,3 +8308,80 @@ pc 0xbfc00000). The blocker stays hardware-gated exactly as
 registered (§51.2): P1, P2/P2b/P2c, P3 — the real-device session
 per docs/hardware-session.md; the §32 container path holds its
 two named candidates (§70.1) for the owner's decision.
+
+## 136. Milestone EF — pure verification round: zero findings, chain green (session record, v0.37.75)
+
+### 136.1 The round, honestly empty
+
+No new evidence class appeared; the task text is unchanged; the
+predecessor's CI is green. Per the §54/§59/§72–§135 precedent the
+round is recorded for chain continuity and nothing more is
+claimed:
+
+- **Sixty-second snapshot rollback, no remote-ahead anomaly** —
+  the documented per-round routine found the repo at 23471b2,
+  stale refs, the session worklog regressed and helper scripts
+  gone; the toolchain was absent on the fresh shell, so rustup
+  stable 1.99.1 was reinstalled with the rustfmt/clippy
+  components re-added before the gates ran. Fixed-cost
+  recovery: `core.fileMode false`, fetch before merge,
+  `--ff-only`, explicit `rev-parse` re-check — landed exactly
+  on origin/main (681ae1b, ED) with zero content drift; handoff
+  summary and fetched head agreed this time (no §98.1 anomaly,
+  unlike the ED round). A second quiet variation, recorded for
+  completeness: the usual 47-entry permission-bit drift was
+  absent for the second consecutive round — zero dirty entries
+  after `core.fileMode false`. Both helper scripts were rebuilt
+  before any commit existed, the CI-check helper carrying the
+  §112.1 string-concatenation fix as standard from the first
+  write.
+- **Solo-gate protocol held for the eleventh consecutive round
+  (§126–§135)**: the gates ran strictly sequentially — fmt,
+  clippy, check, then the debug suite, then the release suite,
+  and only after every build had gone quiet, the claims audit
+  solo. The fresh reading came in at **25.18 M instr/s —
+  in-band**. The series: sixty-two consecutive in-band
+  fresh-sandbox measurements through DS, the §125 out-of-band
+  reading recorded verbatim (21.74-under-load), its in-band
+  solo re-run (25.69), the §126–§135 solo readings, and now two
+  further in-band readings (25.72, 25.55, 25.66, 24.26-under-load, 25.46, 25.66, 25.86,
+  25.58,
+  24.82, 25.86, 25.56, 25.59, 25.28, 25.72, 25.55, 25.74,
+  25.60,
+  25.37, 24.84, 25.89, 25.80, 25.79, 25.62, 24.84, 25.34,
+  25.75,
+  24.63, 25.39, 25.45, 25.46, 25.40, 25.16, 25.48, 25.64,
+  25.77,
+  25.80, 25.28, 25.83, 25.48, 25.44, 25.74, 25.65, 25.82,
+  25.33,
+  25.80, 25.91, 25.90, 25.73, 25.05, 25.78, 25.56, 25.52,
+  25.64,
+  25.71, 25.53, 25.68, 25.36, 25.67, 25.07, 25.78, 25.57,
+  25.51,
+  21.74-under-load, 25.69, 25.36, 25.44, 24.90, 25.77,
+  25.46, 25.59,
+  25.65, 25.86, 25.56, 25.53, 25.82, 25.75, 25.73,
+  25.31, 25.50,
+  25.59, 25.62, 25.56, 25.71, 25.52, 25.18, 25.38).
+- `tools/claims_audit.py` (cargo on PATH, the normal path):
+  boot chain stops at exactly **1,301,783** steps on
+  0xa1600050, exit 2; banner sample **19/19 in order**; overall
+  verdict PASS. CI status of 681ae1b (ED, the predecessor)
+  verified `completed, success`. Post-bump audit re-run
+  produced a second solo reading, **25.38 — in-band**; recorded
+  as a bonus sample, no band break, verdict unchanged.
+- Push note carried forward: the ED round saw one transient
+  rc=128 rejection of the access-rights flavor (GitHub-side,
+  not credentials — the same PAT verified CI via the API in the
+  same minute); the standard one same-commit idempotent retry
+  landed it, no force-push. This round's push follows the same
+  standard.
+
+Result: 198 tests (debug and release), fmt clean, clippy zero
+warnings, check --all-targets clean, xref audit clean. No code
+changes. Boot pins unchanged (handoff jr v0 at 1,301,763; trap
+0xa1600050 at 1,301,783, exit 2; fingerprint 0xcd8d03bf; reset
+pc 0xbfc00000). The blocker stays hardware-gated exactly as
+registered (§51.2): P1, P2/P2b/P2c, P3 — the real-device session
+per docs/hardware-session.md; the §32 container path holds its
+two named candidates (§70.1) for the owner's decision.
