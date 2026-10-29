@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.37.91 — Milestone EV: pure verification round (§152)
+
+- Zero-finding round recorded for chain continuity: claims
+  fresh-verified, CI of b10c66a success, 198 tests, all gates
+  clean, zero diff. Seventy-eighth routine snapshot-rollback
+  recovery (toolchain reinstalled, no remote-ahead anomaly).
+  Solo-gate protocol held; bench 25.67 solo in-band (bonus
+  25.16) — six consecutive in-band samples since the §150
+  out-of-band transient. No code changes.
+
 ## 0.37.90 — Milestone EU: pure verification round (§151)
 
 - Zero-finding round recorded for chain continuity: claims
