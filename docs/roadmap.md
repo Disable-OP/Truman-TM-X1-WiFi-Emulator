@@ -1,5 +1,20 @@
 # Roadmap
 
+## Milestone EL — pure verification round: zero findings, chain green ✅ (v0.37.81)
+
+- **No new evidence class; round honestly empty (§142.1)**:
+  zero-diff against origin/main after a sixty-eighth routine
+  snapshot rollback recovery (toolchain reinstalled, no
+  remote-ahead anomaly — handoff and remote agreed on 9583ba1;
+  permission-bit drift absent for an eighth consecutive round),
+  claims fresh-verified (1,301,783/trap/exit 2, banner 19/19,
+  bench 25.24 in 24–26 solo, plus 25.62 post-bump bonus) —
+  solo-gate protocol held for the seventeenth consecutive
+  round; CI of 9583ba1 success, 198 tests debug and release,
+  fmt/clippy/check/xref clean. No code changes; boot pins
+  unchanged; blocker hardware-gated (§51.2); §32 holds its two
+  named candidates (§70.1).
+
 ## Milestone EK — pure verification round: zero findings, chain green ✅ (v0.37.80)
 
 - **No new evidence class; round honestly empty (§141.1)**:
