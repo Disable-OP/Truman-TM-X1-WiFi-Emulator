@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.37.77 — Milestone EH: pure verification round (§138)
+
+- Zero-finding round recorded for chain continuity: claims
+  fresh-verified, CI of fefcc38 success, 198 tests, all gates
+  clean, zero diff. Sixty-fourth routine snapshot-rollback
+  recovery (toolchain reinstalled, no remote-ahead anomaly).
+  Solo-gate protocol held; bench 25.29 solo in-band (bonus
+  25.69). No code changes.
+
 ## 0.37.76 — Milestone EG: pure verification round (§137)
 
 - Zero-finding round recorded for chain continuity: claims

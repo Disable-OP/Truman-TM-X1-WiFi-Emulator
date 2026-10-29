@@ -1,5 +1,19 @@
 # Roadmap
 
+## Milestone EH — pure verification round: zero findings, chain green ✅ (v0.37.77)
+
+- **No new evidence class; round honestly empty (§138.1)**:
+  zero-diff against origin/main after a sixty-fourth routine
+  snapshot rollback recovery (toolchain reinstalled, no
+  remote-ahead anomaly; permission-bit drift absent for a
+  fourth consecutive round), claims fresh-verified
+  (1,301,783/trap/exit 2, banner 19/19, bench 25.29 in 24–26
+  solo, plus 25.69 post-bump bonus) — solo-gate protocol held
+  for the thirteenth consecutive round; CI of fefcc38 success,
+  198 tests debug and release, fmt/clippy/check/xref clean.
+  No code changes; boot pins unchanged; blocker hardware-gated
+  (§51.2); §32 holds its two named candidates (§70.1).
+
 ## Milestone EG — pure verification round: zero findings, chain green ✅ (v0.37.76)
 
 - **No new evidence class; round honestly empty (§137.1)**:
