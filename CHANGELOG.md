@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.37.79 — Milestone EJ: pure verification round (§140)
+
+- Zero-finding round recorded for chain continuity: claims
+  fresh-verified, CI of 449fc08 success, 198 tests, all gates
+  clean, zero diff. Sixty-sixth routine snapshot-rollback
+  recovery (toolchain reinstalled, no remote-ahead anomaly).
+  Solo-gate protocol held; bench 25.27 solo in-band (bonus
+  25.42). §140 records the root-cause correction superseding
+  the §137–§139 push-note hypotheses (missing repo cd in
+  push_safe.sh, not GitHub transients). No code changes.
+
 ## 0.37.78 — Milestone EI: pure verification round (§139)
 
 - Zero-finding round recorded for chain continuity: claims

@@ -1,5 +1,23 @@
 # Roadmap
 
+## Milestone EJ — pure verification round: zero findings, chain green ✅ (v0.37.79)
+
+- **No new evidence class; round honestly empty (§140.1)**:
+  zero-diff against origin/main after a sixty-sixth routine
+  snapshot rollback recovery (toolchain reinstalled, no
+  remote-ahead anomaly; permission-bit drift absent for a
+  sixth consecutive round), claims fresh-verified
+  (1,301,783/trap/exit 2, banner 19/19, bench 25.27 in 24–26
+  solo, plus 25.42 post-bump bonus) — solo-gate protocol held
+  for the fifteenth consecutive round; CI of 449fc08 success,
+  198 tests debug and release, fmt/clippy/check/xref clean.
+  §140 also records the root-cause correction superseding the
+  §137–§139 push-note hypotheses: the ED–EH rc=128 failures
+  were a missing-repo-cd in push_safe.sh, not GitHub transients
+  (the §133 EB commit_refs rejection remains genuine). No code
+  changes; boot pins unchanged; blocker hardware-gated
+  (§51.2); §32 holds its two named candidates (§70.1).
+
 ## Milestone EI — pure verification round: zero findings, chain green ✅ (v0.37.78)
 
 - **No new evidence class; round honestly empty (§139.1)**:
