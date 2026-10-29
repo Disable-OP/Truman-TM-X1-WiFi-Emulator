@@ -1,5 +1,23 @@
 # Roadmap
 
+## Milestone EK — pure verification round: zero findings, chain green ✅ (v0.37.80)
+
+- **No new evidence class; round honestly empty (§141.1)**:
+  zero-diff against origin/main after a sixty-seventh routine
+  snapshot rollback recovery (toolchain reinstalled) with the
+  sixth remote-ahead anomaly (§98.1) absorbed losslessly: the
+  unrecognized remote tip a424c45 resolved as the parallel
+  instance's already-completed Milestone EJ, ancestry (449fc08
+  ∈ a424c45) verified before the ff-only merge; permission-bit
+  drift absent for a seventh consecutive round. Claims
+  fresh-verified (1,301,783/trap/exit 2, banner 19/19, bench
+  25.20 in 24–26 solo, plus 25.31 post-bump bonus) —
+  solo-gate protocol held for the sixteenth consecutive round;
+  CI of a424c45 success, 198 tests debug and release,
+  fmt/clippy/check/xref clean. No code changes; boot pins
+  unchanged; blocker hardware-gated (§51.2); §32 holds its two
+  named candidates (§70.1).
+
 ## Milestone EJ — pure verification round: zero findings, chain green ✅ (v0.37.79)
 
 - **No new evidence class; round honestly empty (§140.1)**:

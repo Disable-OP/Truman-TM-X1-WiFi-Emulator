@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.37.80 — Milestone EK: pure verification round (§141)
+
+- Zero-finding round recorded for chain continuity: claims
+  fresh-verified, CI of a424c45 success, 198 tests, all gates
+  clean, zero diff. Sixty-seventh routine snapshot-rollback
+  recovery (toolchain reinstalled) with the sixth remote-ahead
+  anomaly (§98.1): the unrecognized remote tip a424c45 was the
+  parallel instance's already-completed Milestone EJ; ancestry
+  verified before the merge, ff-only absorption lossless.
+  Solo-gate protocol held; bench 25.20 solo in-band (bonus
+  25.31). No code changes.
+
 ## 0.37.79 — Milestone EJ: pure verification round (§140)
 
 - Zero-finding round recorded for chain continuity: claims
