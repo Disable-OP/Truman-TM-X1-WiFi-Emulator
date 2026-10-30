@@ -1,5 +1,23 @@
 # Roadmap
 
+## Milestone GI — pure verification round: zero findings, chain green ✅ (v0.38.4)
+
+- **No new evidence class; round honestly empty (§165.1)**:
+  zero-diff against origin/main after a ninety-second routine
+  snapshot rollback recovery (toolchain reinstalled, no
+  remote-ahead anomaly — handoff and remote agreed on e6fa178;
+  permission-bit drift present for a sixth consecutive round,
+  47 mode-bit entries all cleared by `core.fileMode false`),
+  claims fresh-verified (1,301,783/trap/exit 2, banner 19/19,
+  bench 25.20 solo in-band plus 25.37 post-bump bonus in-band —
+  thirty-two consecutive in-band samples behind the §150
+  out-of-band 22.83 transient) — solo-gate protocol held for
+  the fortieth consecutive round; CI of e6fa178 success,
+  198 tests debug and release, fmt/clippy/check clean, xref
+  clean after the bump per the §162 hardening rule. No code
+  changes; boot pins unchanged; blocker hardware-gated
+  (§51.2); §32 holds its two named candidates (§70.1).
+
 ## Milestone GH — pure verification round: zero findings, chain green ✅ (v0.38.3)
 
 - **No new evidence class; round honestly empty (§164.1)**:
