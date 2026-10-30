@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.37.99 — Milestone FD: pure verification round (§160)
+
+- Zero-finding round recorded for chain continuity: claims
+  fresh-verified, CI of c23c978 success, 198 tests, all gates
+  clean, zero diff. Eighty-sixth routine snapshot-rollback
+  recovery (toolchain reinstalled, no remote-ahead anomaly).
+  Solo-gate protocol held; bench 25.04 solo in-band (bonus
+  25.37) — twenty-two consecutive in-band samples since the
+  §150 out-of-band transient. No code changes.
+
 ## 0.37.98 — Milestone FC: pure verification round (§159)
 
 - Zero-finding round recorded for chain continuity: claims

@@ -1,5 +1,23 @@
 # Roadmap
 
+## Milestone FD — pure verification round: zero findings, chain green ✅ (v0.37.99)
+
+- **No new evidence class; round honestly empty (§160.1)**:
+  zero-diff against origin/main after an eighty-sixth routine
+  snapshot rollback recovery (toolchain reinstalled, no
+  remote-ahead anomaly — handoff and remote agreed on c23c978;
+  permission-bit drift returned after a twelve-round absence,
+  47 mode-bit entries all cleared by `core.fileMode false`),
+  claims fresh-verified (1,301,783/trap/exit 2, banner
+  19/19, bench 25.04 solo in-band plus 25.37 post-bump bonus
+  in-band — twenty-two consecutive in-band samples behind the
+  §150 out-of-band 22.83 transient) — solo-gate protocol held
+  for the thirty-fifth consecutive round; CI of c23c978
+  success, 198 tests debug and release, fmt/clippy/check/xref
+  clean. No code changes; boot pins unchanged; blocker
+  hardware-gated (§51.2); §32 holds its two named candidates
+  (§70.1).
+
 ## Milestone FC — pure verification round: zero findings, chain green ✅ (v0.37.98)
 
 - **No new evidence class; round honestly empty (§159.1)**:
