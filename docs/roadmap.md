@@ -1,5 +1,21 @@
 # Roadmap
 
+## Milestone EZ — pure verification round: zero findings, chain green ✅ (v0.37.95)
+
+- **No new evidence class; round honestly empty (§156.1)**:
+  zero-diff against origin/main after an eighty-second routine
+  snapshot rollback recovery (toolchain reinstalled, no
+  remote-ahead anomaly — handoff and remote agreed on aa204dd;
+  permission-bit drift absent for a ninth consecutive round),
+  claims fresh-verified (1,301,783/trap/exit 2, banner 19/19,
+  bench 25.67 solo in-band plus 24.93 post-bump bonus in-band —
+  fourteen consecutive in-band samples behind the §150
+  out-of-band 22.83 transient) — solo-gate protocol held for
+  the thirty-first consecutive round; CI of aa204dd success,
+  198 tests debug and release, fmt/clippy/check/xref clean. No
+  code changes; boot pins unchanged; blocker hardware-gated
+  (§51.2); §32 holds its two named candidates (§70.1).
+
 ## Milestone EY — pure verification round: zero findings, chain green ✅ (v0.37.94)
 
 - **No new evidence class; round honestly empty (§155.1)**:
