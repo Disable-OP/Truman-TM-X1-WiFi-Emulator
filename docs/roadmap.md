@@ -1,5 +1,21 @@
 # Roadmap
 
+## Milestone EX — pure verification round: zero findings, chain green ✅ (v0.37.93)
+
+- **No new evidence class; round honestly empty (§154.1)**:
+  zero-diff against origin/main after an eightieth routine
+  snapshot rollback recovery (toolchain reinstalled, no
+  remote-ahead anomaly — handoff and remote agreed on dfed185;
+  permission-bit drift absent for a seventh consecutive round),
+  claims fresh-verified (1,301,783/trap/exit 2, banner 19/19,
+  bench 25.04 solo in-band plus 25.80 post-bump bonus in-band —
+  ten consecutive in-band samples behind the §150 out-of-band
+  22.83 transient) — solo-gate protocol held for the
+  twenty-ninth consecutive round; CI of dfed185 success,
+  198 tests debug and release, fmt/clippy/check/xref clean. No
+  code changes; boot pins unchanged; blocker hardware-gated
+  (§51.2); §32 holds its two named candidates (§70.1).
+
 ## Milestone EW — pure verification round: zero findings, chain green ✅ (v0.37.92)
 
 - **No new evidence class; round honestly empty (§153.1)**:
