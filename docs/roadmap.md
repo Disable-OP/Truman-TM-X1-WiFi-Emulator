@@ -1,5 +1,23 @@
 # Roadmap
 
+## Milestone FA — pure verification round: zero findings, chain green ✅ (v0.37.96)
+
+- **No new evidence class; round honestly empty (§157.1)**:
+  zero-diff against origin/main after an eighty-third routine
+  snapshot rollback recovery with the §98.1 remote-ahead
+  anomaly absorbed (toolchain reinstalled; origin/main had
+  advanced to 15c6aff, the parallel instance's EZ round —
+  ancestry proven, ff-only merge, label renamed EZ→FA;
+  permission-bit drift absent for a tenth consecutive round),
+  claims fresh-verified (1,301,783/trap/exit 2, banner 19/19,
+  bench 25.74 solo in-band plus 25.65 post-bump bonus in-band —
+  sixteen consecutive in-band samples behind the §150
+  out-of-band 22.83 transient) — solo-gate protocol held for
+  the thirty-second consecutive round; CI of 15c6aff success,
+  198 tests debug and release, fmt/clippy/check/xref clean. No
+  code changes; boot pins unchanged; blocker hardware-gated
+  (§51.2); §32 holds its two named candidates (§70.1).
+
 ## Milestone EZ — pure verification round: zero findings, chain green ✅ (v0.37.95)
 
 - **No new evidence class; round honestly empty (§156.1)**:

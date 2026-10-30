@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.37.96 — Milestone FA: pure verification round (§157)
+
+- Zero-finding round recorded for chain continuity: claims
+  fresh-verified, CI of 15c6aff success, 198 tests, all gates
+  clean, zero diff. Eighty-third routine snapshot-rollback
+  recovery; §98.1 remote-ahead anomaly absorbed (EZ landed via
+  a parallel instance at 15c6aff — ancestry proven, ff-only
+  merge). Solo-gate protocol held; bench 25.74 solo in-band
+  (bonus 25.65) — sixteen consecutive in-band samples since
+  the §150 out-of-band transient. No code changes.
+
 ## 0.37.95 — Milestone EZ: pure verification round (§156)
 
 - Zero-finding round recorded for chain continuity: claims
