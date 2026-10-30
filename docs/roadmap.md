@@ -1,5 +1,21 @@
 # Roadmap
 
+## Milestone EY — pure verification round: zero findings, chain green ✅ (v0.37.94)
+
+- **No new evidence class; round honestly empty (§155.1)**:
+  zero-diff against origin/main after an eighty-first routine
+  snapshot rollback recovery (toolchain reinstalled, no
+  remote-ahead anomaly — handoff and remote agreed on 8a765da;
+  permission-bit drift absent for an eighth consecutive round),
+  claims fresh-verified (1,301,783/trap/exit 2, banner 19/19,
+  bench 25.85 solo in-band plus 25.57 post-bump bonus in-band —
+  twelve consecutive in-band samples behind the §150
+  out-of-band 22.83 transient) — solo-gate protocol held for
+  the thirtieth consecutive round; CI of 8a765da success,
+  198 tests debug and release, fmt/clippy/check/xref clean. No
+  code changes; boot pins unchanged; blocker hardware-gated
+  (§51.2); §32 holds its two named candidates (§70.1).
+
 ## Milestone EX — pure verification round: zero findings, chain green ✅ (v0.37.93)
 
 - **No new evidence class; round honestly empty (§154.1)**:
