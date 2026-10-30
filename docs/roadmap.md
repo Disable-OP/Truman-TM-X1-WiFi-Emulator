@@ -1,5 +1,22 @@
 # Roadmap
 
+## Milestone FB — pure verification round: zero findings, chain green ✅ (v0.37.97)
+
+- **No new evidence class; round honestly empty (§158.1)**:
+  zero-diff against origin/main after an eighty-fourth routine
+  snapshot rollback recovery (toolchain reinstalled, no
+  remote-ahead anomaly — handoff and remote agreed on 69b4515;
+  permission-bit drift absent for an eleventh consecutive
+  round), claims fresh-verified (1,301,783/trap/exit 2, banner
+  19/19, bench 25.77 solo in-band plus 25.58 post-bump bonus
+  in-band — eighteen consecutive in-band samples behind the
+  §150 out-of-band 22.83 transient) — solo-gate protocol held
+  for the thirty-third consecutive round; CI of 69b4515
+  success, 198 tests debug and release, fmt/clippy/check/xref
+  clean. No code changes; boot pins unchanged; blocker
+  hardware-gated (§51.2); §32 holds its two named candidates
+  (§70.1).
+
 ## Milestone FA — pure verification round: zero findings, chain green ✅ (v0.37.96)
 
 - **No new evidence class; round honestly empty (§157.1)**:
