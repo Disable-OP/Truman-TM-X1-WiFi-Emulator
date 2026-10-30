@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.38.3 — Milestone GH: pure verification round (§164)
+
+- Zero-finding round recorded for chain continuity: claims
+  fresh-verified, CI of 38becaf success, 198 tests, all gates
+  clean, zero diff. Ninety-first routine snapshot-rollback
+  recovery (toolchain reinstalled, no remote-ahead anomaly).
+  Solo-gate protocol held; bench 25.51 solo in-band (bonus
+  25.58) — thirty consecutive in-band samples since the §150
+  out-of-band transient. §162 hardening rule second outing:
+  xref re-run after the bump, green. No code changes.
+
 ## 0.38.2 — Milestone FG: pure verification round (§163)
 
 - Zero-finding round recorded for chain continuity: claims
