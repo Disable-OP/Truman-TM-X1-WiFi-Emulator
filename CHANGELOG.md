@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.38.0 — Milestone FE: pure verification round (§161)
+
+- Zero-finding round recorded for chain continuity: claims
+  fresh-verified, CI of ec078f2 success, 198 tests, all gates
+  clean, zero diff. Eighty-seventh routine snapshot-rollback
+  recovery (toolchain reinstalled; §98.1 remote-ahead anomaly
+  absorbed — FD landed via a parallel instance at ec078f2,
+  ancestry proven, ff-only merge). Solo-gate protocol held;
+  bench 24.65 solo in-band (bonus 25.76) — twenty-four
+  consecutive in-band samples since the §150 out-of-band
+  transient. Version rollover 0.37.99→0.38.0: the 0.37 patch
+  series closed at .99 per the 0.35.0→0.36.0→0.37.0
+  minor-rollover precedent. No code changes.
+
 ## 0.37.99 — Milestone FD: pure verification round (§160)
 
 - Zero-finding round recorded for chain continuity: claims
