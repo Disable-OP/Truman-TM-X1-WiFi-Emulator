@@ -1,5 +1,24 @@
 # Roadmap
 
+## Milestone FG — pure verification round: zero findings, chain green ✅ (v0.38.2)
+
+- **No new evidence class; round honestly empty (§163.1)**:
+  label taken up after an interrupted attempt lost its shell
+  mid-round to tool-channel failures (no commit produced);
+  eighty-ninth and ninetieth routine snapshot-rollback
+  recoveries, no remote-ahead anomaly — handoff and remote
+  agreed on 829e9f1 both times; permission-bit drift present,
+  47 mode-bit entries cleared each time; claims fresh-verified
+  (1,301,783/trap/exit 2, banner 19/19, bench 25.40 solo
+  in-band plus 25.53 post-bump bonus in-band — twenty-eight
+  consecutive in-band samples behind the §150 out-of-band
+  22.83 transient) — solo-gate protocol held for the
+  thirty-eighth consecutive round; CI of 829e9f1 success,
+  198 tests debug and release, fmt/clippy/check clean, xref
+  clean after the bump per the §162 hardening rule. No code
+  changes; boot pins unchanged; blocker hardware-gated
+  (§51.2); §32 holds its two named candidates (§70.1).
+
 ## Milestone FF — CI failure of the FE round diagnosed and repaired ✅ (v0.38.1)
 
 - **First red CI of the chain (5f90172), root-caused and fixed

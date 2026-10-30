@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.38.2 — Milestone FG: pure verification round (§163)
+
+- Zero-finding round recorded for chain continuity: claims
+  fresh-verified, CI of 829e9f1 success, 198 tests, all gates
+  clean, zero diff. Label taken up after an interrupted
+  attempt (tool-channel failures, no commit); eighty-ninth
+  and ninetieth routine snapshot-rollback recoveries, no
+  remote-ahead anomaly. Solo-gate protocol held; bench 25.40
+  solo in-band (bonus 25.53) — twenty-eight consecutive
+  in-band samples. §162 hardening rule first routine outing:
+  xref re-run after the bump, green. No code changes.
+
 ## 0.38.1 — Milestone FF: the chain's first red CI, diagnosed and repaired (§162)
 
 - Repair release: the FE round's version bump missed the
