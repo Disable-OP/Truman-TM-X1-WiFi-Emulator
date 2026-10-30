@@ -1,5 +1,43 @@
 # Roadmap
 
+## Milestone FF — CI failure of the FE round diagnosed and repaired ✅ (v0.38.1)
+
+- **First red CI of the chain (5f90172), root-caused and fixed
+  (§162.1–§162.3)**: the FE bump skipped the roadmap version
+  pin, the §65 xref gate failed on push, the failure was
+  reproduced locally on the FE tip before any fix; repair =
+  retroactive FE entry + FF entry + version 0.38.1 + the
+  post-bump-xref hardening rule. Gates re-run green (198 tests
+  debug and release, fmt/clippy/check clean, xref clean after
+  the bump), claims fresh-verified (1,301,783/trap/exit 2,
+  banner 19/19, bench 25.31 solo in-band plus 25.47 post-bump
+  bonus in-band — twenty-six consecutive in-band samples
+  behind the §150 out-of-band 22.83 transient); boot pins
+  unchanged; blocker hardware-gated (§51.2); §32 holds its two
+  named candidates (§70.1).
+
+## Milestone FE — pure verification round: zero findings, chain green ✅ (v0.38.0)
+
+- **No new evidence class; round honestly empty (§161.1)**:
+  zero-diff against origin/main after an eighty-seventh routine
+  snapshot rollback recovery with the §98.1 remote-ahead
+  anomaly absorbed (toolchain reinstalled; origin/main had
+  advanced to ec078f2, the parallel instance's FD round —
+  ancestry proven, ff-only merge, label renamed FD→FE;
+  permission-bit drift present for a second consecutive round,
+  47 mode-bit entries all cleared by `core.fileMode false`),
+  claims fresh-verified (1,301,783/trap/exit 2, banner 19/19,
+  bench 24.65 solo in-band plus 25.76 post-bump bonus in-band —
+  twenty-four consecutive in-band samples behind the §150
+  out-of-band 22.83 transient) — solo-gate protocol held for
+  the thirty-sixth consecutive round; CI of ec078f2 success,
+  198 tests debug and release, fmt/clippy/check clean. No code
+  changes; boot pins unchanged; blocker hardware-gated (§51.2);
+  §32 holds its two named candidates (§70.1). Retroactive
+  entry added in Milestone FF: this roadmap line was the
+  artifact the FE round missed, failing the §65 xref gate on
+  the pushed commit (§162.2).
+
 ## Milestone FD — pure verification round: zero findings, chain green ✅ (v0.37.99)
 
 - **No new evidence class; round honestly empty (§160.1)**:

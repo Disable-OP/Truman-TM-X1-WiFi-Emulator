@@ -10574,3 +10574,102 @@ pc 0xbfc00000). The blocker stays hardware-gated exactly as
 registered (§51.2): P1, P2/P2b/P2c, P3 — the real-device session
 per docs/hardware-session.md; the §32 container path holds its
 two named candidates (§70.1) for the owner's decision.
+
+## 162. Milestone FF — the chain's first red CI: FE's missed roadmap
+pin, reproduced locally and repaired (session record, v0.38.1)
+
+### 162.1 What actually failed
+
+The three-trigger check broke at its second arm for the first
+time in the recorded chain: the predecessor commit 5f90172 (FE,
+v0.38.0) went through CI to **`gates completed failure`**. The
+run log pinned the failing step to the §65 docs cross-reference
+audit and nothing else — fmt, clippy, both test suites and the
+check had already passed inside the same job:
+
+> roadmap latest: v0.37.99  Cargo: 0.38.0  MISMATCH
+>  - roadmap v0.37.99 != Cargo 0.38.0
+> ##[error]Process completed with exit code 1.
+
+### 162.2 Root cause, honestly assigned
+
+The FE round bumped `Cargo.toml` to 0.38.0 (with
+`Cargo.lock` refreshed) but never touched
+`docs/roadmap.md` — every verification round before it
+re-stamped the roadmap's latest-milestone pin as part of the
+bump, and FE skipped that artifact while still recording
+"xref audit clean" in §161: the audit had been run **before**
+the version bump, so the claim was true of the pre-bump tree
+and stale for the tree actually pushed. Two defects, one
+consequence: a missed artifact and a stale audit order. The
+CI defense line behaved exactly as designed — it caught the
+mismatch on the pushed commit. The local round routine was
+the part that needed repair. The failure was reproduced
+locally on the FE tip before any fix was staged (the xref
+audit printing the identical `roadmap v0.37.99 != Cargo
+0.38.0` mismatch), closing the diagnosis loop without
+guesswork.
+
+### 162.3 Repair and hardening
+
+- `docs/roadmap.md` entries restored: a retroactive **FE
+  (v0.38.0)** entry (marked as added in FF) and the **FF
+  (v0.38.1)** entry ahead of FD, so the roadmap chain is
+  complete again and the first-version pin matches Cargo.
+- Version rolled to **0.38.1** (repair release; the 0.38
+  patch series starts its count here).
+- Hardening rule recorded for every future bump: the xref
+  audit is re-run **after** the version bump and its green
+  output is part of the round's closing evidence, not an
+  optional pre-bump step.
+- Claims fresh-verified on the repaired tree, solo-gate
+  protocol held for the thirty-seventh consecutive round:
+  boot chain stops at exactly **1,301,783** steps on
+  0xa1600050, exit 2; banner sample **19/19 in order**;
+  bench **25.31 M instr/s — inside the 24–26 band** solo, and
+  the post-bump bonus produced **25.47 — in-band**;
+  twenty-six consecutive in-band samples now stand behind the
+  §150 out-of-band 22.83 transient (24.98, 25.29, 25.64, 25.61, 25.67, 25.16, 25.64, 25.60, 25.04, 25.80, 25.85,
+  25.57, 25.67, 24.93, 25.74, 25.65, 25.77, 25.58, 25.55, 25.55, 25.04, 25.37,
+  24.65, 25.76, 25.31, 25.47), further
+  confirming it as isolated per the §145 handling — the
+  verdict stays PASS and the standing watch rule holds (two
+  consecutive out-of-band readings would trigger a deeper
+  investigation, which has not occurred). The series:
+  sixty-two consecutive in-band fresh-sandbox measurements
+  through DS, the §125 out-of-band reading recorded verbatim
+  (21.74-under-load), its in-band solo re-run (25.69), the
+  §126–§161 solo readings, and now two further in-band
+  readings (25.72, 25.55, 25.66, 24.26-under-load, 25.46, 25.66, 25.86, 25.58, 24.82, 25.86, 25.56,
+  25.59, 25.28, 25.72, 25.55, 25.74, 25.60, 25.37, 24.84, 25.89, 25.80, 25.79,
+  25.62, 24.84, 25.34, 25.75, 24.63, 25.39, 25.45, 25.46, 25.40, 25.16, 25.48,
+  25.64, 25.77, 25.80, 25.28, 25.83, 25.48, 25.44, 25.74, 25.65, 25.82, 25.33,
+  25.80, 25.91, 25.90, 25.73, 25.05, 25.78, 25.56, 25.52, 25.64, 25.71, 25.53,
+  25.68, 25.36, 25.67, 25.07, 25.78, 25.57, 25.51, 21.74-under-load, 25.69, 25.36, 25.44,
+  24.90, 25.77, 25.46, 25.59, 25.65, 25.86, 25.56, 25.53, 25.82, 25.75, 25.73,
+  25.31, 25.50, 25.59, 25.62, 25.56, 25.71, 25.52, 25.18, 25.38, 25.55, 25.54,
+  25.29, 25.69, 25.71, 25.56, 25.27, 25.42, 25.20, 25.31, 25.24, 25.62, 25.06,
+  25.72, 25.25, 24.91, 25.58, 22.22, 25.26, 25.38, 25.32, 25.09, 25.16, 25.37,
+  25.18, 25.49, 25.62, 22.83, 24.98, 25.29, 25.64, 25.61, 25.67, 25.16, 25.64,
+  25.60, 25.04, 25.80, 25.85, 25.57, 25.67, 24.93, 25.74, 25.65, 25.77, 25.58,
+  25.55, 25.55, 25.04, 25.37, 24.65, 25.76, 25.31, 25.47).
+- Eighty-eighth routine snapshot-rollback recovery (toolchain
+  reinstalled synchronously; no remote-ahead anomaly —
+  handoff and remote agreed on 5f90172; permission-bit drift
+  present for a third consecutive round, 47 mode-bit entries
+  all cleared by `core.fileMode false`, zero real dirty
+  entries). The clippy first-touch flake stayed absent
+  (pass-1 green, second round in a row).
+
+Result: 198 tests (debug and release), fmt clean, clippy zero
+warnings, check --all-targets clean, xref audit clean **after**
+the bump. Boot pins unchanged (handoff jr v0 at 1,301,763;
+trap 0xa1600050 at 1,301,783, exit 2; fingerprint 0xcd8d03bf;
+reset pc 0xbfc00000). The repair commit's own CI verdict is
+the FF round's acceptance criterion: it is polled to a
+conclusion before the round closes, and the successor round
+re-verifies it as its opening trigger check. The blocker
+stays hardware-gated exactly as registered (§51.2): P1,
+P2/P2b/P2c, P3 — the real-device session per
+docs/hardware-session.md; the §32 container path holds its
+two named candidates (§70.1) for the owner's decision.

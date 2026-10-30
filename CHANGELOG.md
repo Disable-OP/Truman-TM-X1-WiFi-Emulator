@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.38.1 — Milestone FF: the chain's first red CI, diagnosed and repaired (§162)
+
+- Repair release: the FE round's version bump missed the
+  roadmap pin and the §65 xref gate failed on push (5f90172) —
+  the CI defense line worked as designed, the local routine
+  was repaired instead: retroactive FE roadmap entry + FF
+  entry, version 0.38.1, and the post-bump-xref hardening
+  rule. Failure reproduced locally before the fix. Gates
+  green after repair (198 tests debug and release, xref clean
+  post-bump); bench 25.31 solo in-band (bonus 25.47).
+
 ## 0.38.0 — Milestone FE: pure verification round (§161)
 
 - Zero-finding round recorded for chain continuity: claims
